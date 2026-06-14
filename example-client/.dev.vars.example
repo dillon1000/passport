@@ -1,0 +1,17 @@
+# Issuer URL of the Passport auth server.
+AUTH_ISSUER=http://localhost:5173
+
+# OAuth client id registered with Passport.
+CLIENT_ID=example-client
+
+# OAuth client secret registered with Passport.
+CLIENT_SECRET=example-client-secret
+
+# Callback URL registered with Passport.
+REDIRECT_URI=http://localhost:5174/callback
+
+# Post logout URL registered with Passport.
+POST_LOGOUT_REDIRECT_URI=http://localhost:5174/
+
+# Secret used to sign local example-client session cookies.
+SESSION_SECRET=replace-with-a-long-random-secret

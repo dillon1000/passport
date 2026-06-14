@@ -1,111 +1,260 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--font-sans: 'Geist Variable', sans-serif;
+	--font-mono: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--font-heading: var(--font-sans);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar: var(--sidebar);
+	--color-chart-5: var(--chart-5);
+	--color-chart-4: var(--chart-4);
+	--color-chart-3: var(--chart-3);
+	--color-chart-2: var(--chart-2);
+	--color-chart-1: var(--chart-1);
+	--color-brand: var(--brand);
+	--color-brand-foreground: var(--brand-foreground);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+	--radius-3xl: calc(var(--radius) * 2.2);
+	--radius-4xl: calc(var(--radius) * 2.6);
+}
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+	--radius: 0.625rem;
+	/* Whitelabel accent. Override --brand (and optionally --primary) to rebrand
+	   the entire UI from one place. Defaults to an adaptive neutral that stays
+	   visible in both light and dark mode. */
+	--brand: oklch(0.235 0.012 264);
+	--brand-foreground: oklch(0.985 0.001 264);
+	--background: oklch(0.99 0.0015 264);
+	--foreground: oklch(0.21 0.012 264);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.21 0.012 264);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.21 0.012 264);
+	--primary: oklch(0.235 0.012 264);
+	--primary-foreground: oklch(0.985 0.001 264);
+	--secondary: oklch(0.97 0.003 264);
+	--secondary-foreground: oklch(0.255 0.012 264);
+	--muted: oklch(0.972 0.003 264);
+	--muted-foreground: oklch(0.515 0.013 264);
+	--accent: oklch(0.967 0.004 264);
+	--accent-foreground: oklch(0.255 0.012 264);
+	--destructive: oklch(0.585 0.21 27.3);
+	--border: oklch(0.917 0.004 264);
+	--input: oklch(0.914 0.004 264);
+	--ring: oklch(0.62 0.028 264);
+	--chart-1: oklch(0.87 0 0);
+	--chart-2: oklch(0.556 0 0);
+	--chart-3: oklch(0.439 0 0);
+	--chart-4: oklch(0.371 0 0);
+	--chart-5: oklch(0.269 0 0);
+	--sidebar: oklch(0.985 0 0);
+	--sidebar-foreground: oklch(0.145 0 0);
+	--sidebar-primary: oklch(0.205 0 0);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.97 0 0);
+	--sidebar-accent-foreground: oklch(0.205 0 0);
+	--sidebar-border: oklch(0.922 0 0);
+	--sidebar-ring: oklch(0.708 0 0);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+* {
+	border-color: var(--border);
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+html {
+	background: var(--background);
 }
 
 body {
-  margin: 0;
+	min-width: 320px;
+	margin: 0;
+	/* Clean neutral surface with a single soft light source from the top.
+	   No patterns — just a faint vignette glow for depth in both themes. */
+	background:
+		radial-gradient(
+			120% 70% at 50% -10%,
+			color-mix(in oklch, var(--foreground) 5%, transparent),
+			transparent 55%
+		),
+		var(--background);
+	background-attachment: fixed;
+	color: var(--foreground);
+	font-family: var(--font-sans);
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+html {
+	scroll-behavior: smooth;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+/* Keyboard-first: only paint focus rings for keyboard users, and make them
+   unmissable. Pointer interactions stay quiet. */
+:focus:not(:focus-visible) {
+	outline: none;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+/* Honour the OS reduced-motion setting for view transitions and animation. */
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		transition-duration: 0.001ms !important;
+	}
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* Explicit in-app view transitions use a short cross-fade. */
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 160ms;
+}
+
+/* Right-anchored drawer (Sheet) motion. A soft scrim fade plus a slide that
+   uses the iOS/vaul easing curve so the panel settles rather than snapping. */
+@keyframes sheet-scrim-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes sheet-scrim-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+@keyframes sheet-slide-in {
+	from {
+		transform: translateX(calc(100% + 1rem));
+	}
+	to {
+		transform: translateX(0);
+	}
+}
+@keyframes sheet-slide-out {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(calc(100% + 1rem));
+	}
+}
+
+[data-slot="sheet-overlay"][data-state="open"] {
+	animation: sheet-scrim-in 0.3s ease both;
+}
+[data-slot="sheet-overlay"][data-state="closed"] {
+	animation: sheet-scrim-out 0.25s ease both;
+}
+[data-slot="sheet-content"][data-state="open"] {
+	animation: sheet-slide-in 0.42s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+[data-slot="sheet-content"][data-state="closed"] {
+	animation: sheet-slide-out 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+#root {
+	min-height: 100svh;
+}
+
+.dark {
+	--brand: oklch(0.95 0.002 264);
+	--brand-foreground: oklch(0.22 0.012 264);
+	--background: oklch(0.185 0.005 264);
+	--foreground: oklch(0.96 0.002 264);
+	--card: oklch(0.216 0.006 264);
+	--card-foreground: oklch(0.96 0.002 264);
+	--popover: oklch(0.216 0.006 264);
+	--popover-foreground: oklch(0.96 0.002 264);
+	--primary: oklch(0.93 0.003 264);
+	--primary-foreground: oklch(0.22 0.012 264);
+	--secondary: oklch(0.272 0.007 264);
+	--secondary-foreground: oklch(0.96 0.002 264);
+	--muted: oklch(0.272 0.007 264);
+	--muted-foreground: oklch(0.712 0.013 264);
+	--accent: oklch(0.292 0.008 264);
+	--accent-foreground: oklch(0.96 0.002 264);
+	--destructive: oklch(0.7 0.19 22.2);
+	--border: oklch(1 0 0 / 9%);
+	--input: oklch(1 0 0 / 12%);
+	--ring: oklch(0.58 0.03 264);
+	--chart-1: oklch(0.87 0 0);
+	--chart-2: oklch(0.556 0 0);
+	--chart-3: oklch(0.439 0 0);
+	--chart-4: oklch(0.371 0 0);
+	--chart-5: oklch(0.269 0 0);
+	--sidebar: oklch(0.205 0 0);
+	--sidebar-foreground: oklch(0.985 0 0);
+	--sidebar-primary: oklch(0.488 0.243 264.376);
+	--sidebar-primary-foreground: oklch(0.985 0 0);
+	--sidebar-accent: oklch(0.269 0 0);
+	--sidebar-accent-foreground: oklch(0.985 0 0);
+	--sidebar-border: oklch(1 0 0 / 10%);
+	--sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+	}
+  body {
+    @apply bg-background text-foreground;
+	}
+  html {
+    @apply font-sans;
+	}
 }

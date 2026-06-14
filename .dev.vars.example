@@ -1,0 +1,62 @@
+# Better Auth signing/encryption secret. Generate with: openssl rand -base64 32
+BETTER_AUTH_SECRET=
+
+# Root issuer URL for this auth server.
+BETTER_AUTH_URL=http://localhost:5173
+
+# Comma-separated origins allowed to call auth endpoints.
+TRUSTED_ORIGINS=http://localhost:5173,http://localhost:5174
+
+# Local Postgres URL used by drizzle-kit and non-Hyperdrive tooling.
+DATABASE_URL=postgresql://postgres:postgres@localhost:55432/passport
+
+# Sender identity used by the Cloudflare Email binding.
+EMAIL_FROM=Passport <auth@mail.11011.dev>
+
+# Comma-separated emails allowed to manage OAuth clients in the UI and dynamic registration APIs.
+ADMIN_EMAILS=
+
+# Optional comma-separated Better Auth user IDs that can use Better Auth admin plugin APIs.
+ADMIN_USER_IDS=
+
+# Optional CAPTCHA protection. When CAPTCHA_SECRET_KEY is empty, the plugin is not enabled.
+CAPTCHA_PROVIDER=cloudflare-turnstile
+CAPTCHA_SECRET_KEY=
+CAPTCHA_SITE_KEY=
+CAPTCHA_SITE_VERIFY_URL=
+CAPTCHA_MIN_SCORE=
+
+# Optional OAuth proxy for preview/development OAuth callback routing.
+OAUTH_PROXY_PRODUCTION_URL=
+OAUTH_PROXY_SECRET=
+
+# Optional Agent Auth discovery metadata overrides.
+AGENT_AUTH_PROVIDER_NAME=Passport
+AGENT_AUTH_PROVIDER_DESCRIPTION=Passport identity, OAuth, and account security APIs for AI agents.
+
+# Optional runtime brand and theme overrides served by /api/brand-config.
+BRAND_NAME=Passport
+BRAND_ABBREVIATION=PP
+BRAND_DESCRIPTOR=Identity provider
+BRAND_LOGO_SRC=
+BRAND_CAPABILITIES=OIDC,PKCE,JWKS
+BRAND_COLOR=
+BRAND_FOREGROUND_COLOR=
+PRIMARY_COLOR=
+PRIMARY_FOREGROUND_COLOR=
+RING_COLOR=
+
+# JSON array of first-party OAuth clients seeded into the provider config.
+OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"skipConsent":true}]
+
+# GitHub OAuth app credentials for social sign-in.
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# Discord OAuth app credentials for social sign-in.
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+
+# X OAuth app credentials for social sign-in.
+X_CLIENT_ID=
+X_CLIENT_SECRET=

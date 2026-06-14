@@ -8,8 +8,39 @@
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-06-14",
 	"assets": {
-		"not_found_handling": "single-page-application"
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": true
 	},
+	"vars": {
+		"BETTER_AUTH_URL": "http://localhost:5173",
+		"TRUSTED_ORIGINS": "http://localhost:5173,http://localhost:5174",
+		"EMAIL_FROM": "Passport <noreply@example.com>",
+		"ADMIN_EMAILS": "",
+		"BRAND_NAME": "Passport",
+		"BRAND_ABBREVIATION": "PP",
+		"BRAND_DESCRIPTOR": "Identity provider",
+		"BRAND_CAPABILITIES": "OIDC,PKCE,JWKS"
+	},
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "00000000000000000000000000000000",
+			"localConnectionString": "postgresql://postgres:postgres@localhost:55432/passport"
+		}
+	],
+	"send_email": [
+		{
+			"name": "EMAIL",
+			"remote": true
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "PROFILE_IMAGES",
+			"bucket_name": "passport-profile-images"
+		}
+	],
 	"observability": {
 		"enabled": true
 	},

@@ -1,0 +1,22 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "passport-example-client",
+	"main": "worker/index.ts",
+	"compatibility_date": "2026-06-14",
+	"assets": {
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"vars": {
+		"AUTH_ISSUER": "http://localhost:5173",
+		"CLIENT_ID": "example-client",
+		"REDIRECT_URI": "http://localhost:5174/callback",
+		"POST_LOGOUT_REDIRECT_URI": "http://localhost:5174/"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"compatibility_flags": [
+		"nodejs_compat"
+	]
+}
