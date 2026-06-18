@@ -27,6 +27,8 @@ We should avoid feature creep
 
 When a required artifact fails at scale, do not drop or skip it to keep the pipeline moving. Build a scalable implementation for that artifact, even if it requires a different language or an external sort/on-disk workflow.
 
+When a page has multiple similarly named sections, place requested UI actions in the specific section the User names or corrects. Do not infer the first matching domain concept from the page title alone.
+
 ### Fight for the "obvious" solution
 
 We should avoid being clever and doing things because they seem smart. We want everything we build to be so obvious it feels kind of stupid.

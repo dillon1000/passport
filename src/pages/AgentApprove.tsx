@@ -1,11 +1,17 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Bot, ShieldCheck, X } from "lucide-react";
 
-import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
-import { BrandMark } from "@/components/auth/brand-mark";
+import { Wordmark } from "@/components/auth/wordmark";
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { StatusBanner, type Status } from "@/components/auth/status";
+import {
+	approveAgentCapability,
+	loadPendingAgentApprovals,
+	parseCapabilityList,
+	type AgentApprovalAction,
+	type PendingAgentApproval,
+} from "@/lib/agent-auth";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -16,28 +22,6 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 
-type AgentApprovalAction = "approve" | "deny";
-
-type AgentApprovalClient = {
-	agent: {
-		approveCapability: (input: {
-			agent_id?: string;
-			approval_id?: string;
-			user_code?: string;
-			action: AgentApprovalAction;
-			capabilities?: string[];
-			reason?: string;
-		}) => Promise<{ data?: unknown; error?: { message?: string } | null }>;
-	};
-};
-
-function capabilityList(value: string) {
-	return value
-		.split(/[,\s]+/)
-		.map((item) => item.trim())
-		.filter(Boolean);
-}
-
 export function AgentApprove() {
 	const searchParams = new URLSearchParams(window.location.search);
 	const [agentId, setAgentId] = useState(searchParams.get("agent_id") ?? "");
@@ -45,30 +29,63 @@ export function AgentApprove() {
 	const [userCode, setUserCode] = useState(searchParams.get("user_code") ?? "");
 	const [capabilities, setCapabilities] = useState(searchParams.get("capabilities") ?? "");
 	const [reason, setReason] = useState("");
+	const [pendingApprovals, setPendingApprovals] = useState<PendingAgentApproval[]>([]);
+	const [pendingLoaded, setPendingLoaded] = useState(false);
 	const [busy, setBusy] = useState<AgentApprovalAction | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		async function loadPending() {
+			const result = await loadPendingAgentApprovals();
+			if (cancelled) return;
+			if (result.data?.requests) setPendingApprovals(result.data.requests);
+			setPendingLoaded(true);
+		}
+		void loadPending().catch(() => {
+			if (!cancelled) setPendingLoaded(true);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	function applyPendingApproval(approval: PendingAgentApproval) {
+		setApprovalId(approval.approval_id);
+		setAgentId(approval.agent_id ?? "");
+		setCapabilities(approval.capabilities.join(" "));
+		const reasons = Object.values(approval.capability_reasons ?? {}).filter(Boolean);
+		setReason(reasons[0] ?? approval.binding_message ?? "");
+	}
 
 	async function decide(action: AgentApprovalAction) {
 		setBusy(action);
 		setStatus(null);
-		const agentClient = authClient as unknown as AgentApprovalClient;
-		const result = await agentClient.agent.approveCapability({
-			agent_id: agentId || undefined,
-			approval_id: approvalId || undefined,
-			user_code: userCode || undefined,
-			action,
-			capabilities: capabilityList(capabilities),
-			reason: reason || undefined,
-		});
-		setBusy(null);
-		setStatus(
-			result.error
-				? { tone: "error", message: result.error.message ?? "Could not update agent approval." }
-				: {
-						tone: "success",
-						message: action === "approve" ? "Agent request approved." : "Agent request denied.",
-					},
-		);
+		try {
+			const result = await approveAgentCapability({
+				agentId,
+				approvalId,
+				userCode,
+				action,
+				capabilities: parseCapabilityList(capabilities),
+				reason: reason || undefined,
+			});
+			setStatus(
+				result.error
+					? { tone: "error", message: result.error.message ?? "Could not update agent approval." }
+					: {
+							tone: "success",
+							message: action === "approve" ? "Agent request approved." : "Agent request denied.",
+						},
+			);
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not update agent approval.",
+			});
+		} finally {
+			setBusy(null);
+		}
 	}
 
 	function submitApproval(event: FormEvent<HTMLFormElement>) {
@@ -80,7 +97,7 @@ export function AgentApprove() {
 		<AuthShell>
 			<div className="flex flex-col items-center gap-6">
 				<div className="flex flex-col items-center gap-3 text-center">
-					<BrandMark className="size-10 rounded-lg" />
+					<Wordmark className="h-7" />
 					<h1 className="text-xl font-semibold tracking-tight">Approve agent access</h1>
 				</div>
 
@@ -97,6 +114,45 @@ export function AgentApprove() {
 					<CardContent>
 						<form id="agent-approval-form" className="space-y-4" onSubmit={submitApproval}>
 							<StatusBanner status={status} />
+							{pendingLoaded && pendingApprovals.length ? (
+								<div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+									<div className="text-xs font-medium text-muted-foreground">
+										Pending approvals
+									</div>
+									<div className="space-y-2">
+										{pendingApprovals.map((approval) => (
+											<button
+												key={approval.approval_id}
+												type="button"
+												onClick={() => applyPendingApproval(approval)}
+												className="w-full rounded-lg border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
+											>
+												<div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+													<span>{approval.agent_name ?? approval.agent_id ?? "Agent request"}</span>
+													<span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+														{approval.method}
+													</span>
+												</div>
+												<div className="mt-1 flex flex-wrap gap-1">
+													{approval.capabilities.map((capability) => (
+														<span
+															key={`${approval.approval_id}:${capability}`}
+															className="rounded-md border px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground"
+														>
+															{capability}
+														</span>
+													))}
+												</div>
+												{approval.binding_message ? (
+													<p className="mt-1 text-xs text-muted-foreground">
+														{approval.binding_message}
+													</p>
+												) : null}
+											</button>
+										))}
+									</div>
+								</div>
+							) : null}
 							<div className="grid gap-4 sm:grid-cols-2">
 								<Field label="Agent ID">
 									<FieldInput
@@ -141,7 +197,7 @@ export function AgentApprove() {
 							variant="outline"
 							type="button"
 							onClick={() => decide("deny")}
-							disabled={busy !== null || (!agentId && !approvalId)}
+							disabled={busy !== null || (!agentId && !approvalId && !userCode)}
 						>
 							<X className="size-4" />
 							Deny
@@ -149,7 +205,7 @@ export function AgentApprove() {
 						<Button
 							type="submit"
 							form="agent-approval-form"
-							disabled={busy !== null || (!agentId && !approvalId)}
+							disabled={busy !== null || (!agentId && !approvalId && !userCode)}
 						>
 							<ShieldCheck className="size-4" />
 							Approve

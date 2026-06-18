@@ -37,7 +37,19 @@ type ProfileImageUploadResponse = {
 export function Account() {
 	const { data: session } = useRequireSession();
 	const [copied, setCopied] = useState(false);
-	const [status, setStatus] = useState<Status | null>(null);
+	const searchParams = new URLSearchParams(window.location.search);
+	const [status, setStatus] = useState<Status | null>(() => {
+		if (searchParams.get("emailChanged") === "1") {
+			return { tone: "success", message: "Email changed." };
+		}
+		if (searchParams.get("verified") === "1") {
+			return { tone: "success", message: "Email verified." };
+		}
+		if (searchParams.get("error")) {
+			return { tone: "error", message: `Account update failed: ${searchParams.get("error")}` };
+		}
+		return null;
+	});
 	const [busy, setBusy] = useState<string | null>(null);
 	const [newEmail, setNewEmail] = useState("");
 	const [imageURL, setImageURL] = useState<string | null>(null);

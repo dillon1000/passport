@@ -4,6 +4,7 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
+    "jsx": "react-jsx",
     "paths": {
       "@/*": [
         "./src/*"

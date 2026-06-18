@@ -1,6 +1,6 @@
 import { NavLink } from "react-router";
 
-import { dashboardNav } from "@/lib/nav";
+import { dashboardNavForUser, type DashboardUserForNav } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,10 +8,13 @@ import { cn } from "@/lib/utils";
  * active page that sits on the header's bottom border. Plain anchors, so they
  * work without JS and are fully keyboard accessible.
  */
-export function DashboardNav() {
+export function DashboardNav({ user }: { user?: DashboardUserForNav | null }) {
 	return (
-		<nav aria-label="Primary" className="flex items-center gap-0.5">
-			{dashboardNav.map((item) => (
+		<nav
+			aria-label="Primary"
+			className="flex max-w-full items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+		>
+			{dashboardNavForUser(user).map((item) => (
 				<NavLink
 					key={item.href}
 					to={item.href}

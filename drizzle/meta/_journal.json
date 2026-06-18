@@ -22,6 +22,55 @@
       "when": 1781411929236,
       "tag": "0002_superb_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781558159346,
+      "tag": "0003_add-team-logo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781632655928,
+      "tag": "0004_bouncy_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781665936176,
+      "tag": "0005_marvelous_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781669722983,
+      "tag": "0006_dapper_terror",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781725155242,
+      "tag": "0007_small_rhino",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781725856571,
+      "tag": "0008_chubby_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781726609192,
+      "tag": "0009_certain_red_hulk",
+      "breakpoints": true
     }
   ]
 }

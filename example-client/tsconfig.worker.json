@@ -11,5 +11,6 @@
 		},
 		"types": ["./worker-configuration.d.ts", "vite/client"]
 	},
-	"include": ["worker"]
+	"include": ["worker"],
+	"exclude": ["worker/**/*.test.ts"]
 }

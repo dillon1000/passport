@@ -1,16 +1,18 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { DashboardNav } from "@/components/auth/dashboard-nav";
 import { SectionNav, type Section } from "@/components/auth/section-nav";
+import { SignOutDialog } from "@/components/auth/sign-out-dialog";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import { initialsOf, signOut } from "@/lib/session";
+import { initialsOf } from "@/lib/session";
 
 interface DashboardUser {
 	name?: string | null;
 	email: string;
 	image?: string | null;
+	role?: string | null;
 }
 
 /**
@@ -34,44 +36,48 @@ export function DashboardShell({
 	children?: ReactNode;
 }) {
 	const name = user?.name || "Account";
+	const [signOutOpen, setSignOutOpen] = useState(false);
 
 	return (
-		<AuthShell
-			width="xl"
-			breadcrumb={user ? name : <Skeleton className="h-4 w-20" />}
-			nav={<DashboardNav />}
-			actions={
-				user ? (
-					<UserMenu
-						name={name}
-						email={user.email}
-						image={user.image}
-						initials={initialsOf(user.name)}
-						onSignOut={signOut}
-					/>
-				) : (
-					<Skeleton className="size-7 rounded-full" />
-				)
-			}
-		>
-			<div className="space-y-8">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-					<p className="mt-1 text-sm text-muted-foreground">{description}</p>
-				</div>
-
-				{sections ? (
-					<div className="grid gap-8 lg:grid-cols-[180px_1fr]">
-						<aside className="hidden lg:block">
-							<SectionNav sections={sections} />
-						</aside>
-						<div className="min-w-0 space-y-6">{user ? children : <ContentSkeleton />}</div>
+		<>
+			<AuthShell
+				width="xl"
+				breadcrumb={user ? name : <Skeleton className="h-4 w-20" />}
+				nav={<DashboardNav user={user} />}
+				actions={
+					user ? (
+						<UserMenu
+							name={name}
+							email={user.email}
+							image={user.image}
+							initials={initialsOf(user.name)}
+							onSignOut={() => setSignOutOpen(true)}
+						/>
+					) : (
+						<Skeleton className="size-7 rounded-full" />
+					)
+				}
+			>
+				<div className="space-y-8">
+					<div>
+						<h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+						<p className="mt-1 text-sm text-muted-foreground">{description}</p>
 					</div>
-				) : (
-					<div className="space-y-6">{user ? children : <ContentSkeleton />}</div>
-				)}
-			</div>
-		</AuthShell>
+
+					{sections ? (
+						<div className="grid gap-8 lg:grid-cols-[180px_1fr]">
+							<aside className="hidden lg:block">
+								<SectionNav sections={sections} />
+							</aside>
+							<div className="min-w-0 space-y-6">{user ? children : <ContentSkeleton />}</div>
+						</div>
+					) : (
+						<div className="space-y-6">{user ? children : <ContentSkeleton />}</div>
+					)}
+				</div>
+			</AuthShell>
+			<SignOutDialog open={signOutOpen} onOpenChange={setSignOutOpen} />
+		</>
 	);
 }
 

@@ -10,8 +10,17 @@ TRUSTED_ORIGINS=http://localhost:5173,http://localhost:5174
 # Local Postgres URL used by drizzle-kit and non-Hyperdrive tooling.
 DATABASE_URL=postgresql://postgres:postgres@localhost:55432/passport
 
+# Production Postgres URL used only by `pnpm db:migrate prod`.
+PROD_DATABASE_URL=
+
 # Sender identity used by the Cloudflare Email binding.
 EMAIL_FROM=Passport <auth@mail.11011.dev>
+
+# Azure Communication Services SMS for phone verification. The connection string
+# comes from the ACS resource keys; the sender must be an SMS-enabled ACS number,
+# short code, or alphanumeric sender ID.
+AZURE_COMMUNICATION_CONNECTION_STRING=
+AZURE_COMMUNICATION_SMS_FROM=
 
 # Comma-separated emails allowed to manage OAuth clients in the UI and dynamic registration APIs.
 ADMIN_EMAILS=
@@ -36,7 +45,6 @@ AGENT_AUTH_PROVIDER_DESCRIPTION=Passport identity, OAuth, and account security A
 
 # Optional runtime brand and theme overrides served by /api/brand-config.
 BRAND_NAME=Passport
-BRAND_ABBREVIATION=PP
 BRAND_DESCRIPTOR=Identity provider
 BRAND_LOGO_SRC=
 BRAND_CAPABILITIES=OIDC,PKCE,JWKS
@@ -47,7 +55,7 @@ PRIMARY_FOREGROUND_COLOR=
 RING_COLOR=
 
 # JSON array of first-party OAuth clients seeded into the provider config.
-OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"skipConsent":true}]
+OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"scopes":["openid","profile","email","phone","profile:picture","profile:username","organizations","organizations:ids","organizations:roles","teams","teams:ids","permissions","account:security","connections"],"skipConsent":true}]
 
 # GitHub OAuth app credentials for social sign-in.
 GITHUB_CLIENT_ID=

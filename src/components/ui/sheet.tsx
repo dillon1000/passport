@@ -43,15 +43,22 @@ function SheetContent({
   className,
   children,
   showCloseButton = true,
+  pushed = false,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   showCloseButton?: boolean
+  /**
+   * When a second sheet stacks on top of this one, set `pushed` to slide this
+   * panel back and scale it down so it reads as the layer beneath.
+   */
+  pushed?: boolean
 }) {
   return (
     <SheetPrimitive.Portal data-slot="sheet-portal">
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        data-pushed={pushed ? "true" : undefined}
         className={cn(
           "fixed inset-y-2 right-2 z-50 flex w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl shadow-black/20 ring-1 ring-black/5 outline-none sm:inset-y-3 sm:right-3 dark:ring-white/5",
           className

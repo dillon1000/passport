@@ -3,13 +3,14 @@ import { KeyRound, Mail, ShieldCheck } from "lucide-react";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
-import { BrandMark } from "@/components/auth/brand-mark";
+import { Wordmark } from "@/components/auth/wordmark";
 import { CheckboxField, Field, FieldInput } from "@/components/auth/field";
 import { OTPInput } from "@/components/auth/otp-input";
 import { Segmented, type SegmentedOption } from "@/components/auth/segmented";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { resolveAuthCallbackURL } from "@/lib/auth-flow";
 
 type VerificationMethod = "totp" | "otp" | "backup";
 
@@ -27,7 +28,7 @@ const HEADLINES: Record<VerificationMethod, string> = {
 
 export function TwoFactor() {
 	const searchParams = new URLSearchParams(window.location.search);
-	const callbackURL = searchParams.get("callbackURL") ?? "/account";
+	const callbackURL = resolveAuthCallbackURL(searchParams);
 	const [method, setMethod] = useState<VerificationMethod>("totp");
 	const [code, setCode] = useState("");
 	const [trustDevice, setTrustDevice] = useState(true);
@@ -92,7 +93,7 @@ export function TwoFactor() {
 		<AuthShell>
 			<div className="flex flex-col items-center gap-6">
 				<div className="flex flex-col items-center gap-3 text-center">
-					<BrandMark className="size-10 rounded-lg" />
+					<Wordmark className="h-7" />
 					<div className="space-y-1">
 						<h1 className="text-xl font-semibold tracking-tight">Two-factor verification</h1>
 						<p className="text-sm text-muted-foreground">Confirm it's you to finish signing in.</p>

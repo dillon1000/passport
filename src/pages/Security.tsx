@@ -1,3 +1,9 @@
+/**
+ * Security settings page. Inputs are the active Better Auth session plus
+ * credential, passkey, and linked-account records; actions mutate account
+ * protections and connected providers while keeping provider marks sourced from
+ * `public/icons` through the shared social provider config.
+ */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
 	Check,
@@ -17,14 +23,22 @@ import {
 } from "lucide-react";
 import QRCode from "react-qr-code";
 
+import { AccountActivitySection } from "@/components/auth/account-activity-section";
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { OTPInput } from "@/components/auth/otp-input";
 import { PasswordStrength } from "@/components/auth/password-strength";
+import { PublicIcon } from "@/components/auth/public-icon";
 import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
+import { SignOutDialog } from "@/components/auth/sign-out-dialog";
+import {
+	SOCIAL_PROVIDERS,
+	type SocialProviderId,
+} from "@/components/auth/social-provider-config";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
+import { SummaryRow } from "@/components/auth/summary-row";
 import { Button } from "@/components/ui/button";
 import {
 	Sheet,
@@ -37,7 +51,7 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { authClient } from "@/auth-client";
-import { signOut, useRequireSession } from "@/lib/session";
+import { useRequireSession } from "@/lib/session";
 
 const SECTIONS: Section[] = [
 	{ id: "passkeys", label: "Passkeys" },
@@ -47,6 +61,7 @@ const SECTIONS: Section[] = [
 	{ id: "phone", label: "Phone" },
 	{ id: "password", label: "Password" },
 	{ id: "session", label: "Session" },
+	{ id: "activity", label: "Activity" },
 	{ id: "danger", label: "Danger" },
 ];
 
@@ -77,22 +92,25 @@ type LinkedAccountSummary = {
 	createdAt?: string | Date | null;
 };
 
-type SocialProvider = "github" | "discord" | "twitter";
-
 type TwoFactorSetup = {
 	totpURI: string;
 	backupCodes: string[];
 };
 
-const SOCIAL_PROVIDERS: { id: SocialProvider; label: string }[] = [
-	{ id: "github", label: "GitHub" },
-	{ id: "discord", label: "Discord" },
-	{ id: "twitter", label: "X" },
-];
-
 export function Security() {
 	const { data: session } = useRequireSession();
-	const [status, setStatus] = useState<Status | null>(null);
+	const searchParams = new URLSearchParams(window.location.search);
+	const [status, setStatus] = useState<Status | null>(() => {
+		const linkedProvider = searchParams.get("linked");
+		const linkError = searchParams.get("linkError") ?? searchParams.get("error");
+		if (linkedProvider) {
+			return { tone: "success", message: `${linkedProvider} account linked.` };
+		}
+		if (linkError) {
+			return { tone: "error", message: `Could not link account: ${linkError}` };
+		}
+		return null;
+	});
 	const [busy, setBusy] = useState(false);
 	const [passkeyName, setPasskeyName] = useState("Primary passkey");
 	const [phoneCode, setPhoneCode] = useState("");
@@ -103,6 +121,7 @@ export function Security() {
 	const [twoFactorSheetOpen, setTwoFactorSheetOpen] = useState(false);
 	const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
 	const [passwordSheetOpen, setPasswordSheetOpen] = useState(false);
+	const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
 	const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
 	const [accounts, setAccounts] = useState<LinkedAccountSummary[]>([]);
 	const [credentialsLoaded, setCredentialsLoaded] = useState(false);
@@ -123,6 +142,8 @@ export function Security() {
 		twoFactorEnabledOverride && twoFactorEnabledOverride.userId === user?.id
 			? twoFactorEnabledOverride.enabled
 			: Boolean(user?.twoFactorEnabled);
+	const hasCredentialAccount =
+		!credentialsLoaded || accounts.some((account) => account.providerId === "credential");
 
 	async function loadCredentials() {
 		const [passkeyResult, accountResult] = await Promise.all([
@@ -188,12 +209,13 @@ export function Security() {
 		}
 	}
 
-	async function linkProvider(provider: SocialProvider) {
+	async function linkProvider(provider: SocialProviderId) {
 		setStatus(null);
 		setBusy(true);
 		const result = await authClient.linkSocial({
 			provider,
-			callbackURL: "/security",
+			callbackURL: `/security?linked=${encodeURIComponent(provider)}`,
+			errorCallbackURL: `/security?linkError=${encodeURIComponent(provider)}`,
 		});
 		setBusy(false);
 		if (result.error) {
@@ -384,22 +406,35 @@ export function Security() {
 
 		setStatus(null);
 		setBusy(true);
-		const result = await authClient.changePassword({
-			currentPassword,
-			newPassword,
-			revokeOtherSessions: true,
+		const response = await fetch("/api/account/password", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({
+				...(hasCredentialAccount ? { currentPassword } : {}),
+				newPassword,
+			}),
 		});
+		const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 		setBusy(false);
-		setStatus(
-			result.error
-				? { tone: "error", message: result.error.message ?? "Could not change password." }
-				: { tone: "success", message: "Password changed." },
-		);
-		if (!result.error) {
+		if (!response.ok) {
+			setStatus({
+				tone: "error",
+				message: payload?.error ?? "Could not update password.",
+			});
+			return;
+		}
+		setStatus({
+			tone: "success",
+			message: hasCredentialAccount ? "Password changed." : "Password set.",
+		});
+		if (response.ok) {
 			form.reset();
 			setNewPassword("");
 			setConfirmPassword("");
 			setPasswordSheetOpen(false);
+			void loadCredentials();
 		}
 	}
 
@@ -725,6 +760,9 @@ export function Security() {
 										const account = accounts.find((item) => item.providerId === provider.id);
 										return (
 											<li key={provider.id} className="flex items-center gap-3 px-3 py-2.5">
+												<span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background">
+													<PublicIcon src={provider.icon} className="size-4" />
+												</span>
 												<div className="min-w-0 flex-1">
 													<div className="text-sm font-medium">{provider.label}</div>
 													<div className="truncate text-xs text-muted-foreground">
@@ -864,7 +902,7 @@ export function Security() {
 													name="phoneNumber"
 													type="tel"
 													autoComplete="tel"
-													placeholder="+1 555 000 0000"
+														placeholder="+15550000000"
 													defaultValue={user.phoneNumber ?? ""}
 													required
 												/>
@@ -910,20 +948,34 @@ export function Security() {
 			<section id="password" className="scroll-mt-32">
 				<SettingsCard
 					title="Password"
-					description="Change the password used for credential sign-in."
+					description={
+						hasCredentialAccount
+							? "Change the password used for credential sign-in."
+							: "Add a password so this account can also sign in with credentials."
+					}
 					footer={
 						<SettingsCardFooter hint="Other sessions are signed out after a password change.">
 							<Button variant="outline" size="sm" onClick={() => setPasswordSheetOpen(true)}>
 								<LockKeyhole className="size-4" />
-								Change password
+								{hasCredentialAccount ? "Change password" : "Set password"}
 							</Button>
 						</SettingsCardFooter>
 					}
 				>
 					<SummaryRow
 						icon={<LockKeyhole className="size-[1.15rem]" />}
-						title="Password is set"
-						subtitle="Used together with any second factor at sign-in."
+						title={
+							credentialsLoaded
+								? hasCredentialAccount
+									? "Password is set"
+									: "No password set"
+								: "Checking password status"
+						}
+						subtitle={
+							hasCredentialAccount
+								? "Used together with any second factor at sign-in."
+								: "Social and passwordless sign-in still work."
+						}
 					/>
 				</SettingsCard>
 
@@ -931,19 +983,23 @@ export function Security() {
 					<SheetContent>
 						<form onSubmit={changePassword} className="flex min-h-0 flex-1 flex-col">
 							<SheetHeader>
-								<SheetTitle>Change password</SheetTitle>
+								<SheetTitle>{hasCredentialAccount ? "Change password" : "Set password"}</SheetTitle>
 								<SheetDescription>
-									Other active sessions are signed out after a successful change.
+									{hasCredentialAccount
+										? "Other active sessions are signed out after a successful change."
+										: "Create the first credential password for this account."}
 								</SheetDescription>
 							</SheetHeader>
 							<SheetBody className="space-y-5">
-								<Field label="Current password">
-									<FieldPasswordInput
-										name="currentPassword"
-										autoComplete="current-password"
-										required
-									/>
-								</Field>
+								{hasCredentialAccount ? (
+									<Field label="Current password">
+										<FieldPasswordInput
+											name="currentPassword"
+											autoComplete="current-password"
+											required
+										/>
+									</Field>
+								) : null}
 								<div className="space-y-4 border-t pt-5">
 									<Field label="New password">
 										<FieldPasswordInput
@@ -989,7 +1045,7 @@ export function Security() {
 									}
 								>
 									<LockKeyhole className="size-4" />
-									Change password
+									{hasCredentialAccount ? "Change password" : "Set password"}
 								</Button>
 							</SheetFooter>
 						</form>
@@ -1005,13 +1061,22 @@ export function Security() {
 					).toLocaleString()}.`}
 					footer={
 						<SettingsCardFooter hint="Sign out everywhere this session is active.">
-							<Button variant="destructive" size="sm" onClick={signOut} disabled={busy}>
+							<Button
+								variant="destructive"
+								size="sm"
+								onClick={() => setSignOutDialogOpen(true)}
+								disabled={busy}
+							>
 								<LogOut className="size-4" />
 								Sign out
 							</Button>
 						</SettingsCardFooter>
 					}
 				/>
+					</section>
+
+					<section id="activity" className="scroll-mt-32">
+						<AccountActivitySection userId={session.user.id} />
 					</section>
 
 					<section id="danger" className="scroll-mt-32">
@@ -1085,32 +1150,10 @@ export function Security() {
 							</SheetContent>
 						</Sheet>
 					</section>
+					<SignOutDialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen} />
 				</>
 			) : null}
 		</DashboardShell>
-	);
-}
-
-/** Compact status summary shown on a settings card before opening its drawer. */
-function SummaryRow({
-	icon,
-	title,
-	subtitle,
-}: {
-	icon: ReactNode;
-	title: ReactNode;
-	subtitle: ReactNode;
-}) {
-	return (
-		<div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3.5 py-3">
-			<span className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground">
-				{icon}
-			</span>
-			<div className="min-w-0 flex-1">
-				<div className="truncate text-sm font-medium">{title}</div>
-				<p className="truncate text-xs text-muted-foreground">{subtitle}</p>
-			</div>
-		</div>
 	);
 }
 

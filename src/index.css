@@ -1,3 +1,7 @@
+/* Global stylesheet for Tailwind imports, theme tokens, app-wide motion, and
+   slot-level primitive treatments. Rebrand by overriding semantic CSS
+   variables such as --brand, --primary, and --muted instead of hardcoding
+   component colors. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -154,6 +158,135 @@ html {
 	animation-duration: 160ms;
 }
 
+/* Skeletons use a quiet wave so loading reads as progress without introducing
+   another accent color. Callers control dimensions with utility classes. */
+@keyframes skeleton-wave {
+	from {
+		transform: translateX(-120%);
+	}
+	to {
+		transform: translateX(120%);
+	}
+}
+
+[data-slot="skeleton"] {
+	position: relative;
+	overflow: hidden;
+	background-color: var(--muted);
+}
+
+[data-slot="skeleton"]::after {
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		color-mix(in oklch, var(--foreground) 4%, transparent) 38%,
+		color-mix(in oklch, var(--foreground) 9%, transparent) 50%,
+		color-mix(in oklch, var(--foreground) 4%, transparent) 62%,
+		transparent 100%
+	);
+	content: "";
+	animation: skeleton-wave 1.45s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	[data-slot="skeleton"]::after {
+		animation: none;
+		opacity: 0;
+	}
+}
+
+/* OAuth consent handshake. The two marks settle in with a soft pop, then a lit
+   pulse travels the connector to suggest the brand → client link forming. The
+   `data-active` variant speeds the pulse for the redirecting hand-off. */
+@keyframes consent-mark-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px) scale(0.9);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.consent-mark {
+	animation: consent-mark-in 0.5s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.consent-mark-client {
+	animation-delay: 0.1s;
+}
+
+@keyframes consent-pulse {
+	0% {
+		left: 0%;
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.5);
+	}
+	18% {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+	82% {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+	100% {
+		left: 100%;
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.5);
+	}
+}
+
+.consent-connector {
+	position: relative;
+	height: 2px;
+	width: 2.75rem;
+}
+
+.consent-connector::before {
+	position: absolute;
+	inset: 0;
+	border-radius: 9999px;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		var(--border) 25%,
+		var(--border) 75%,
+		transparent
+	);
+	content: "";
+}
+
+.consent-connector::after {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	height: 7px;
+	width: 7px;
+	border-radius: 9999px;
+	background: var(--brand);
+	box-shadow: 0 0 8px 1px color-mix(in oklch, var(--brand) 55%, transparent);
+	content: "";
+	animation: consent-pulse 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.consent-connector[data-active="true"]::after {
+	animation-duration: 0.85s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.consent-connector::after {
+		animation: none;
+		left: 50%;
+		opacity: 1;
+		transform: translate(-50%, -50%);
+	}
+}
+
 /* Right-anchored drawer (Sheet) motion. A soft scrim fade plus a slide that
    uses the iOS/vaul easing curve so the panel settles rather than snapping. */
 @keyframes sheet-scrim-in {
@@ -200,6 +333,72 @@ html {
 }
 [data-slot="sheet-content"][data-state="closed"] {
 	animation: sheet-slide-out 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Stacked drawers: when a second sheet slides over this one, push it back and
+   scale it down. These use the standalone translate/scale properties (not
+   transform) so they compose with the slide keyframes above instead of
+   fighting them. */
+[data-slot="sheet-content"] {
+	transition:
+		translate 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+		scale 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+[data-slot="sheet-content"][data-pushed="true"] {
+	translate: -1.75rem 0;
+	scale: 0.965;
+}
+
+/* Account-flair marquee: when the rotating text outgrows its track we scroll it
+   end-to-end and back at a constant speed, pausing briefly at each end so it
+   stays readable. Distance and duration are supplied per-instance as CSS vars. */
+@keyframes flair-marquee {
+	0%,
+	12% {
+		transform: translateX(0);
+	}
+	50%,
+	62% {
+		transform: translateX(var(--flair-shift, 0));
+	}
+	100% {
+		transform: translateX(0);
+	}
+}
+
+.flair-marquee {
+	animation: flair-marquee var(--flair-duration, 8s) linear infinite;
+}
+
+/* Account-flair swap: each rotating field slides in from the right and the
+   previous one exits to the left, easing with the iOS/vaul curve. The track is
+   masked on both edges (see the component) so text emerges from and dissolves
+   into a soft fade rather than a hard clip. Distance/duration are tunable vars. */
+@keyframes flair-swipe-in {
+	from {
+		opacity: 0;
+		transform: translateX(var(--flair-swipe-distance, 1.5rem));
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+@keyframes flair-swipe-out {
+	from {
+		opacity: 1;
+		transform: translateX(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateX(calc(var(--flair-swipe-distance, 1.5rem) * -1));
+	}
+}
+.flair-swipe-in {
+	animation: flair-swipe-in var(--flair-swap-duration, 0.5s) cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.flair-swipe-out {
+	animation: flair-swipe-out var(--flair-swap-duration, 0.5s) cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 button,

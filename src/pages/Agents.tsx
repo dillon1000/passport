@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Bot, Copy, KeyRound, RefreshCw, ServerCog } from "lucide-react";
+import { Bot, Copy, KeyRound, RefreshCw, RotateCcw, ServerCog, Trash2 } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { type Section } from "@/components/auth/section-nav";
@@ -9,6 +9,15 @@ import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+	canReactivateAgentStatus,
+	canRevokeAgentStatus,
+	canRevokeGrantStatus,
+	reactivateAgent,
+	revokeAgent,
+	revokeAgentCapability,
+	revokeHost,
+} from "@/lib/agent-auth";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -98,35 +107,37 @@ export function Agents() {
 	const [agents, setAgents] = useState<AgentSummary[]>([]);
 	const [hosts, setHosts] = useState<HostSummary[]>([]);
 	const [loaded, setLoaded] = useState(false);
-	const [busy, setBusy] = useState(false);
+	const [busy, setBusy] = useState<string | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [copied, setCopied] = useState<string | null>(null);
 
+	async function refreshAgentData() {
+		const [configurationPayload, capabilityPayload, agentPayload, hostPayload] =
+			await Promise.all([
+				fetch("/.well-known/agent-configuration").then(readJSON<AgentConfiguration>),
+				fetch("/api/auth/capability/list").then(readJSON<{ capabilities: AgentCapability[] }>),
+				fetch("/api/auth/agent/list").then(readJSON<{ agents: AgentSummary[] }>),
+				fetch("/api/auth/host/list").then(readJSON<{ hosts: HostSummary[] }>),
+			]);
+		setConfiguration(configurationPayload);
+		setCapabilities(capabilityPayload.capabilities);
+		setAgents(agentPayload.agents);
+		setHosts(hostPayload.hosts);
+		setLoaded(true);
+	}
+
 	async function loadAgents() {
-		setBusy(true);
+		setBusy("load");
 		setStatus(null);
 		try {
-			const [configurationPayload, capabilityPayload, agentPayload, hostPayload] =
-				await Promise.all([
-					fetch("/.well-known/agent-configuration").then(readJSON<AgentConfiguration>),
-					fetch("/api/auth/capability/list").then(
-						readJSON<{ capabilities: AgentCapability[] }>,
-					),
-					fetch("/api/auth/agent/list").then(readJSON<{ agents: AgentSummary[] }>),
-					fetch("/api/auth/host/list").then(readJSON<{ hosts: HostSummary[] }>),
-				]);
-			setConfiguration(configurationPayload);
-			setCapabilities(capabilityPayload.capabilities);
-			setAgents(agentPayload.agents);
-			setHosts(hostPayload.hosts);
-			setLoaded(true);
+			await refreshAgentData();
 		} catch (error) {
 			setStatus({
 				tone: "error",
 				message: error instanceof Error ? error.message : "Could not load Agent Auth data.",
 			});
 		} finally {
-			setBusy(false);
+			setBusy(null);
 		}
 	}
 
@@ -142,6 +153,34 @@ export function Agents() {
 		await navigator.clipboard.writeText(value);
 		setCopied(key);
 		setTimeout(() => setCopied(null), 1500);
+	}
+
+	async function runTrustAction(
+		busyKey: string,
+		successMessage: string,
+		action: () => Promise<{ error?: { message?: string } | null }>,
+	) {
+		setBusy(busyKey);
+		setStatus(null);
+		try {
+			const result = await action();
+			if (result.error) {
+				setStatus({
+					tone: "error",
+					message: result.error.message ?? "Could not update Agent Auth trust.",
+				});
+				return;
+			}
+			await refreshAgentData();
+			setStatus({ tone: "success", message: successMessage });
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not update Agent Auth trust.",
+			});
+		} finally {
+			setBusy(null);
+		}
 	}
 
 	const discoveryURL = `${window.location.origin}/.well-known/agent-configuration`;
@@ -163,8 +202,8 @@ export function Agents() {
 						<SettingsCardFooter
 							hint={configuration?.provider_name ?? "Agent Auth provider metadata."}
 						>
-							<Button variant="outline" size="sm" onClick={loadAgents} disabled={busy}>
-								<RefreshCw className={cn("size-4", busy && "animate-spin")} />
+							<Button variant="outline" size="sm" onClick={loadAgents} disabled={busy === "load"}>
+								<RefreshCw className={cn("size-4", busy === "load" && "animate-spin")} />
 								Refresh
 							</Button>
 						</SettingsCardFooter>
@@ -253,7 +292,10 @@ export function Agents() {
 					) : agents.length ? (
 						<div className="divide-y overflow-hidden rounded-lg border">
 							{agents.map((agent) => (
-								<div key={agent.agent_id} className="flex items-start gap-3 px-3.5 py-3">
+								<div
+									key={agent.agent_id}
+									className="flex flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start"
+								>
 									<div className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground">
 										<Bot className="size-5" />
 									</div>
@@ -279,12 +321,77 @@ export function Agents() {
 										</dl>
 										{agent.agent_capability_grants?.length ? (
 											<div className="mt-2 flex flex-wrap gap-1">
-												{agent.agent_capability_grants.map((grant) => (
-													<Chip key={`${agent.agent_id}:${grant.capability}`}>
-														{grant.capability}:{grant.status}
-													</Chip>
-												))}
+												{agent.agent_capability_grants.map((grant) => {
+													const busyKey = `grant:${agent.agent_id}:${grant.capability}`;
+													return (
+														<span
+															key={`${agent.agent_id}:${grant.capability}`}
+															className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground"
+														>
+															{grant.capability}:{grant.status}
+															{canRevokeGrantStatus(grant.status) ? (
+																<button
+																	type="button"
+																	aria-label={`Revoke ${grant.capability}`}
+																	disabled={busy === busyKey}
+																	onClick={() =>
+																		void runTrustAction(
+																			busyKey,
+																			"Capability grant revoked.",
+																			() =>
+																				revokeAgentCapability(
+																					agent.agent_id,
+																					grant.capability,
+																				),
+																		)
+																	}
+																	className="rounded text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+																>
+																	<Trash2 className="size-3" />
+																</button>
+															) : null}
+														</span>
+													);
+												})}
 											</div>
+										) : null}
+									</div>
+									<div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+										{canReactivateAgentStatus(agent.status) ? (
+											<Button
+												variant="outline"
+												size="sm"
+												type="button"
+												disabled={busy === `agent-reactivate:${agent.agent_id}`}
+												onClick={() =>
+													void runTrustAction(
+														`agent-reactivate:${agent.agent_id}`,
+														"Agent reactivated.",
+														() => reactivateAgent(agent.agent_id),
+													)
+												}
+											>
+												<RotateCcw className="size-3.5" />
+												Reactivate
+											</Button>
+										) : null}
+										{canRevokeAgentStatus(agent.status) ? (
+											<Button
+												variant="destructive"
+												size="sm"
+												type="button"
+												disabled={busy === `agent-revoke:${agent.agent_id}`}
+												onClick={() =>
+													void runTrustAction(
+														`agent-revoke:${agent.agent_id}`,
+														"Agent revoked.",
+														() => revokeAgent(agent.agent_id),
+													)
+												}
+											>
+												<Trash2 className="size-3.5" />
+												Revoke
+											</Button>
 										) : null}
 									</div>
 								</div>
@@ -311,7 +418,10 @@ export function Agents() {
 					) : hosts.length ? (
 						<div className="divide-y overflow-hidden rounded-lg border">
 							{hosts.map((host) => (
-								<div key={host.id} className="flex items-start gap-3 px-3.5 py-3">
+								<div
+									key={host.id}
+									className="flex flex-col gap-3 px-3.5 py-3 sm:flex-row sm:items-start"
+								>
 									<div className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground">
 										<ServerCog className="size-5" />
 									</div>
@@ -338,6 +448,25 @@ export function Agents() {
 											</div>
 										) : null}
 									</div>
+									{host.status.toLowerCase() !== "revoked" ? (
+										<Button
+											variant="destructive"
+											size="sm"
+											type="button"
+											className="shrink-0 sm:ml-auto"
+											disabled={busy === `host-revoke:${host.id}`}
+											onClick={() =>
+												void runTrustAction(
+													`host-revoke:${host.id}`,
+													"Host revoked.",
+													() => revokeHost(host.id),
+												)
+											}
+										>
+											<Trash2 className="size-3.5" />
+											Revoke
+										</Button>
+									) : null}
 								</div>
 							))}
 						</div>

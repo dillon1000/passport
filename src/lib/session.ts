@@ -18,10 +18,6 @@ export function useRequireSession() {
 }
 
 export async function signOut() {
-	if (!window.confirm("Sign out of Passport?")) {
-		return;
-	}
-
 	await authClient.signOut();
 	window.location.assign("/sign-in?signedOut=1");
 }

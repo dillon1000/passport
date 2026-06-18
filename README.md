@@ -8,6 +8,8 @@ Passport is a standalone identity provider on Cloudflare Workers. It uses Hono, 
 - RS256 JWT signing with JWKS discovery
 - Better Auth sessions, social login, and passkey-ready auth
 - Admin-managed OAuth client registration
+- Admin audit timeline for user and OAuth client mutations
+- Organization, member, invitation, and team management
 - Brand configuration from runtime environment variables
 - Vite React UI served from the same Cloudflare Worker
 - Example OAuth client with auth-code + PKCE login
@@ -44,8 +46,8 @@ export DATABASE_URL=postgresql://postgres:postgres@localhost:55432/passport
 
 ```bash
 pnpm dlx @better-auth/cli@latest generate --output ./src/db/schema.ts
-pnpm drizzle-kit generate
-pnpm drizzle-kit migrate
+pnpm db:generate
+pnpm db:migrate
 ```
 
 5. Start the auth server.
@@ -58,9 +60,11 @@ The auth UI is served at `/sign-in`, `/account`, and `/consent`. Better Auth is 
 
 ## Runtime Configuration
 
-Set `ADMIN_EMAILS` to a comma-separated list of user emails that can manage OAuth clients from `/applications`. Admin users can register clients, edit redirect URIs and scopes, enable or disable clients, and rotate client secrets. Dynamic client registration is also limited to these admins.
+Set `ADMIN_EMAILS` to a comma-separated list of user emails that can manage OAuth clients from `/applications` and review privileged mutations from `/admin/audit`. Admin users can register clients, edit redirect URIs and scopes, enable or disable clients, rotate client secrets, change user roles, and ban or unban users. Dynamic client registration is also limited to these admins.
 
-Branding is served from `/api/brand-config` so deployments can rebrand without rebuilding the client. Optional variables include `BRAND_NAME`, `BRAND_ABBREVIATION`, `BRAND_DESCRIPTOR`, `BRAND_LOGO_SRC`, `BRAND_CAPABILITIES`, `BRAND_COLOR`, `BRAND_FOREGROUND_COLOR`, `PRIMARY_COLOR`, `PRIMARY_FOREGROUND_COLOR`, and `RING_COLOR`.
+Branding is served from `/api/brand-config` so deployments can rebrand without rebuilding the client. Optional variables include `BRAND_NAME`, `BRAND_DESCRIPTOR`, `BRAND_LOGO_SRC`, `BRAND_CAPABILITIES`, `BRAND_COLOR`, `BRAND_FOREGROUND_COLOR`, `PRIMARY_COLOR`, `PRIMARY_FOREGROUND_COLOR`, and `RING_COLOR`.
+
+Phone verification SMS uses Azure Communication Services. Set `AZURE_COMMUNICATION_CONNECTION_STRING` from the ACS resource keys and `AZURE_COMMUNICATION_SMS_FROM` to an SMS-enabled ACS sender. Recipient phone numbers must use E.164 format, such as `+14255550123`.
 
 Do not commit `.dev.vars`, `.env`, production secrets, OAuth client secrets, database URLs, or private signing keys. Use `.dev.vars.example` as the shareable template for required configuration.
 
@@ -72,6 +76,10 @@ pnpm build        # Type-check and build production assets
 pnpm lint         # Run ESLint
 pnpm test         # Run Vitest
 pnpm db:start     # Start the local PostgreSQL helper
+pnpm db:generate  # Generate Drizzle migrations
+pnpm db:migrate   # Apply Drizzle migrations using DATABASE_URL or .dev.vars
+pnpm db:migrate prod # Apply Drizzle migrations using PROD_DATABASE_URL or .dev.vars
+pnpm admin:promote <email> # Promote an existing user to admin
 pnpm deploy       # Build and deploy with Wrangler
 ```
 
@@ -106,12 +114,12 @@ The Better Auth JWT plugin `/token` endpoint is disabled so it does not conflict
 
 ## Example Client
 
-`example-client` is a separate Vite React + Hono Worker app that performs auth-code + PKCE login against Passport and verifies the returned ID token via JWKS.
+`example-client` is a separate Vite React + Hono Worker app that uses Better Auth as a stateless OAuth client for Passport.
 
 1. Register the example client in `.dev.vars`:
 
 ```env
-OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"skipConsent":true}]
+OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"scopes":["openid","profile","email","phone","profile:picture","profile:username","organizations","organizations:ids","organizations:roles","teams","teams:ids","permissions","account:security","connections"],"skipConsent":true}]
 ```
 
 2. Copy its env example.
@@ -129,7 +137,7 @@ pnpm --filter passport-example-client dev
 
 4. Open `http://localhost:5174` and start OIDC login.
 
-The example Worker fetches discovery metadata, redirects to `/api/auth/oauth2/authorize`, exchanges the authorization code at `/api/auth/oauth2/token`, loads `jwks_uri`, and verifies `id_token` with issuer and audience checks before setting its local session.
+The example Worker mounts Better Auth at `/api/auth/*`, starts Passport login through the generic OAuth plugin, accepts the registered `/callback` redirect, and exposes `/api/session` so the UI can inspect the ID token, userinfo, and access-token claim groups Better Auth stores for the local session. Its static asset config runs the Worker first for `/api/*` and `/callback`, so browser navigations do not get swallowed by the SPA fallback.
 
 ## Registering New Apps
 
@@ -142,11 +150,54 @@ Admins can create and manage OAuth clients from `/applications`. For a static tr
 	"name": "My App",
 	"redirectUris": ["https://app.example.com/callback"],
 	"postLogoutRedirectUris": ["https://app.example.com/"],
+	"scopes": ["openid", "profile", "email"],
 	"skipConsent": false
 }
 ```
 
 Public clients should set `"public": true` and omit `secret`. Keep redirect URIs exact.
+
+Organization-owned OAuth clients are planned but not shipped. See [the tenant ownership design](./docs/organization-owned-oauth-clients.md) for the proposed ownership, route, policy, and migration model.
+
+## Custom OAuth Scopes
+
+Passport advertises standard OIDC scopes plus Passport-specific scopes through discovery. Apps can request:
+
+- `openid` - verify the stable subject identifier.
+- `profile` - read standard profile claims such as name and picture.
+- `email` - read email address and verification state.
+- `phone` - read phone number and verification state.
+- `offline_access` - request refresh-token access.
+- `profile:picture` - read only the profile picture URL without the broader `profile` scope.
+- `profile:username` - read only `preferred_username`.
+- `organizations` - read organization memberships and roles.
+- `organizations:ids` - read only organization IDs.
+- `organizations:roles` - read organization IDs plus the user's role in each organization.
+- `teams` - read team memberships inside organizations.
+- `teams:ids` - read only team IDs.
+- `permissions` - read tenant-scoped policy outputs for roles, permissions, and reserved entitlements.
+- `account:security` - read minimal MFA/passkey enrollment state.
+- `connections` - read connected social provider account metadata without provider tokens.
+
+Standard profile data and Passport custom data are emitted as standard OIDC claims or namespaced claims based on the issuer URL:
+
+- `picture`
+- `phone_number`
+- `phone_number_verified`
+- `preferred_username`
+- `{issuer}/claims/organizations`
+- `{issuer}/claims/teams`
+- `{issuer}/claims/organization_ids`
+- `{issuer}/claims/organization_roles`
+- `{issuer}/claims/team_ids`
+- `{issuer}/claims/roles`
+- `{issuer}/claims/permissions`
+- `{issuer}/claims/entitlements`
+- `{issuer}/claims/mfa_enabled`
+- `{issuer}/claims/passkey_enabled`
+- `{issuer}/claims/connections`
+
+Detailed organization, team, and connection objects are returned from `/oauth2/userinfo`. Access tokens keep compact identifiers, tenant-scoped roles, tenant-scoped permissions, reserved entitlement output, and minimal security posture so downstream services can authorize requests without carrying large membership payloads. `relationships` is intentionally not supported until Passport has a relationship data model.
 
 ## Verifying Tokens
 
@@ -172,12 +223,15 @@ wrangler secret put DISCORD_CLIENT_SECRET
 wrangler secret put X_CLIENT_ID
 wrangler secret put X_CLIENT_SECRET
 wrangler secret put OAUTH_CLIENTS
+wrangler secret put AZURE_COMMUNICATION_CONNECTION_STRING
+wrangler secret put AZURE_COMMUNICATION_SMS_FROM
 ```
 
-Create a Cloudflare Hyperdrive configuration for your PostgreSQL database, update `wrangler.jsonc` with its `id`, update `BETTER_AUTH_URL` and `TRUSTED_ORIGINS`, then deploy:
+Create a Cloudflare Hyperdrive configuration for your PostgreSQL database, update `wrangler.jsonc` with its `id`, update `BETTER_AUTH_URL` and `TRUSTED_ORIGINS`, set `PROD_DATABASE_URL` in `.dev.vars`, run production migrations, then deploy:
 
 ```bash
-pnpm deploy
+pnpm db:migrate prod
+pnpm run deploy
 ```
 
 Deploy the example client separately if needed:

@@ -1,9 +1,12 @@
+import type { DataExportWorkflowPayload } from "./lib/data-export";
+
 export type OAuthClientSeed = {
 	id: string;
 	secret?: string;
 	name: string;
 	redirectUris: string[];
 	postLogoutRedirectUris?: string[];
+	scopes?: string[];
 	public?: boolean;
 	skipConsent?: boolean;
 };
@@ -12,6 +15,9 @@ export type AuthEnv = Env & {
 	ASSETS: Fetcher;
 	HYPERDRIVE: Hyperdrive;
 	EMAIL: SendEmail;
+	AUTH_SECONDARY_STORAGE: KVNamespace;
+	DATA_EXPORTS: R2Bucket;
+	DATA_EXPORT_WORKFLOW: Workflow<DataExportWorkflowPayload>;
 	BETTER_AUTH_SECRET: string;
 	BETTER_AUTH_URL: string;
 	TRUSTED_ORIGINS?: string;
@@ -30,12 +36,14 @@ export type AuthEnv = Env & {
 	CAPTCHA_SITE_KEY?: string;
 	CAPTCHA_SITE_VERIFY_URL?: string;
 	CAPTCHA_MIN_SCORE?: string;
+	AZURE_COMMUNICATION_CONNECTION_STRING?: string;
+	COMMUNICATION_SERVICES_CONNECTION_STRING?: string;
+	AZURE_COMMUNICATION_SMS_FROM?: string;
 	OAUTH_PROXY_PRODUCTION_URL?: string;
 	OAUTH_PROXY_SECRET?: string;
 	AGENT_AUTH_PROVIDER_NAME?: string;
 	AGENT_AUTH_PROVIDER_DESCRIPTION?: string;
 	BRAND_NAME?: string;
-	BRAND_ABBREVIATION?: string;
 	BRAND_DESCRIPTOR?: string;
 	BRAND_LOGO_SRC?: string;
 	BRAND_CAPABILITIES?: string;

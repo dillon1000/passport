@@ -1,6 +1,9 @@
+import { formatRequestLocation, type RequestLocation } from "./request-location";
+
 export type SessionSummary = {
 	token?: string | null;
 	ipAddress?: string | null;
+	location?: RequestLocation | null;
 	userAgent?: string | null;
 };
 
@@ -16,9 +19,10 @@ export function describeSession(session: SessionSummary) {
 	else if (/ipad/i.test(userAgent)) label = "iPad";
 	else if (/android/i.test(userAgent)) label = "Android";
 	else if (/windows/i.test(userAgent)) label = "Windows";
-	const ipAddress = session.ipAddress?.trim();
-	if (label === "Unknown device") return ipAddress ? `Unknown device from ${ipAddress}` : label;
-	return ipAddress ? `${label} from ${ipAddress}` : label;
+	const location = formatRequestLocation(session.location);
+	const origin = location ?? session.ipAddress?.trim();
+	if (label === "Unknown device") return origin ? `Unknown device from ${origin}` : label;
+	return origin ? `${label} from ${origin}` : label;
 }
 
 export type DeviceType = "desktop" | "mobile" | "tablet";
@@ -48,7 +52,7 @@ export function parseUserAgent(userAgent?: string | null): ParsedAgent {
 	if (/edg\//i.test(ua)) browser = "Edge";
 	else if (/opr\/|opera/i.test(ua)) browser = "Opera";
 	else if (/firefox|fxios/i.test(ua)) browser = "Firefox";
-	else if (/crios|chrome|chromium/i.test(ua)) browser = "Chrome";
+	else if (/crios|chrome|chromium/i.test(ua)) browser = "Chrome or Chromium based browser";
 	else if (/safari/i.test(ua)) browser = "Safari";
 
 	let deviceType: DeviceType = "desktop";

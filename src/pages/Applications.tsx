@@ -1,4 +1,9 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+/**
+ * Applications dashboard page: shows OAuth consents for the signed-in user and
+ * admin-managed OAuth clients when the session has access. The page consumes
+ * paginated Worker APIs and keeps client edit drafts local until an admin saves.
+ */
+import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
 	AppWindow,
 	ArrowRight,
@@ -7,10 +12,14 @@ import {
 	CheckCircle2,
 	ChevronDown,
 	Copy,
+	FileJson,
+	Globe,
+	Network,
 	Plus,
 	RefreshCw,
 	RotateCcw,
 	Save,
+	Upload,
 } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -19,6 +28,7 @@ import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
+import { SummaryRow } from "@/components/auth/summary-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +40,20 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import {
+	Sheet,
+	SheetBody,
+	SheetClose,
+	SheetContent,
+	SheetDescription,
+	SheetFooter,
+	SheetHeader,
+	SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { uploadImageAsset } from "@/lib/image-upload";
+import { hasAdminRole } from "@/lib/admin-access";
+import { defaultClientScopeString, supportedScopeString } from "@/lib/oauth-scopes";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +62,11 @@ const SECTIONS: Section[] = [
 	{ id: "clients", label: "Clients" },
 	{ id: "oauth-proxy", label: "OAuth Proxy" },
 ];
+
+// Keep page requests aligned with the Worker default so refreshes and appends use the same slice size.
+const PAGE_LIMIT = 25;
+const DEFAULT_CLIENT_SCOPE_STRING = defaultClientScopeString();
+const SUPPORTED_SCOPE_HINT = `Supported: ${supportedScopeString()}`;
 
 type AuthorizedApplication = {
 	consentId: string;
@@ -59,10 +87,13 @@ type OAuthClientSummary = {
 	scopes?: string[];
 	uri?: string | null;
 	icon?: string | null;
+	tos?: string | null;
+	policy?: string | null;
 	public?: boolean;
 	disabled?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
+	backchannelLogoutUri?: string | null;
 	clientSecret?: string;
 };
 
@@ -73,8 +104,11 @@ type ClientDraft = {
 	scopes: string;
 	uri: string;
 	icon: string;
+	tos: string;
+	policy: string;
 	skipConsent: boolean;
 	enableEndSession: boolean;
+	backchannelLogoutUri: string;
 };
 
 type OAuthProxyStatus = {
@@ -86,6 +120,65 @@ type OAuthProxyStatus = {
 	trustedOrigins: string[];
 	callbackPath: string;
 };
+
+type PagePayload = {
+	limit: number;
+	nextCursor?: string;
+};
+
+type CreateClientStep = "details" | "policies";
+type ApplicationsSessionUser = {
+	role?: string | null;
+};
+
+// Discovery document served at /.well-known/openid-configuration. Only the
+// fields we surface as copyable rows are typed; the rest round-trip as unknown.
+type OIDCConfiguration = {
+	issuer?: string;
+	authorization_endpoint?: string;
+	token_endpoint?: string;
+	userinfo_endpoint?: string;
+	jwks_uri?: string;
+	registration_endpoint?: string;
+	revocation_endpoint?: string;
+	introspection_endpoint?: string;
+	end_session_endpoint?: string;
+	scopes_supported?: string[];
+	[key: string]: unknown;
+};
+
+// Endpoints shown in the discovery drawer, in the order a client developer
+// typically wires them up. Rows are skipped when the document omits a field.
+const OIDC_ENDPOINT_ROWS: { key: string; label: string }[] = [
+	{ key: "issuer", label: "Issuer" },
+	{ key: "authorization_endpoint", label: "Authorization endpoint" },
+	{ key: "token_endpoint", label: "Token endpoint" },
+	{ key: "userinfo_endpoint", label: "Userinfo endpoint" },
+	{ key: "jwks_uri", label: "JWKS URI" },
+	{ key: "registration_endpoint", label: "Registration endpoint" },
+	{ key: "revocation_endpoint", label: "Revocation endpoint" },
+	{ key: "introspection_endpoint", label: "Introspection endpoint" },
+	{ key: "end_session_endpoint", label: "End session endpoint" },
+];
+
+// Better Auth serves discovery under its base path, not the bare root.
+const OIDC_DISCOVERY_PATH = "/api/auth/.well-known/openid-configuration";
+
+function canShowManagedOAuthClients(
+	user: ApplicationsSessionUser | null | undefined,
+	state: { adminAvailable: boolean },
+) {
+	return hasAdminRole(user) || state.adminAvailable;
+}
+
+// The discovery document an external client should fetch lives at the issuer's
+// well-known path. Fall back to this origin before the document has loaded.
+function oidcDiscoveryURL(config: OIDCConfiguration | null) {
+	if (config?.issuer) {
+		return `${config.issuer.replace(/\/$/, "")}/.well-known/openid-configuration`;
+	}
+	return `${window.location.origin}${OIDC_DISCOVERY_PATH}`;
+}
 
 function lines(value: string) {
 	return value
@@ -106,12 +199,29 @@ function clientDraft(client?: OAuthClientSummary): ClientDraft {
 		name: client?.name ?? "",
 		redirectUris: client?.redirectUris.join("\n") ?? "",
 		postLogoutRedirectUris: client?.postLogoutRedirectUris?.join("\n") ?? "",
-		scopes: client?.scopes?.join(" ") ?? "openid profile email",
+		scopes: client?.scopes?.join(" ") ?? DEFAULT_CLIENT_SCOPE_STRING,
 		uri: client?.uri ?? "",
 		icon: client?.icon ?? "",
+		tos: client?.tos ?? "",
+		policy: client?.policy ?? "",
 		skipConsent: Boolean(client?.skipConsent),
 		enableEndSession: Boolean(client?.enableEndSession),
+		backchannelLogoutUri: client?.backchannelLogoutUri ?? "",
 	};
+}
+
+function clientDraftMap(clients: OAuthClientSummary[]) {
+	return Object.fromEntries(
+		clients.map((client) => [client.clientId, clientDraft(client)]),
+	) as Record<string, ClientDraft>;
+}
+
+function pageURL(pathname: string, cursor: string | null) {
+	const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
+	if (cursor) {
+		params.set("cursor", cursor);
+	}
+	return `${pathname}?${params.toString()}`;
 }
 
 function formatDate(value?: string | null) {
@@ -123,11 +233,12 @@ export function Applications() {
 	const { data: session } = useRequireSession();
 	const [applications, setApplications] = useState<AuthorizedApplication[]>([]);
 	const [clients, setClients] = useState<OAuthClientSummary[]>([]);
+	const [applicationNextCursor, setApplicationNextCursor] = useState<string | null>(null);
+	const [clientNextCursor, setClientNextCursor] = useState<string | null>(null);
 	const [clientDrafts, setClientDrafts] = useState<Record<string, ClientDraft>>({});
 	const [newClient, setNewClient] = useState<ClientDraft>(() => clientDraft());
 	const [newClientPublic, setNewClientPublic] = useState(false);
 	const [loaded, setLoaded] = useState(false);
-	const [adminLoaded, setAdminLoaded] = useState(false);
 	const [adminAvailable, setAdminAvailable] = useState(false);
 	const [oauthProxyLoaded, setOAuthProxyLoaded] = useState(false);
 	const [oauthProxy, setOAuthProxy] = useState<OAuthProxyStatus | null>(null);
@@ -137,39 +248,81 @@ export function Applications() {
 	const [oneTimeSecret, setOneTimeSecret] = useState<OAuthClientSummary | null>(null);
 	const [expanded, setExpanded] = useState<Set<string>>(new Set());
 	const [secretCopied, setSecretCopied] = useState(false);
+	const [createClientSheetOpen, setCreateClientSheetOpen] = useState(false);
+	const [createClientStep, setCreateClientStep] = useState<CreateClientStep>("details");
+	const [oauthProxySheetOpen, setOAuthProxySheetOpen] = useState(false);
+	const [oidcSheetOpen, setOIDCSheetOpen] = useState(false);
+	const [oidcConfig, setOIDCConfig] = useState<OIDCConfiguration | null>(null);
+	const [oidcError, setOIDCError] = useState<string | null>(null);
+	const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-	async function loadApplications() {
+	async function loadApplications(options: { append?: boolean } = {}) {
+		const append = Boolean(options.append);
+		const cursor = append ? applicationNextCursor : null;
+		if (append && !cursor) return;
+
 		setStatus(null);
-		setBusy("applications");
-		const response = await fetch("/api/applications");
+		setBusy(append ? "applications-more" : "applications");
+		const response = await fetch(pageURL("/api/applications", cursor));
 		setBusy(null);
 		setLoaded(true);
 		if (!response.ok) {
 			const payload = (await response.json()) as { error?: string };
+			if (!append) {
+				setApplicationNextCursor(null);
+			}
 			setStatus({ tone: "error", message: payload.error ?? "Could not load applications." });
 			return;
 		}
-		const payload = (await response.json()) as { applications: AuthorizedApplication[] };
-		setApplications(payload.applications);
+		const payload = (await response.json()) as {
+			applications: AuthorizedApplication[];
+			page?: PagePayload;
+		};
+		setApplications((current) =>
+			append ? [...current, ...payload.applications] : payload.applications,
+		);
+		setApplicationNextCursor(payload.page?.nextCursor ?? null);
 	}
 
-	async function loadClients() {
-		const response = await fetch("/api/admin/oauth-clients");
-		setAdminLoaded(true);
+	async function loadClients(options: { append?: boolean } = {}) {
+		const append = Boolean(options.append);
+		const cursor = append ? clientNextCursor : null;
+		if (append && !cursor) return;
+
+		if (append) {
+			setBusy("clients-more");
+		}
+		const response = await fetch(pageURL("/api/admin/oauth-clients", cursor));
+		if (append) {
+			setBusy(null);
+		}
 		if (response.status === 403 || response.status === 401) {
 			setAdminAvailable(false);
+			if (!append) {
+				setClients([]);
+				setClientDrafts({});
+				setClientNextCursor(null);
+			}
 			return;
 		}
 		if (!response.ok) {
 			setAdminAvailable(false);
+			if (!append) {
+				setClientNextCursor(null);
+			}
 			return;
 		}
 		setAdminAvailable(true);
-		const payload = (await response.json()) as { clients: OAuthClientSummary[] };
-		setClients(payload.clients);
-		setClientDrafts(
-			Object.fromEntries(payload.clients.map((client) => [client.clientId, clientDraft(client)])),
-		);
+		const payload = (await response.json()) as {
+			clients: OAuthClientSummary[];
+			page?: PagePayload;
+		};
+		setClients((current) => (append ? [...current, ...payload.clients] : payload.clients));
+		setClientDrafts((current) => {
+			const nextDrafts = clientDraftMap(payload.clients);
+			return append ? { ...current, ...nextDrafts } : nextDrafts;
+		});
+		setClientNextCursor(payload.page?.nextCursor ?? null);
 	}
 
 	async function loadOAuthProxy() {
@@ -187,6 +340,38 @@ export function Applications() {
 		}
 		const payload = (await response.json()) as { oauthProxy: OAuthProxyStatus };
 		setOAuthProxy(payload.oauthProxy);
+	}
+
+	async function loadOIDCConfig() {
+		setBusy("oidc-config");
+		setOIDCError(null);
+		try {
+			const response = await fetch(OIDC_DISCOVERY_PATH, {
+				headers: { accept: "application/json" },
+			});
+			if (!response.ok) {
+				throw new Error(`Discovery returned ${response.status}.`);
+			}
+			setOIDCConfig((await response.json()) as OIDCConfiguration);
+		} catch (error) {
+			setOIDCConfig(null);
+			setOIDCError(
+				error instanceof Error ? error.message : "Could not load OpenID configuration.",
+			);
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	function openOIDCSheet() {
+		setOIDCSheetOpen(true);
+		if (!oidcConfig) void loadOIDCConfig();
+	}
+
+	async function copyValue(key: string, value: string) {
+		await navigator.clipboard.writeText(value);
+		setCopiedKey(key);
+		setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
 	}
 
 	useEffect(() => {
@@ -220,6 +405,11 @@ export function Applications() {
 
 	async function createClient(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		if (createClientStep === "details") {
+			setCreateClientStep("policies");
+			return;
+		}
+
 		setBusy("create-client");
 		setStatus(null);
 		const response = await fetch("/api/admin/oauth-clients", {
@@ -232,9 +422,12 @@ export function Applications() {
 				scopes: scopeList(newClient.scopes),
 				uri: newClient.uri || undefined,
 				icon: newClient.icon || undefined,
+				tos: newClient.tos || undefined,
+				policy: newClient.policy || undefined,
 				public: newClientPublic,
 				skipConsent: newClient.skipConsent,
 				enableEndSession: newClient.enableEndSession,
+				backchannelLogoutUri: newClient.backchannelLogoutUri.trim() || undefined,
 			}),
 		});
 		setBusy(null);
@@ -244,9 +437,11 @@ export function Applications() {
 			return;
 		}
 		setStatus({ tone: "success", message: "OAuth client created." });
+		setCreateClientSheetOpen(false);
 		setOneTimeSecret(payload.client.clientSecret ? payload.client : null);
 		setNewClient(clientDraft());
 		setNewClientPublic(false);
+		setCreateClientStep("details");
 		void loadClients();
 	}
 
@@ -265,8 +460,11 @@ export function Applications() {
 				scopes: scopeList(draft.scopes),
 				uri: draft.uri || undefined,
 				icon: draft.icon || undefined,
+				tos: draft.tos || undefined,
+				policy: draft.policy || undefined,
 				skipConsent: draft.skipConsent,
 				enableEndSession: draft.enableEndSession,
+				backchannelLogoutUri: draft.backchannelLogoutUri.trim() || null,
 			}),
 		});
 		setBusy(null);
@@ -335,13 +533,40 @@ export function Applications() {
 		});
 	}
 
+	async function uploadApplicationPicture(
+		event: ChangeEvent<HTMLInputElement>,
+		onUploaded: (image: string) => void,
+		busyKey: string,
+	) {
+		const file = event.target.files?.[0];
+		event.target.value = "";
+		if (!file) return;
+
+		setBusy(busyKey);
+		setStatus(null);
+		try {
+			const image = await uploadImageAsset(file, "application-picture");
+			onUploaded(image);
+			setStatus({ tone: "success", message: "Application picture uploaded." });
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not upload application picture.",
+			});
+		} finally {
+			setBusy(null);
+		}
+	}
+
 	async function copySecret(secret: string) {
 		await navigator.clipboard.writeText(secret);
 		setSecretCopied(true);
 		setTimeout(() => setSecretCopied(false), 1500);
 	}
 
-	const canManageClients = adminLoaded && adminAvailable;
+	const canManageClients = canShowManagedOAuthClients(session?.user, {
+		adminAvailable,
+	});
 	const canViewOAuthProxy = oauthProxyLoaded && Boolean(oauthProxy);
 	const sections: Section[] = [
 		SECTIONS[0],
@@ -373,8 +598,8 @@ export function Applications() {
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={loadApplications}
-								disabled={busy === "applications"}
+								onClick={() => void loadApplications()}
+								disabled={busy === "applications" || busy === "applications-more"}
 							>
 								<RefreshCw className={cn("size-4", busy === "applications" && "animate-spin")} />
 								Refresh
@@ -388,35 +613,12 @@ export function Applications() {
 						) : applications.length ? (
 							<ul className="divide-y">
 								{applications.map((application) => (
-									<li
+									<AuthorizedApplicationRow
 										key={application.consentId}
-										className="flex items-start gap-3 px-3.5 py-3"
-									>
-										<AppIcon src={application.icon} />
-										<div className="min-w-0 flex-1">
-											<div className="truncate text-sm font-medium">{application.name}</div>
-											<div className="truncate text-xs text-muted-foreground">
-												<span className="font-mono">{application.clientId}</span> · Authorized{" "}
-												{formatDate(application.updatedAt ?? application.authorizedAt)}
-											</div>
-											{application.scopes.length ? (
-												<div className="mt-1.5 flex flex-wrap gap-1">
-													{application.scopes.map((scope) => (
-														<ScopeChip key={scope}>{scope}</ScopeChip>
-													))}
-												</div>
-											) : null}
-										</div>
-										<Button
-											variant="ghost"
-											size="sm"
-											className="shrink-0 text-muted-foreground hover:text-destructive"
-											onClick={() => setRevokeTarget(application)}
-											disabled={busy === `revoke:${application.consentId}`}
-										>
-											Revoke
-										</Button>
-									</li>
+										application={application}
+										busy={busy}
+										onRevoke={() => setRevokeTarget(application)}
+									/>
 								))}
 							</ul>
 						) : (
@@ -426,115 +628,52 @@ export function Applications() {
 							/>
 						)}
 					</div>
+					{applicationNextCursor ? (
+						<div className="mt-3 flex justify-center">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => void loadApplications({ append: true })}
+								disabled={busy === "applications-more"}
+							>
+								{busy === "applications-more" ? (
+									<RefreshCw className="size-4 animate-spin" />
+								) : (
+									<ChevronDown className="size-4" />
+								)}
+								Load more
+							</Button>
+						</div>
+					) : null}
 				</SettingsCard>
 			</section>
 
 			{canManageClients ? (
 				<section id="clients" className="scroll-mt-32 space-y-6">
-					<form onSubmit={createClient}>
-						<SettingsCard
-							title="Register OAuth client"
-							description="Create a public or confidential client for an app that signs in through Passport."
-							footer={
-								<SettingsCardFooter hint="Confidential client secrets are shown only once.">
-									<Button size="sm" type="submit" disabled={busy === "create-client"}>
-										<Plus className="size-4" />
-										Create client
-									</Button>
-								</SettingsCardFooter>
-							}
-						>
-							<div className="space-y-4">
-								<div className="grid gap-4 sm:grid-cols-2">
-									<Field label="Name">
-										<FieldInput
-											value={newClient.name}
-											onChange={(event) =>
-												setNewClient((current) => ({ ...current, name: event.target.value }))
-											}
-											placeholder="Example Client"
-											required
-										/>
-									</Field>
-									<Field label="Client URI">
-										<FieldInput
-											value={newClient.uri}
-											onChange={(event) =>
-												setNewClient((current) => ({ ...current, uri: event.target.value }))
-											}
-											placeholder="https://app.example.com"
-										/>
-									</Field>
-								</div>
-								<Field label="Scopes" hint="Space or comma separated.">
-									<FieldInput
-										value={newClient.scopes}
-										onChange={(event) =>
-											setNewClient((current) => ({ ...current, scopes: event.target.value }))
-										}
-										placeholder="openid profile email"
-									/>
-								</Field>
-								<div className="grid gap-4 sm:grid-cols-2">
-									<Field label="Redirect URIs" hint="One per line.">
-										<FieldTextarea
-											value={newClient.redirectUris}
-											onChange={(event) =>
-												setNewClient((current) => ({
-													...current,
-													redirectUris: event.target.value,
-												}))
-											}
-											placeholder="https://app.example.com/callback"
-											required
-										/>
-									</Field>
-									<Field label="Post-logout URIs" hint="One per line.">
-										<FieldTextarea
-											value={newClient.postLogoutRedirectUris}
-											onChange={(event) =>
-												setNewClient((current) => ({
-													...current,
-													postLogoutRedirectUris: event.target.value,
-												}))
-											}
-											placeholder="https://app.example.com/"
-										/>
-									</Field>
-								</div>
-								<div className="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-6">
-									<CheckboxField
-										label="Public client"
-										hint="No secret (SPA / native)."
-										checked={newClientPublic}
-										onCheckedChange={setNewClientPublic}
-									/>
-									<CheckboxField
-										label="Skip consent"
-										checked={newClient.skipConsent}
-										onCheckedChange={(value) =>
-											setNewClient((current) => ({ ...current, skipConsent: value }))
-										}
-									/>
-									<CheckboxField
-										label="Enable OIDC logout"
-										checked={newClient.enableEndSession}
-										onCheckedChange={(value) =>
-											setNewClient((current) => ({ ...current, enableEndSession: value }))
-										}
-									/>
-								</div>
-							</div>
-						</SettingsCard>
-					</form>
-
 					<SettingsCard
 						title="Managed clients"
 						description="OAuth clients owned by this admin account. Expand a client to edit it."
 						footer={
 							<SettingsCardFooter
 								hint={`${clients.length} client${clients.length === 1 ? "" : "s"} configured.`}
-							/>
+							>
+								<div className="flex flex-wrap gap-2">
+									<Button variant="outline" size="sm" onClick={openOIDCSheet}>
+										<Globe className="size-4" />
+										OpenID configuration
+									</Button>
+									<Button
+										size="sm"
+										onClick={() => {
+											setCreateClientStep("details");
+											setCreateClientSheetOpen(true);
+										}}
+									>
+										<Plus className="size-4" />
+										Register client
+									</Button>
+								</div>
+							</SettingsCardFooter>
 						}
 					>
 						{clients.length ? (
@@ -544,35 +683,15 @@ export function Applications() {
 									const open = expanded.has(client.clientId);
 									return (
 										<div key={client.clientId}>
-											<button
-												type="button"
-												onClick={() => toggleExpanded(client.clientId)}
-												aria-expanded={open}
-												aria-controls={`client-${client.clientId}`}
-												className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-muted/40"
-											>
-												<AppIcon src={client.icon} />
-												<div className="min-w-0 flex-1">
-													<div className="flex flex-wrap items-center gap-2">
-														<span className="truncate text-sm font-medium">{client.name}</span>
-														<Badge variant={client.public ? "secondary" : "default"}>
-															{client.public ? "Public" : "Confidential"}
-														</Badge>
-														{client.disabled ? (
-															<Badge variant="destructive">Disabled</Badge>
-														) : null}
-													</div>
-													<div className="truncate font-mono text-xs text-muted-foreground">
-														{client.clientId}
-													</div>
-												</div>
-												<ChevronDown
-													className={cn(
-														"size-4 shrink-0 text-muted-foreground transition-transform",
-														open && "rotate-180",
-													)}
-												/>
-											</button>
+											<ManagedOAuthClientRow
+												client={client}
+												open={open}
+												copied={copiedKey === `managed-client-id:${client.clientId}`}
+												onToggleExpanded={() => toggleExpanded(client.clientId)}
+												onCopyClientID={() =>
+													void copyValue(`managed-client-id:${client.clientId}`, client.clientId)
+												}
+											/>
 
 											{open ? (
 												<form
@@ -601,7 +720,19 @@ export function Applications() {
 															/>
 														</Field>
 													</div>
-													<Field label="Scopes" hint="Space or comma separated.">
+													<ClientPictureField
+														value={draft.icon}
+														busy={busy === `upload-picture:${client.clientId}`}
+														onURLChange={(icon) => setDraft(client.clientId, { icon })}
+														onFileChange={(event) =>
+															void uploadApplicationPicture(
+																event,
+																(icon) => setDraft(client.clientId, { icon }),
+																`upload-picture:${client.clientId}`,
+															)
+														}
+													/>
+													<Field label="Scopes" hint={SUPPORTED_SCOPE_HINT}>
 														<FieldInput
 															value={draft.scopes}
 															onChange={(event) =>
@@ -626,6 +757,41 @@ export function Applications() {
 																		postLogoutRedirectUris: event.target.value,
 																	})
 																}
+															/>
+														</Field>
+													</div>
+													<div className="grid gap-4 sm:grid-cols-2">
+														<Field label="Terms of service URL">
+															<FieldInput
+																type="url"
+																value={draft.tos}
+																onChange={(event) =>
+																	setDraft(client.clientId, { tos: event.target.value })
+																}
+																placeholder="https://app.example.com/terms"
+															/>
+														</Field>
+														<Field label="Privacy policy URL">
+															<FieldInput
+																type="url"
+																value={draft.policy}
+																onChange={(event) =>
+																	setDraft(client.clientId, { policy: event.target.value })
+																}
+																placeholder="https://app.example.com/privacy"
+															/>
+														</Field>
+														<Field
+															label="Back-channel logout URL"
+															hint="Passport POSTs a signed logout_token here when the user is force-logged-out."
+														>
+															<FieldInput
+																type="url"
+																value={draft.backchannelLogoutUri}
+																onChange={(event) =>
+																	setDraft(client.clientId, { backchannelLogoutUri: event.target.value })
+																}
+																placeholder="https://app.example.com/oidc/backchannel-logout"
 															/>
 														</Field>
 													</div>
@@ -695,10 +861,233 @@ export function Applications() {
 						) : (
 							<EmptyState
 								title="No managed clients"
-								body="Register a client above to let an application sign in through Passport."
+								body="Register a client to let an application sign in through Passport."
 							/>
 						)}
+						{clientNextCursor ? (
+							<div className="mt-3 flex justify-center">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => void loadClients({ append: true })}
+									disabled={busy === "clients-more"}
+								>
+									{busy === "clients-more" ? (
+										<RefreshCw className="size-4 animate-spin" />
+									) : (
+										<ChevronDown className="size-4" />
+									)}
+									Load more
+								</Button>
+							</div>
+						) : null}
 					</SettingsCard>
+
+					<Sheet
+						open={createClientSheetOpen}
+						onOpenChange={(open) => {
+							setCreateClientSheetOpen(open);
+							if (open) setCreateClientStep("details");
+						}}
+					>
+						<SheetContent pushed={oidcSheetOpen}>
+							<form onSubmit={createClient} className="flex min-h-0 flex-1 flex-col">
+								<SheetHeader>
+									<SheetTitle>Register OAuth client</SheetTitle>
+									<SheetDescription>
+										{createClientStep === "details"
+											? "Step 1 of 2: application details, redirects, and access behavior."
+											: "Step 2 of 2: terms of service and privacy policy URLs."}
+									</SheetDescription>
+								</SheetHeader>
+								<SheetBody className="space-y-4">
+									<button
+										type="button"
+										onClick={openOIDCSheet}
+										className="flex w-full items-center gap-3 rounded-lg border bg-muted/30 px-3.5 py-3 text-left transition-colors hover:bg-muted/60"
+									>
+										<Globe className="size-[1.15rem] shrink-0 text-muted-foreground" />
+										<span className="min-w-0 flex-1">
+											<span className="block text-sm font-medium">OpenID configuration</span>
+											<span className="block text-xs text-muted-foreground">
+												Copy the issuer and endpoint URLs to wire up this client.
+											</span>
+										</span>
+										<ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+									</button>
+									{createClientStep === "details" ? (
+										<>
+											<div className="grid gap-4 sm:grid-cols-2">
+												<Field label="Name">
+													<FieldInput
+														value={newClient.name}
+														onChange={(event) =>
+															setNewClient((current) => ({
+																...current,
+																name: event.target.value,
+															}))
+														}
+														placeholder="Example Client"
+														required
+													/>
+												</Field>
+												<Field label="Client URI">
+													<FieldInput
+														type="url"
+														value={newClient.uri}
+														onChange={(event) =>
+															setNewClient((current) => ({
+																...current,
+																uri: event.target.value,
+															}))
+														}
+														placeholder="https://app.example.com"
+													/>
+												</Field>
+											</div>
+											<ClientPictureField
+												value={newClient.icon}
+												busy={busy === "upload-picture:new-client"}
+												onURLChange={(icon) =>
+													setNewClient((current) => ({ ...current, icon }))
+												}
+												onFileChange={(event) =>
+													void uploadApplicationPicture(
+														event,
+														(icon) => setNewClient((current) => ({ ...current, icon })),
+														"upload-picture:new-client",
+													)
+												}
+											/>
+											<Field label="Scopes" hint={SUPPORTED_SCOPE_HINT}>
+												<FieldInput
+													value={newClient.scopes}
+													onChange={(event) =>
+														setNewClient((current) => ({
+															...current,
+															scopes: event.target.value,
+														}))
+													}
+													placeholder={DEFAULT_CLIENT_SCOPE_STRING}
+												/>
+											</Field>
+											<div className="grid gap-4 sm:grid-cols-2">
+												<Field label="Redirect URIs" hint="One per line.">
+													<FieldTextarea
+														value={newClient.redirectUris}
+														onChange={(event) =>
+															setNewClient((current) => ({
+																...current,
+																redirectUris: event.target.value,
+															}))
+														}
+														placeholder="https://app.example.com/callback"
+														required
+													/>
+												</Field>
+												<Field label="Post-logout URIs" hint="One per line.">
+													<FieldTextarea
+														value={newClient.postLogoutRedirectUris}
+														onChange={(event) =>
+															setNewClient((current) => ({
+																...current,
+																postLogoutRedirectUris: event.target.value,
+															}))
+														}
+														placeholder="https://app.example.com/"
+													/>
+												</Field>
+											</div>
+											<div className="flex flex-col gap-3 pt-1">
+												<CheckboxField
+													label="Public client"
+													hint="No secret (SPA / native)."
+													checked={newClientPublic}
+													onCheckedChange={setNewClientPublic}
+												/>
+												<CheckboxField
+													label="Skip consent"
+													checked={newClient.skipConsent}
+													onCheckedChange={(value) =>
+														setNewClient((current) => ({ ...current, skipConsent: value }))
+													}
+												/>
+												<CheckboxField
+													label="Enable OIDC logout"
+													checked={newClient.enableEndSession}
+													onCheckedChange={(value) =>
+														setNewClient((current) => ({
+															...current,
+															enableEndSession: value,
+														}))
+													}
+												/>
+											</div>
+										</>
+									) : (
+										<>
+											<Field label="Terms of service URL">
+												<FieldInput
+													type="url"
+													value={newClient.tos}
+													onChange={(event) =>
+														setNewClient((current) => ({ ...current, tos: event.target.value }))
+													}
+													placeholder="https://app.example.com/terms"
+												/>
+											</Field>
+											<Field label="Privacy policy URL">
+												<FieldInput
+													type="url"
+													value={newClient.policy}
+													onChange={(event) =>
+														setNewClient((current) => ({
+															...current,
+															policy: event.target.value,
+														}))
+													}
+													placeholder="https://app.example.com/privacy"
+												/>
+											</Field>
+											<Field
+												label="Back-channel logout URL"
+												hint="Passport POSTs a signed logout_token here when the user is force-logged-out."
+											>
+												<FieldInput
+													type="url"
+													value={newClient.backchannelLogoutUri}
+													onChange={(event) =>
+														setNewClient((current) => ({ ...current, backchannelLogoutUri: event.target.value }))
+													}
+													placeholder="https://app.example.com/oidc/backchannel-logout"
+												/>
+											</Field>
+										</>
+									)}
+								</SheetBody>
+								<SheetFooter>
+									<SheetClose asChild>
+										<Button variant="outline" type="button">
+											Cancel
+										</Button>
+									</SheetClose>
+									{createClientStep === "policies" ? (
+										<Button
+											variant="outline"
+											type="button"
+											onClick={() => setCreateClientStep("details")}
+										>
+											Back
+										</Button>
+									) : null}
+									<Button type="submit" disabled={busy === "create-client"}>
+										{createClientStep === "details" ? null : <Plus className="size-4" />}
+										{createClientStep === "details" ? "Continue" : "Create client"}
+									</Button>
+								</SheetFooter>
+							</form>
+						</SheetContent>
+					</Sheet>
 				</section>
 			) : null}
 
@@ -718,6 +1107,119 @@ export function Applications() {
 								<Button
 									variant="outline"
 									size="sm"
+									onClick={() => setOAuthProxySheetOpen(true)}
+								>
+									<Network className="size-4" />
+									View details
+								</Button>
+							</SettingsCardFooter>
+						}
+					>
+						<SummaryRow
+							icon={
+								<Network
+									className={cn(
+										"size-[1.15rem]",
+										oauthProxy.proxyActive && "text-emerald-600 dark:text-emerald-500",
+									)}
+								/>
+							}
+							title={
+								<span className="flex items-center gap-2">
+									<StatusDot tone={oauthProxy.proxyActive ? "active" : "idle"} />
+									{oauthProxy.proxyActive
+										? "Routing through production"
+										: "Direct — proxy inactive"}
+								</span>
+							}
+							subtitle={
+								oauthProxy.proxyActive
+									? "OAuth callbacks for this environment are relayed via the production URL."
+									: "The current and production URLs match, so requests are handled directly."
+							}
+						/>
+					</SettingsCard>
+
+					<Sheet open={oauthProxySheetOpen} onOpenChange={setOAuthProxySheetOpen}>
+						<SheetContent>
+							<SheetHeader>
+								<SheetTitle>OAuth Proxy</SheetTitle>
+								<SheetDescription>
+									How OAuth callbacks for this environment route through the production URL.
+								</SheetDescription>
+							</SheetHeader>
+							<SheetBody className="space-y-5">
+								<div
+									className={cn(
+										"flex items-center gap-3 rounded-lg border px-3.5 py-3",
+										oauthProxy.proxyActive
+											? "border-emerald-500/30 bg-emerald-500/5"
+											: "bg-muted/30",
+									)}
+								>
+									<StatusDot
+										tone={oauthProxy.proxyActive ? "active" : "idle"}
+										className="size-3"
+									/>
+									<div className="min-w-0 flex-1">
+										<div className="text-sm font-medium">
+											{oauthProxy.proxyActive
+												? "Routing through production"
+												: "Direct — proxy inactive"}
+										</div>
+										<p className="text-xs text-muted-foreground">
+											{oauthProxy.proxyActive
+												? "OAuth callbacks for this environment are relayed via the production URL."
+												: "The current and production URLs match, so requests are handled directly."}
+										</p>
+									</div>
+								</div>
+
+								{/* Routing flow: this environment → production callback. */}
+								<div className="flex flex-col items-stretch gap-2 rounded-lg border bg-muted/20 p-3">
+									<ProxyNode label="This environment" value={oauthProxy.currentURL} />
+									<ArrowRight className="mx-auto size-4 shrink-0 rotate-90 text-muted-foreground" />
+									<ProxyNode
+										label="Production callback"
+										value={`${oauthProxy.productionURL}${oauthProxy.callbackPath.replace(":provider", "{provider}")}`}
+									/>
+								</div>
+
+								<div className="grid gap-3 sm:grid-cols-2">
+									<ProxyCheck
+										label="Proxy configured"
+										ok={oauthProxy.configured}
+										okText="Configured"
+										badText="Not configured"
+									/>
+									<ProxyCheck
+										label="Shared secret"
+										ok={oauthProxy.sharedSecretConfigured}
+										okText="Set"
+										badText="Missing"
+									/>
+								</div>
+
+								<div>
+									<div className="mb-2 text-xs font-medium text-muted-foreground">
+										Trusted origins
+									</div>
+									{oauthProxy.trustedOrigins.length ? (
+										<div className="flex flex-wrap gap-1.5">
+											{oauthProxy.trustedOrigins.map((origin) => (
+												<ScopeChip key={origin}>{origin}</ScopeChip>
+											))}
+										</div>
+									) : (
+										<p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+											No trusted origins configured.
+										</p>
+									)}
+								</div>
+
+								<Button
+									variant="outline"
+									size="sm"
 									onClick={loadOAuthProxy}
 									disabled={busy === "oauth-proxy"}
 								>
@@ -726,81 +1228,105 @@ export function Applications() {
 									/>
 									Refresh
 								</Button>
-							</SettingsCardFooter>
-						}
-					>
-						<div className="space-y-5">
-							<div
-								className={cn(
-									"flex items-center gap-3 rounded-lg border px-3.5 py-3",
-									oauthProxy.proxyActive
-										? "border-emerald-500/30 bg-emerald-500/5"
-										: "bg-muted/30",
-								)}
-							>
-								<StatusDot
-									tone={oauthProxy.proxyActive ? "active" : "idle"}
-									className="size-3"
-								/>
-								<div className="min-w-0 flex-1">
-									<div className="text-sm font-medium">
-										{oauthProxy.proxyActive
-											? "Routing through production"
-											: "Direct — proxy inactive"}
-									</div>
-									<p className="text-xs text-muted-foreground">
-										{oauthProxy.proxyActive
-											? "OAuth callbacks for this environment are relayed via the production URL."
-											: "The current and production URLs match, so requests are handled directly."}
-									</p>
-								</div>
-							</div>
-
-							{/* Routing flow: this environment → production callback. */}
-							<div className="flex flex-col items-stretch gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center">
-								<ProxyNode label="This environment" value={oauthProxy.currentURL} />
-								<ArrowRight className="mx-auto size-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
-								<ProxyNode
-									label="Production callback"
-									value={`${oauthProxy.productionURL}${oauthProxy.callbackPath.replace(":provider", "{provider}")}`}
-								/>
-							</div>
-
-							<div className="grid gap-3 sm:grid-cols-2">
-								<ProxyCheck
-									label="Proxy configured"
-									ok={oauthProxy.configured}
-									okText="Configured"
-									badText="Not configured"
-								/>
-								<ProxyCheck
-									label="Shared secret"
-									ok={oauthProxy.sharedSecretConfigured}
-									okText="Set"
-									badText="Missing"
-								/>
-							</div>
-
-							<div>
-								<div className="mb-2 text-xs font-medium text-muted-foreground">
-									Trusted origins
-								</div>
-								{oauthProxy.trustedOrigins.length ? (
-									<div className="flex flex-wrap gap-1.5">
-										{oauthProxy.trustedOrigins.map((origin) => (
-											<ScopeChip key={origin}>{origin}</ScopeChip>
-										))}
-									</div>
-								) : (
-									<p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
-										No trusted origins configured.
-									</p>
-								)}
-							</div>
-						</div>
-					</SettingsCard>
+							</SheetBody>
+						</SheetContent>
+					</Sheet>
 				</section>
 			) : null}
+
+			<Sheet open={oidcSheetOpen} onOpenChange={setOIDCSheetOpen}>
+				<SheetContent>
+					<SheetHeader>
+						<SheetTitle>OpenID configuration</SheetTitle>
+						<SheetDescription>
+							Discovery metadata for this provider. Paste these into the client application's
+							OAuth/OIDC settings.
+						</SheetDescription>
+					</SheetHeader>
+					<SheetBody className="space-y-3">
+						<CopyRow
+							label="Discovery URL"
+							value={oidcDiscoveryURL(oidcConfig)}
+							copied={copiedKey === "discovery"}
+							onCopy={() => copyValue("discovery", oidcDiscoveryURL(oidcConfig))}
+						/>
+						{busy === "oidc-config" && !oidcConfig ? (
+							<div className="space-y-3">
+								{[0, 1, 2, 3].map((index) => (
+									<div key={index} className="space-y-1.5">
+										<Skeleton className="h-3 w-32" />
+										<Skeleton className="h-9 w-full rounded-lg" />
+									</div>
+								))}
+							</div>
+						) : oidcError ? (
+							<div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-3 text-sm">
+								<p className="font-medium text-destructive">Could not load configuration</p>
+								<p className="mt-0.5 text-muted-foreground">{oidcError}</p>
+								<Button
+									variant="outline"
+									size="sm"
+									className="mt-3"
+									onClick={() => void loadOIDCConfig()}
+								>
+									<RefreshCw className="size-4" />
+									Retry
+								</Button>
+							</div>
+						) : oidcConfig ? (
+							<>
+								{OIDC_ENDPOINT_ROWS.map(({ key, label }) => {
+									const value = oidcConfig[key];
+									if (typeof value !== "string" || !value) return null;
+									return (
+										<CopyRow
+											key={key}
+											label={label}
+											value={value}
+											copied={copiedKey === key}
+											onCopy={() => copyValue(key, value)}
+										/>
+									);
+								})}
+								{oidcConfig.scopes_supported?.length ? (
+									<div className="grid gap-1.5">
+										<div className="text-xs font-medium text-muted-foreground">
+											Supported scopes
+										</div>
+										<div className="flex flex-wrap gap-1">
+											{oidcConfig.scopes_supported.map((scope) => (
+												<ScopeChip key={scope}>{scope}</ScopeChip>
+											))}
+										</div>
+									</div>
+								) : null}
+							</>
+						) : null}
+					</SheetBody>
+					<SheetFooter>
+						<SheetClose asChild>
+							<Button variant="outline" type="button">
+								Close
+							</Button>
+						</SheetClose>
+						<Button
+							type="button"
+							disabled={!oidcConfig}
+							onClick={() =>
+								oidcConfig &&
+								copyValue("all-json", JSON.stringify(oidcConfig, null, 2))
+							}
+						>
+							{copiedKey === "all-json" ? (
+								<Check className="size-4" />
+							) : (
+								<FileJson className="size-4" />
+							)}
+							{copiedKey === "all-json" ? "Copied JSON" : "Copy all (JSON)"}
+						</Button>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
 
 			<Dialog open={Boolean(revokeTarget)} onOpenChange={(open) => !open && setRevokeTarget(null)}>
 				<DialogContent>
@@ -861,6 +1387,144 @@ export function Applications() {
 	);
 }
 
+export function AuthorizedApplicationRow({
+	application,
+	busy,
+	onRevoke,
+}: {
+	application: AuthorizedApplication;
+	busy: string | null;
+	onRevoke: () => void;
+}) {
+	return (
+		<li className="flex items-start gap-3 px-3.5 py-3">
+			<AppIcon src={application.icon} />
+			<div className="min-w-0 flex-1">
+				<div className="truncate text-sm font-medium">{application.name}</div>
+				<div className="truncate text-xs text-muted-foreground">
+					<span className="font-mono">{application.clientId}</span> · Authorized{" "}
+					{formatDate(application.updatedAt ?? application.authorizedAt)}
+				</div>
+				{application.scopes.length ? (
+					<div className="mt-1.5 flex flex-wrap gap-1">
+						{application.scopes.map((scope) => (
+							<ScopeChip key={scope}>{scope}</ScopeChip>
+						))}
+					</div>
+				) : null}
+			</div>
+			<Button
+				variant="ghost"
+				size="sm"
+				className="shrink-0 text-muted-foreground hover:text-destructive"
+				onClick={onRevoke}
+				disabled={busy === `revoke:${application.consentId}`}
+			>
+				Revoke
+			</Button>
+		</li>
+	);
+}
+
+export function ManagedOAuthClientRow({
+	client,
+	open,
+	copied,
+	onToggleExpanded,
+	onCopyClientID,
+}: {
+	client: OAuthClientSummary;
+	open: boolean;
+	copied: boolean;
+	onToggleExpanded: () => void;
+	onCopyClientID: () => void;
+}) {
+	return (
+		<div className="flex items-center transition-colors hover:bg-muted/40">
+			<button
+				type="button"
+				onClick={onToggleExpanded}
+				aria-expanded={open}
+				aria-controls={`client-${client.clientId}`}
+				className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
+			>
+				<AppIcon src={client.icon} />
+				<div className="min-w-0 flex-1">
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="truncate text-sm font-medium">{client.name}</span>
+						<Badge variant={client.public ? "secondary" : "default"}>
+							{client.public ? "Public" : "Confidential"}
+						</Badge>
+						{client.disabled ? <Badge variant="destructive">Disabled</Badge> : null}
+					</div>
+					<div className="truncate font-mono text-xs text-muted-foreground">
+						{client.clientId}
+					</div>
+				</div>
+				<ChevronDown
+					className={cn(
+						"size-4 shrink-0 text-muted-foreground transition-transform",
+						open && "rotate-180",
+					)}
+				/>
+			</button>
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon-sm"
+				className="mr-3 shrink-0 text-muted-foreground"
+				aria-label="Copy client ID"
+				title="Copy client ID"
+				onClick={onCopyClientID}
+			>
+				{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+			</Button>
+		</div>
+	);
+}
+
+function ClientPictureField({
+	value,
+	busy,
+	onURLChange,
+	onFileChange,
+}: {
+	value: string;
+	busy: boolean;
+	onURLChange: (value: string) => void;
+	onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+	return (
+		<div className="flex items-start gap-3 rounded-lg border bg-background p-3">
+			<AppIcon src={value} />
+			<div className="min-w-0 flex-1 space-y-3">
+				<Field label="Application picture URL" hint="Upload an image or paste an image URL.">
+					<FieldInput
+						type="url"
+						value={value}
+						onChange={(event) => onURLChange(event.target.value)}
+						placeholder="https://app.example.com/icon.png"
+					/>
+				</Field>
+				<Field label="Upload picture" hint="PNG, JPG, GIF, or WebP up to 2 MB.">
+					<FieldInput
+						type="file"
+						accept="image/png,image/jpeg,image/gif,image/webp"
+						disabled={busy}
+						onChange={onFileChange}
+					/>
+				</Field>
+				{busy ? (
+					<p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+						<Upload className="size-3.5 animate-pulse" />
+						Uploading
+					</p>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
 function AppIcon({ src }: { src?: string | null }) {
 	if (src) {
 		return <img src={src} alt="" className="size-9 shrink-0 rounded-lg border object-cover" />;
@@ -877,6 +1541,38 @@ function ScopeChip({ children }: { children: ReactNode }) {
 		<span className="rounded-md border px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground">
 			{children}
 		</span>
+	);
+}
+
+function CopyRow({
+	label,
+	value,
+	copied,
+	onCopy,
+}: {
+	label: string;
+	value: string;
+	copied: boolean;
+	onCopy: () => void;
+}) {
+	return (
+		<div className="min-w-0 space-y-1.5">
+			<div className="text-xs font-medium text-muted-foreground">{label}</div>
+			<div className="flex min-w-0 items-center gap-2">
+				<code className="min-w-0 flex-1 truncate rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs">
+					{value}
+				</code>
+				<Button
+					variant="outline"
+					size="icon"
+					className="shrink-0"
+					aria-label={`Copy ${label}`}
+					onClick={onCopy}
+				>
+					{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+				</Button>
+			</div>
+		</div>
 	);
 }
 

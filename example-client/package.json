@@ -1,11 +1,12 @@
 {
 	"name": "passport-example-client",
 	"private": true,
-	"version": "0.0.0",
+	"version": "0.0.3",
 	"type": "module",
 	"scripts": {
 		"dev": "vite --host 127.0.0.1 --port 5174",
 		"build": "tsc -b && vite build",
+		"test": "vitest run --config vitest.config.ts",
 		"preview": "pnpm run build && vite preview --host 127.0.0.1 --port 5174",
 		"deploy": "pnpm run build && wrangler deploy",
 		"cf-typegen": "wrangler types"
@@ -15,6 +16,7 @@
 		"@fontsource-variable/geist": "^5.2.9",
 		"@tailwindcss/vite": "^4.3.1",
 		"@vitejs/plugin-react": "^6.0.1",
+		"better-auth": "^1.6.18",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"hono": "^4.12.25",
@@ -33,6 +35,7 @@
 	"devDependencies": {
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
-		"typescript": "~6.0.2"
+		"typescript": "~6.0.2",
+		"vitest": "^4.1.8"
 	}
 }

@@ -12,6 +12,20 @@ describe("session display helpers", () => {
 		expect(
 			describeSession({
 				ipAddress: "203.0.113.10",
+				location: {
+					city: "Austin",
+					country: "US",
+					regionCode: "TX",
+				},
+				userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+			}),
+		).toBe("Macintosh from Austin, TX, US");
+	});
+
+	it("falls back to the IP address when location metadata is missing", () => {
+		expect(
+			describeSession({
+				ipAddress: "203.0.113.10",
 				userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
 			}),
 		).toBe("Macintosh from 203.0.113.10");

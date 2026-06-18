@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { BrandMark } from "@/components/auth/brand-mark";
+import { Wordmark } from "@/components/auth/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useBrand } from "@/lib/brand-runtime";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ export function AuthShell({
 	nav,
 }: {
 	children: ReactNode;
-	/** Content well width. `sm` for forms, `lg`/`xl` for the dashboard. */
-	width?: "sm" | "lg" | "xl";
+	/** Content well width. `sm` for forms, `md` for denser forms, `lg`/`xl` for the dashboard. */
+	width?: "sm" | "md" | "lg" | "xl";
 	/** Trailing nav segment, e.g. the current page name. */
 	breadcrumb?: ReactNode;
 	/** Right-aligned controls rendered before the theme toggle. */
@@ -38,18 +38,14 @@ export function AuthShell({
 						!nav && "border-b",
 					)}
 				>
-					<BrandMark />
-					<span className="text-sm font-semibold tracking-tight">{brand.name}</span>
+					<Wordmark className="h-6" />
 					{breadcrumb ? (
 						<>
 							<Slash />
 							<span className="text-sm font-medium">{breadcrumb}</span>
 						</>
 					) : null}
-					<div className="ml-auto flex items-center gap-1">
-						<ThemeToggle />
-						{actions}
-					</div>
+					<div className="ml-auto flex items-center gap-1">{actions}</div>
 				</div>
 				{nav ? (
 					<div className="border-b">
@@ -67,6 +63,7 @@ export function AuthShell({
 						"w-full",
 						width === "xl" && "max-w-4xl",
 						width === "lg" && "max-w-2xl",
+						width === "md" && "max-w-lg",
 						width === "sm" && "max-w-[400px]",
 					)}
 				>
@@ -75,7 +72,7 @@ export function AuthShell({
 			</main>
 
 			<footer className="border-t [view-transition-name:site-footer]">
-				<div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-3 px-4 py-4 font-mono text-xs text-muted-foreground/70 sm:px-6">
+				<div className="relative mx-auto flex w-full max-w-5xl items-center justify-center gap-3 px-4 py-4 font-mono text-xs text-muted-foreground/70 sm:px-6">
 					{brand.capabilities.map((capability, index) => (
 						<span key={capability} className="flex items-center gap-3">
 							{index > 0 ? (
@@ -86,6 +83,9 @@ export function AuthShell({
 							{capability}
 						</span>
 					))}
+					<div className="absolute right-2 top-1/2 -translate-y-1/2 sm:right-4">
+						<ThemeToggle />
+					</div>
 				</div>
 			</footer>
 		</div>

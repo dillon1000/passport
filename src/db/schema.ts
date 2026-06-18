@@ -1,3 +1,8 @@
+/**
+ * Drizzle schema for the Better Auth database plus Passport-owned OAuth and
+ * agent tables. Field names mirror Better Auth adapter expectations; optional
+ * columns are safe extension points for UI metadata such as logos and policies.
+ */
 import { relations } from "drizzle-orm";
 import {
   pgTable,
@@ -8,6 +13,8 @@ import {
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
+
+import type { RequestLocation } from "../lib/request-location";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -43,6 +50,7 @@ export const session = pgTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     ipAddress: text("ip_address"),
+    location: jsonb("location").$type<RequestLocation | null>(),
     userAgent: text("user_agent"),
     userId: text("user_id")
       .notNull()
@@ -132,6 +140,7 @@ export const team = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    logo: text("logo"),
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
@@ -403,6 +412,11 @@ export const oauthClient = pgTable(
     requirePKCE: boolean("require_pkce"),
     referenceId: text("reference_id"),
     metadata: jsonb("metadata"),
+    // OIDC Back-Channel Logout endpoint for this client. When set, Passport
+    // POSTs a signed logout_token here when a user's sessions are force-ended
+    // (e.g. an admin ban). Passport-owned column: Better Auth's client APIs do
+    // not manage it, so the worker persists it with a direct update.
+    backchannelLogoutUri: text("backchannel_logout_uri"),
   },
   (table) => [index("oauthClient_userId_idx").on(table.userId)],
 );
@@ -482,6 +496,166 @@ export const oauthConsent = pgTable(
   ],
 );
 
+export const adminAuditEvent = pgTable(
+  "admin_audit_event",
+  {
+    id: text("id").primaryKey(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    actorUserId: text("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    actorEmail: text("actor_email"),
+    actorRole: text("actor_role"),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id"),
+    targetLabel: text("target_label"),
+    organizationId: text("organization_id").references(() => organization.id, {
+      onDelete: "set null",
+    }),
+    ipAddress: text("ip_address"),
+    location: jsonb("location").$type<RequestLocation | null>(),
+    userAgent: text("user_agent"),
+    metadata: text("metadata"),
+  },
+  (table) => [
+    index("adminAuditEvent_createdAt_idx").on(table.createdAt),
+    index("adminAuditEvent_action_idx").on(table.action),
+    index("adminAuditEvent_targetType_idx").on(table.targetType),
+    index("adminAuditEvent_organizationId_idx").on(table.organizationId),
+  ],
+);
+
+// User-facing account activity log. Append-only security/account events the
+// authenticated user can review on their Security page. Recorded by the auth
+// after-hook independently of email-alert preferences. Distinct from
+// admin_audit_event, which records operator (cross-user) mutations.
+export const accountActivityEvent = pgTable(
+  "account_activity_event",
+  {
+    id: text("id").primaryKey(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    ipAddress: text("ip_address"),
+    location: jsonb("location").$type<RequestLocation | null>(),
+    userAgent: text("user_agent"),
+    metadata: text("metadata"),
+  },
+  (table) => [
+    index("accountActivityEvent_userId_createdAt_idx").on(table.userId, table.createdAt),
+  ],
+);
+
+// Outbound webhook subscriptions. A provider-level endpoint has a null
+// organizationId; org-owned endpoints (future) carry one. `secret` is the
+// symmetric HMAC signing key the worker uses to sign every delivery, so it must
+// be stored retrievably; it is redacted from list responses and shown to the
+// operator only on create/rotate. `events` is the set of subscribed event-type
+// slugs (see lib/webhooks.ts).
+export const webhookEndpoint = pgTable(
+  "webhook_endpoint",
+  {
+    id: text("id").primaryKey(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    createdByUserId: text("created_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    organizationId: text("organization_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    url: text("url").notNull(),
+    secret: text("secret").notNull(),
+    events: jsonb("events").$type<string[]>().notNull(),
+    description: text("description"),
+    disabled: boolean("disabled").default(false).notNull(),
+  },
+  (table) => [index("webhookEndpoint_organizationId_idx").on(table.organizationId)],
+);
+
+// Append-only delivery log. One row per (event, endpoint) attempt set. The
+// delivery Workflow updates status/attempts/responseStatus as it retries.
+export const webhookDelivery = pgTable(
+  "webhook_delivery",
+  {
+    id: text("id").primaryKey(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    endpointId: text("endpoint_id")
+      .notNull()
+      .references(() => webhookEndpoint.id, { onDelete: "cascade" }),
+    eventId: text("event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: text("payload").notNull(),
+    status: text("status").default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    responseStatus: integer("response_status"),
+    error: text("error"),
+    deliveredAt: timestamp("delivered_at"),
+  },
+  (table) => [
+    index("webhookDelivery_endpointId_createdAt_idx").on(
+      table.endpointId,
+      table.createdAt,
+    ),
+    index("webhookDelivery_status_idx").on(table.status),
+  ],
+);
+
+export const emailNotificationPreference = pgTable("email_notification_preference", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  securityAlerts: boolean("security_alerts").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
+
+export const dataExportRequest = pgTable(
+  "data_export_request",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: text("status").default("pending").notNull(),
+    workflowInstanceId: text("workflow_instance_id").unique(),
+    r2Key: text("r2_key"),
+    zipFilename: text("zip_filename"),
+    cancelTokenHash: text("cancel_token_hash"),
+    downloadTokenHash: text("download_token_hash").unique(),
+    requestedAt: timestamp("requested_at").defaultNow().notNull(),
+    cancelableUntil: timestamp("cancelable_until").notNull(),
+    canceledAt: timestamp("canceled_at"),
+    completedAt: timestamp("completed_at"),
+    expiresAt: timestamp("expires_at"),
+    downloadedAt: timestamp("downloaded_at"),
+    errorMessage: text("error_message"),
+    requestIpAddress: text("request_ip_address"),
+    requestLocation: jsonb("request_location").$type<RequestLocation | null>(),
+    requestUserAgent: text("request_user_agent"),
+    requestBrowser: text("request_browser"),
+    requestOperatingSystem: text("request_operating_system"),
+    requestDevice: text("request_device"),
+  },
+  (table) => [
+    index("dataExportRequest_userId_requestedAt_idx").on(table.userId, table.requestedAt),
+    index("dataExportRequest_status_idx").on(table.status),
+  ],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
@@ -498,6 +672,8 @@ export const userRelations = relations(user, ({ many }) => ({
   oauthRefreshTokens: many(oauthRefreshToken),
   oauthAccessTokens: many(oauthAccessToken),
   oauthConsents: many(oauthConsent),
+  adminAuditEvents: many(adminAuditEvent),
+  dataExportRequests: many(dataExportRequest),
 }));
 
 export const sessionRelations = relations(session, ({ one, many }) => ({
@@ -716,6 +892,34 @@ export const oauthConsentRelations = relations(oauthConsent, ({ one }) => ({
   }),
   user: one(user, {
     fields: [oauthConsent.userId],
+    references: [user.id],
+  }),
+}));
+
+export const adminAuditEventRelations = relations(adminAuditEvent, ({ one }) => ({
+  actor: one(user, {
+    fields: [adminAuditEvent.actorUserId],
+    references: [user.id],
+  }),
+  organization: one(organization, {
+    fields: [adminAuditEvent.organizationId],
+    references: [organization.id],
+  }),
+}));
+
+export const emailNotificationPreferenceRelations = relations(
+  emailNotificationPreference,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [emailNotificationPreference.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+export const dataExportRequestRelations = relations(dataExportRequest, ({ one }) => ({
+  user: one(user, {
+    fields: [dataExportRequest.userId],
     references: [user.id],
   }),
 }));

@@ -7,11 +7,9 @@
 export interface Brand {
 	/** Display name, e.g. "Passport". */
 	name: string;
-	/** 2–3 letter mark shown in the logo tile when no logo image is set. */
-	abbreviation: string;
 	/** Short product descriptor shown under the name. */
 	descriptor: string;
-	/** Optional absolute URL to a logo image; falls back to the abbreviation. */
+	/** Optional absolute URL to a wordmark image; overrides the default Passport wordmark. */
 	logoSrc?: string;
 	/** Technical capabilities surfaced in the footer for operators. */
 	capabilities: string[];
@@ -19,7 +17,6 @@ export interface Brand {
 
 export const brand: Brand = {
 	name: "Passport",
-	abbreviation: "PP",
 	descriptor: "Identity provider",
-	capabilities: ["OIDC", "PKCE", "JWKS"],
+	capabilities: ["Log in to your apps."],
 };

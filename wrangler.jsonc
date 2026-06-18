@@ -7,26 +7,57 @@
 	"name": "passport",
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-06-14",
+	"workers_dev": false,
 	"assets": {
 		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
 		"run_worker_first": true
 	},
+	"routes": [
+		{
+			"pattern": "passport.dillon.network",
+			"zone_name": "dillon.network",
+			"custom_domain": true,
+			"enabled": true,
+			"previews_enabled": false
+		}
+	],
 	"vars": {
-		"BETTER_AUTH_URL": "http://localhost:5173",
-		"TRUSTED_ORIGINS": "http://localhost:5173,http://localhost:5174",
-		"EMAIL_FROM": "Passport <noreply@example.com>",
-		"ADMIN_EMAILS": "",
+		"BETTER_AUTH_URL": "https://passport.dillon.network",
+		"TRUSTED_ORIGINS": "https://passport.dillon.network",
+		"EMAIL_FROM": "Passport <passport@mail.11011.dev>",
+		"ADMIN_EMAILS": "dillon@dillonring.com",
 		"BRAND_NAME": "Passport",
 		"BRAND_ABBREVIATION": "PP",
-		"BRAND_DESCRIPTOR": "Identity provider",
-		"BRAND_CAPABILITIES": "OIDC,PKCE,JWKS"
+		"BRAND_DESCRIPTOR": "All together now.",
+		"BRAND_CAPABILITIES": "Copyright 2026 Dillon Ring",
+		"AGENT_AUTH_PROVIDER_DESCRIPTION": "All together now.",
+		"AGENT_AUTH_PROVIDER_NAME": "Passport",
+		"AZURE_COMMUNICATION_SMS_FROM": "+18335472995",
+		"BETTER_AUTH_SECRET": "T2iPJN1PZbzibQdwVdc+6whi2gq5KxMVuvgeIrNKzik=",
+		"CAPTCHA_PROVIDER": "cloudflare-turnstile",
+		"CAPTCHA_SECRET_KEY": "0x4AAAAAADmMGEiwUNagQNejqRwufgPrq6s",
+		"CAPTCHA_SITE_KEY": "0x4AAAAAADmMGKtnZUuAFX1C",
+		"CAPTCHA_SITE_VERIFY_URL": "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+		"DISCORD_CLIENT_ID": "1516628634276855921",
+		"DISCORD_CLIENT_SECRET": "d78cy63Rfhd4yYAWRLGSCqr0eyLYGE6x",
+		"GITHUB_CLIENT_ID": "Ov23li3nAzZlzT5lheYm",
+		"GITHUB_CLIENT_SECRET": "fd746bf8d55bbffd32d169c38ea251aaae025743",
+		"OAUTH_PROXY_PRODUCTION_URL": "https://passport.dillon.network",
+		"OAUTH_PROXY_SECRET": "gOx243L701CP/uKQbz9Tx3d4AfCf8tA0DMZERUxHO4M=",
+		"X_CLIENT_ID": "aGx3clh6Y0pnTkJyS0d3eUhpZDg6MTpjaQ",
+		"X_CLIENT_SECRET": "siyy9IULbI4iNcoZ0GR7KCl-foW7GylWDTiiHIo1LMbxJsfsiV"
 	},
 	"hyperdrive": [
 		{
 			"binding": "HYPERDRIVE",
-			"id": "00000000000000000000000000000000",
-			"localConnectionString": "postgresql://postgres:postgres@localhost:55432/passport"
+			"id": "68caa3634bfa4e7fa760bdb20b88da43"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "AUTH_SECONDARY_STORAGE",
+			"id": "a54907758dfc4a35817fd2063a2e14b8"
 		}
 	],
 	"send_email": [
@@ -39,10 +70,30 @@
 		{
 			"binding": "PROFILE_IMAGES",
 			"bucket_name": "passport-profile-images"
+		},
+		{
+			"binding": "DATA_EXPORTS",
+			"bucket_name": "passport-data-exports"
+		}
+	],
+	"workflows": [
+		{
+			"name": "passport-data-export",
+			"binding": "DATA_EXPORT_WORKFLOW",
+			"class_name": "DataExportWorkflow"
+		},
+		{
+			"name": "passport-webhook-delivery",
+			"binding": "WEBHOOK_DELIVERY_WORKFLOW",
+			"class_name": "WebhookDeliveryWorkflow"
 		}
 	],
 	"observability": {
-		"enabled": true
+		"enabled": true,
+		"traces": {
+			"enabled": true,
+			"head_sampling_rate": 1
+		}
 	},
 	"upload_source_maps": true,
 	"compatibility_flags": [
