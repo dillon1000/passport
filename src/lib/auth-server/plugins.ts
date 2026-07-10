@@ -26,9 +26,11 @@ import type { AuthEnv } from "../../env";
 import { splitCsv } from "../../env";
 import { isE164PhoneNumber, sendPhoneVerificationSMS } from "../../sms";
 import { CAPTCHA_ENDPOINTS } from "../captcha-endpoints";
+import { organizationAccessControl, organizationRoles } from "../organization-access";
 import { accountSecurityEmailPlugin } from "./hooks";
-import { oauthProviderPlugin } from "./oauth";
+import { oauthProviderPlugin, oauthResourceAuthorizationPlugin } from "./oauth";
 import { optionalEnv, parseOptionalNumber } from "./env";
+import { buildStripePlugins } from "./stripe";
 import type { AuthDatabase } from "./types";
 
 export const MULTI_SESSION_MAXIMUM_SESSIONS = 5;
@@ -187,6 +189,8 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 				: {}),
 		}),
 		organization({
+			ac: organizationAccessControl,
+			roles: organizationRoles,
 			allowUserToCreateOrganization: true,
 			organizationLimit: 10,
 			membershipLimit: 100,
@@ -227,6 +231,7 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 				);
 			},
 		}),
+		...buildStripePlugins(env, db),
 		twoFactor({
 			issuer: "Passport",
 			allowPasswordless: true,
@@ -300,6 +305,7 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 				await sendPhoneVerificationSMS(env, phoneNumber, code);
 			},
 		}),
+		oauthResourceAuthorizationPlugin(env, db),
 		oauthProviderPlugin(env, db),
 		accountSecurityEmailPlugin(env, db),
 	];

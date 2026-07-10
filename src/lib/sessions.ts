@@ -79,6 +79,7 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 export function relativeTime(value?: string | Date | null) {
 	if (!value) return "unknown";
 	const diff = new Date(value).getTime() - Date.now();
+	if (!Number.isFinite(diff)) return "unknown";
 	const abs = Math.abs(diff);
 	const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 	for (const [unit, ms] of RELATIVE_UNITS) {

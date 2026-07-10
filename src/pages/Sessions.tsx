@@ -4,7 +4,8 @@
  * rows show active/revocation state and local browser/platform marks from
  * `public/icons` when the user agent is known.
  */
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import {
 	LogIn,
 	LogOut,
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRequestLocation, type RequestLocation } from "@/lib/request-location";
+import { queryKeys } from "@/lib/query-client";
 import {
 	isCurrentSession,
 	parseUserAgent,
@@ -105,46 +107,56 @@ type ListedDeviceSession = {
 
 type ConfirmAction = "revoke-other" | "revoke-all" | null;
 
+type SessionsPayload = {
+	sessions: ListedSession[];
+	deviceSessions: ListedDeviceSession[];
+};
+
+async function fetchSessionsPayload(): Promise<SessionsPayload> {
+	const [sessionResult, deviceSessionResult] = await Promise.all([
+		authClient.listSessions(),
+		authClient.multiSession.listDeviceSessions(),
+	]);
+	const errors: string[] = [];
+	if (sessionResult.error) {
+		errors.push(sessionResult.error.message ?? "Could not load sessions.");
+	}
+	if (deviceSessionResult.error) {
+		errors.push(deviceSessionResult.error.message ?? "Could not load signed-in accounts.");
+	}
+	if (errors.length) throw new Error(errors.join(" "));
+	return {
+		sessions: (sessionResult.data ?? []) as ListedSession[],
+		deviceSessions: (deviceSessionResult.data ?? []) as ListedDeviceSession[],
+	};
+}
+
 export function Sessions() {
 	const { data: session } = useRequireSession();
-	const [sessions, setSessions] = useState<ListedSession[]>([]);
-	const [deviceSessions, setDeviceSessions] = useState<ListedDeviceSession[]>([]);
-	const [loaded, setLoaded] = useState(false);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
 	const user = session?.user;
 	const currentToken = session?.session.token;
+	const sessionsQuery = useQuery({
+		queryKey: queryKeys.sessions(user?.id),
+		queryFn: fetchSessionsPayload,
+		enabled: Boolean(user),
+	});
+	const sessions = sessionsQuery.data?.sessions ?? [];
+	const deviceSessions = sessionsQuery.data?.deviceSessions ?? [];
+	const loaded = sessionsQuery.isFetched;
+	const loadingSessions = sessionsQuery.isFetching;
+	const queryStatus =
+		status ??
+		(sessionsQuery.error instanceof Error
+			? { tone: "error" as const, message: sessionsQuery.error.message }
+			: null);
 
-	async function loadSessions() {
+	function loadSessions() {
 		setStatus(null);
-		setBusy(true);
-		const [sessionResult, deviceSessionResult] = await Promise.all([
-			authClient.listSessions(),
-			authClient.multiSession.listDeviceSessions(),
-		]);
-		setBusy(false);
-		setLoaded(true);
-		const errors: string[] = [];
-		if (sessionResult.error) {
-			errors.push(sessionResult.error.message ?? "Could not load sessions.");
-		} else {
-			setSessions((sessionResult.data ?? []) as ListedSession[]);
-		}
-		if (deviceSessionResult.error) {
-			errors.push(deviceSessionResult.error.message ?? "Could not load signed-in accounts.");
-		} else {
-			setDeviceSessions((deviceSessionResult.data ?? []) as ListedDeviceSession[]);
-		}
-		if (errors.length) setStatus({ tone: "error", message: errors.join(" ") });
+		void sessionsQuery.refetch();
 	}
-
-	useEffect(() => {
-		if (!user) return;
-		// eslint-disable-next-line react-hooks/set-state-in-effect
-		void loadSessions();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [user?.id]);
 
 	async function revokeSession(token: string) {
 		setStatus(null);
@@ -156,7 +168,7 @@ export function Sessions() {
 			return;
 		}
 		setStatus({ tone: "success", message: "Session revoked." });
-		void loadSessions();
+		void sessionsQuery.refetch();
 	}
 
 	async function setActiveDeviceSession(sessionToken: string) {
@@ -187,7 +199,7 @@ export function Sessions() {
 			return;
 		}
 		setStatus({ tone: "success", message: "Account session revoked." });
-		void loadSessions();
+		void sessionsQuery.refetch();
 	}
 
 	async function revokeOtherSessions() {
@@ -204,7 +216,7 @@ export function Sessions() {
 			return;
 		}
 		setStatus({ tone: "success", message: "Signed out of all other devices." });
-		void loadSessions();
+		void sessionsQuery.refetch();
 	}
 
 	async function revokeAllSessions() {
@@ -264,7 +276,7 @@ export function Sessions() {
 			description="Devices and browsers currently signed in to your Passport account."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			<section id="accounts" className="scroll-mt-32">
 				<SettingsCard
@@ -272,17 +284,26 @@ export function Sessions() {
 					description="Accounts available in this browser. Switch accounts without signing out elsewhere."
 					footer={
 						<SettingsCardFooter
-							hint={
-								loaded
-									? `${otherAccountCount} other account${otherAccountCount === 1 ? "" : "s"} in this browser.`
-									: "Loading accounts…"
-							}
-						>
+								hint={
+									loaded
+										? `${otherAccountCount} other account${otherAccountCount === 1 ? "" : "s"} in this browser.`
+										: <Skeleton className="h-3 w-32" />
+								}
+							>
 							<div className="flex flex-wrap justify-end gap-2">
-								<Button variant="outline" size="sm" onClick={loadSessions} disabled={busy}>
-									<RefreshCw className={cn("size-4", busy && "animate-spin")} />
-									Refresh
-								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+										onClick={loadSessions}
+										disabled={busy || loadingSessions}
+									>
+										{busy || loadingSessions ? (
+											<Skeleton className="size-4 rounded-full" />
+										) : (
+											<RefreshCw className="size-4" />
+										)}
+										Refresh
+									</Button>
 								<Button asChild size="sm">
 									<a href={resolveAddAccountURL()}>
 										<Plus className="size-4" />
@@ -324,16 +345,25 @@ export function Sessions() {
 					description="Each device that has signed in. Revoke any you don't recognize."
 					footer={
 						<SettingsCardFooter
-							hint={
-								loaded
-									? `${ordered.length} active session${ordered.length === 1 ? "" : "s"}.`
-									: "Loading sessions…"
-							}
-						>
-							<Button variant="outline" size="sm" onClick={loadSessions} disabled={busy}>
-								<RefreshCw className={cn("size-4", busy && "animate-spin")} />
-								Refresh
-							</Button>
+								hint={
+									loaded
+										? `${ordered.length} active session${ordered.length === 1 ? "" : "s"}.`
+										: <Skeleton className="h-3 w-28" />
+								}
+							>
+							<Button
+								variant="outline"
+								size="sm"
+									onClick={loadSessions}
+									disabled={busy || loadingSessions}
+								>
+									{busy || loadingSessions ? (
+										<Skeleton className="size-4 rounded-full" />
+									) : (
+										<RefreshCw className="size-4" />
+									)}
+									Refresh
+								</Button>
 						</SettingsCardFooter>
 					}
 				>
@@ -449,7 +479,7 @@ export function DeviceSessionRow({
 						<img
 							src={deviceSession.user.image}
 							alt=""
-							className="size-full object-cover"
+							className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
 							referrerPolicy="no-referrer"
 						/>
 					) : (
@@ -461,7 +491,7 @@ export function DeviceSessionRow({
 						<span className="truncate text-sm font-medium">{deviceSession.user.name}</span>
 						{current ? (
 							<span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium">
-								<span className="size-1.5 rounded-full bg-emerald-500" />
+								<span className="size-1.5 rounded-full bg-success" />
 								Current account
 							</span>
 						) : null}
@@ -524,7 +554,7 @@ function SessionRow({
 					<span className="truncate text-sm font-medium">{label}</span>
 					{current ? (
 						<span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium">
-							<span className="size-1.5 rounded-full bg-emerald-500" />
+							<span className="size-1.5 rounded-full bg-success" />
 							This device
 						</span>
 					) : null}

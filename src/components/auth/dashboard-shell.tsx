@@ -60,8 +60,8 @@ export function DashboardShell({
 			>
 				<div className="space-y-8">
 					<div>
-						<h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-						<p className="mt-1 text-sm text-muted-foreground">{description}</p>
+						<h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
+						<p className="mt-1 text-sm text-pretty text-muted-foreground">{description}</p>
 					</div>
 
 					{sections ? (

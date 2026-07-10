@@ -12,6 +12,15 @@ type AgentAuthActionResult<T = unknown> = Promise<{
 
 export type AgentApprovalAction = "approve" | "deny";
 
+export type AgentApprovalInput = {
+	agentId?: string;
+	approvalId?: string;
+	userCode?: string;
+	action: AgentApprovalAction;
+	capabilities?: string[];
+	reason?: string;
+};
+
 export type PendingAgentApproval = {
 	approval_id: string;
 	method: "device_authorization" | "ciba";
@@ -61,6 +70,26 @@ export function parseCapabilityList(value: string) {
 		.filter(Boolean);
 }
 
+function optionalTrimmed(value?: string) {
+	const trimmed = value?.trim();
+	return trimmed || undefined;
+}
+
+export function normalizeAgentApprovalInput(input: AgentApprovalInput): AgentApprovalInput {
+	const capabilities = input.capabilities
+		?.map((capability) => capability.trim())
+		.filter(Boolean);
+
+	return {
+		agentId: optionalTrimmed(input.agentId),
+		approvalId: optionalTrimmed(input.approvalId),
+		userCode: optionalTrimmed(input.userCode),
+		action: input.action,
+		capabilities: capabilities?.length ? capabilities : undefined,
+		reason: optionalTrimmed(input.reason),
+	};
+}
+
 export function canRevokeAgentStatus(status: string) {
 	return ["active", "pending"].includes(status.toLowerCase());
 }
@@ -73,21 +102,15 @@ export function canRevokeGrantStatus(status: string) {
 	return ["active", "granted", "pending"].includes(status.toLowerCase());
 }
 
-export async function approveAgentCapability(input: {
-	agentId?: string;
-	approvalId?: string;
-	userCode?: string;
-	action: AgentApprovalAction;
-	capabilities?: string[];
-	reason?: string;
-}) {
+export async function approveAgentCapability(input: AgentApprovalInput) {
+	const normalized = normalizeAgentApprovalInput(input);
 	return agentAuthClient().agent.approveCapability({
-		agent_id: input.agentId || undefined,
-		approval_id: input.approvalId || undefined,
-		user_code: input.userCode || undefined,
-		action: input.action,
-		capabilities: input.capabilities?.length ? input.capabilities : undefined,
-		reason: input.reason || undefined,
+		agent_id: normalized.agentId,
+		approval_id: normalized.approvalId,
+		user_code: normalized.userCode,
+		action: normalized.action,
+		capabilities: normalized.capabilities,
+		reason: normalized.reason,
 	});
 }
 

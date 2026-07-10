@@ -1,10 +1,15 @@
-import { useEffect, useId, useState } from "react";
+/**
+ * Account settings page. Inputs are the signed-in session, notification
+ * preferences, data-export summaries, legal copy, and local flair settings;
+ * outputs are account preference updates and legal/data-export workflows.
+ */
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useId, useState } from "react";
 import {
 	Bell,
 	ChevronDown,
 	Download,
 	FileText,
-	RefreshCw,
 	Scale,
 	ShieldCheck,
 	XCircle,
@@ -17,6 +22,7 @@ import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-car
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FLAIR_STATIC_OPTIONS, useFlairMode, type FlairMode } from "@/lib/flair";
 import {
 	Sheet,
@@ -36,6 +42,7 @@ import {
 	DEFAULT_EMAIL_NOTIFICATION_PREFERENCES,
 	type EmailNotificationPreferences,
 } from "@/lib/notification-preferences";
+import { fetchAPIJSON, queryKeys, readAPIJSON } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -55,106 +62,123 @@ type SettingsUser = {
 
 type LegalDrawer = "privacy" | "terms" | null;
 
+type SettingsPayload = {
+	request: DataExportRequestSummary | null;
+	preferences: EmailNotificationPreferences;
+};
+
+async function fetchSettingsPayload(): Promise<SettingsPayload> {
+	const [exportPayload, preferencePayload] = await Promise.all([
+		fetchAPIJSON<{ request: DataExportRequestSummary | null }>(
+			"/api/data-export-requests/current",
+		),
+		fetchAPIJSON<{ preferences: EmailNotificationPreferences }>(
+			"/api/settings/notifications",
+		),
+	]);
+	return {
+		request: exportPayload.request,
+		preferences: preferencePayload.preferences,
+	};
+}
+
 export function Settings() {
 	const { data: session } = useRequireSession();
+	const queryClient = useQueryClient();
 	const [status, setStatus] = useState<Status | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
-	const [dataRequest, setDataRequest] = useState<DataExportRequestSummary | null>(null);
-	const [preferences, setPreferences] = useState<EmailNotificationPreferences>(
-		DEFAULT_EMAIL_NOTIFICATION_PREFERENCES,
-	);
+	const [preferenceDraft, setPreferenceDraft] = useState<EmailNotificationPreferences | null>(null);
 	const [drawer, setDrawer] = useState<LegalDrawer>(null);
 	const user = session?.user as SettingsUser | undefined;
+	const settingsQuery = useQuery({
+		queryKey: queryKeys.settings(user?.email),
+		queryFn: fetchSettingsPayload,
+		enabled: Boolean(user),
+	});
+	const dataRequest = settingsQuery.data?.request ?? null;
+	const preferences =
+		preferenceDraft ?? settingsQuery.data?.preferences ?? DEFAULT_EMAIL_NOTIFICATION_PREFERENCES;
 	const exportCancelable = dataRequest?.status === "pending";
 	const exportRunning = dataRequest?.status === "pending" || dataRequest?.status === "processing";
+	const queryStatus =
+		status ??
+		(settingsQuery.error instanceof Error
+			? { tone: "error" as const, message: settingsQuery.error.message }
+			: null);
 
-	async function loadSettings() {
-		setBusy("load");
-		const [exportResponse, preferenceResponse] = await Promise.all([
-			fetch("/api/data-export-requests/current"),
-			fetch("/api/settings/notifications"),
-		]);
-		setBusy(null);
-		if (!exportResponse.ok || !preferenceResponse.ok) {
-			setStatus({ tone: "error", message: "Could not load settings." });
-			return;
-		}
-		const exportPayload = (await exportResponse.json()) as {
-			request: DataExportRequestSummary | null;
-		};
-		const preferencePayload = (await preferenceResponse.json()) as {
-			preferences: EmailNotificationPreferences;
-		};
-		setDataRequest(exportPayload.request);
-		setPreferences(preferencePayload.preferences);
+	function updateSettingsCache(patch: Partial<SettingsPayload>) {
+		queryClient.setQueryData<SettingsPayload>(queryKeys.settings(user?.email), (current) => ({
+			request: current?.request ?? null,
+			preferences: current?.preferences ?? DEFAULT_EMAIL_NOTIFICATION_PREFERENCES,
+			...patch,
+		}));
 	}
-
-	useEffect(() => {
-		if (!user) return;
-		queueMicrotask(() => {
-			void loadSettings();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [user?.email]);
 
 	async function requestExport() {
 		setStatus(null);
 		setBusy("request");
-		const response = await fetch("/api/data-export-requests", { method: "POST" });
-		const payload = (await response.json().catch(() => null)) as {
-			request?: DataExportRequestSummary;
-			error?: string;
-		} | null;
-		setBusy(null);
-		if (!response.ok || !payload?.request) {
-			setStatus({ tone: "error", message: payload?.error ?? "Could not request data export." });
-			return;
+		try {
+			const payload = await readAPIJSON<{ request: DataExportRequestSummary }>(
+				await fetch("/api/data-export-requests", { method: "POST" }),
+			);
+			updateSettingsCache({ request: payload.request });
+			setStatus({ tone: "success", message: "Data export requested. Check your email." });
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not request data export.",
+			});
+		} finally {
+			setBusy(null);
 		}
-		setDataRequest(payload.request);
-		setStatus({ tone: "success", message: "Data export requested. Check your email." });
 	}
 
 	async function cancelExport() {
 		if (!dataRequest) return;
 		setStatus(null);
 		setBusy("cancel");
-		const response = await fetch(`/api/data-export-requests/${dataRequest.id}/cancel`, {
-			method: "POST",
-		});
-		const payload = (await response.json().catch(() => null)) as {
-			request?: DataExportRequestSummary;
-			error?: string;
-		} | null;
-		setBusy(null);
-		if (!response.ok || !payload?.request) {
-			setStatus({ tone: "error", message: payload?.error ?? "Could not cancel data export." });
-			return;
+		try {
+			const payload = await readAPIJSON<{ request: DataExportRequestSummary }>(
+				await fetch(`/api/data-export-requests/${dataRequest.id}/cancel`, {
+					method: "POST",
+				}),
+			);
+			updateSettingsCache({ request: payload.request });
+			setStatus({ tone: "success", message: "Data export canceled." });
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not cancel data export.",
+			});
+		} finally {
+			setBusy(null);
 		}
-		setDataRequest(payload.request);
-		setStatus({ tone: "success", message: "Data export canceled." });
 	}
 
 	async function saveNotifications() {
 		setStatus(null);
 		setBusy("notifications");
-		const response = await fetch("/api/settings/notifications", {
-			method: "PATCH",
-			headers: {
-				"content-type": "application/json",
-			},
-			body: JSON.stringify(preferences),
-		});
-		const payload = (await response.json().catch(() => null)) as {
-			preferences?: EmailNotificationPreferences;
-			error?: string;
-		} | null;
-		setBusy(null);
-		if (!response.ok || !payload?.preferences) {
-			setStatus({ tone: "error", message: payload?.error ?? "Could not save notifications." });
-			return;
+		try {
+			const payload = await readAPIJSON<{ preferences: EmailNotificationPreferences }>(
+				await fetch("/api/settings/notifications", {
+					method: "PATCH",
+					headers: {
+						"content-type": "application/json",
+					},
+					body: JSON.stringify(preferences),
+				}),
+			);
+			setPreferenceDraft(payload.preferences);
+			updateSettingsCache({ preferences: payload.preferences });
+			setStatus({ tone: "success", message: "Notification settings saved." });
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not save notifications.",
+			});
+		} finally {
+			setBusy(null);
 		}
-		setPreferences(payload.preferences);
-		setStatus({ tone: "success", message: "Notification settings saved." });
 	}
 
 	return (
@@ -164,7 +188,7 @@ export function Settings() {
 			description="Manage privacy exports, email notifications, and legal documents."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			<section id="appearance" className="scroll-mt-32">
 				<SettingsCard
@@ -208,7 +232,7 @@ export function Settings() {
 						</SettingsCardFooter>
 					}
 				>
-					<DataExportSummary request={dataRequest} loading={busy === "load"} />
+					<DataExportSummary request={dataRequest} loading={settingsQuery.isLoading} />
 				</SettingsCard>
 			</section>
 
@@ -233,7 +257,10 @@ export function Settings() {
 					<CheckboxField
 						checked={preferences.securityAlerts}
 						onCheckedChange={(checked) =>
-							setPreferences((current) => ({ ...current, securityAlerts: checked }))
+							setPreferenceDraft((current) => ({
+								...(current ?? preferences),
+								securityAlerts: checked,
+							}))
 						}
 						label="Security alerts"
 						hint="New device sign-ins and changes to email, password, social accounts, phone, passkeys, or 2FA."
@@ -295,9 +322,12 @@ function DataExportSummary({
 }) {
 	if (loading) {
 		return (
-			<div className="flex items-center gap-2 rounded-lg border px-3 py-3 text-sm text-muted-foreground">
-				<RefreshCw className="size-4 animate-spin" />
-				Loading export status...
+			<div className="flex items-center gap-3 rounded-lg border px-3 py-3">
+				<Skeleton className="size-4 rounded-full" />
+				<div className="min-w-0 flex-1 space-y-1.5">
+					<Skeleton className="h-3.5 w-36" />
+					<Skeleton className="h-3 w-52 max-w-full" />
+				</div>
 			</div>
 		);
 	}
@@ -327,7 +357,7 @@ function SummaryValue({ label, value }: { label: string; value: string }) {
 	return (
 		<div className="min-w-0">
 			<div className="text-xs text-muted-foreground">{label}</div>
-			<div className="truncate text-sm font-medium capitalize">{value}</div>
+			<div className="truncate text-sm font-medium tabular-nums capitalize">{value}</div>
 		</div>
 	);
 }
@@ -395,7 +425,7 @@ function LegalButton({
 		<button
 			type="button"
 			onClick={onClick}
-			className="flex items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+			className="flex items-start gap-3 rounded-lg border px-3 py-3 text-left shadow-sm shadow-black/[0.04] transition-[scale,background-color,box-shadow] duration-150 ease-out hover:bg-muted/50 hover:shadow-black/[0.06] active:scale-[0.96] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
 		>
 			<Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
 			<span className="min-w-0">

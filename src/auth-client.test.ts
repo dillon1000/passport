@@ -8,4 +8,12 @@ describe("authClient", () => {
 		expect(authClient.multiSession.setActive).toBeTypeOf("function");
 		expect(authClient.multiSession.revoke).toBeTypeOf("function");
 	});
+
+	it("exposes Better Auth Stripe subscription client methods", () => {
+		expect(authClient.subscription.upgrade).toBeTypeOf("function");
+		expect(authClient.subscription.list).toBeTypeOf("function");
+		expect(authClient.subscription.cancel).toBeTypeOf("function");
+		expect(authClient.subscription.restore).toBeTypeOf("function");
+		expect(authClient.subscription.billingPortal).toBeTypeOf("function");
+	});
 });

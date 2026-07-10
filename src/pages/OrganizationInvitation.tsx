@@ -20,6 +20,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type InvitationAction = "accept" | "reject";
 
@@ -80,15 +81,18 @@ export function OrganizationInvitation() {
 							<p className="text-sm text-muted-foreground">
 								This invitation link is missing an invitation id.
 							</p>
-						) : declined ? (
-							<p className="text-sm text-muted-foreground">
-								The invitation was declined. You can return to your account.
-							</p>
-						) : session.isPending ? (
-							<p className="text-sm text-muted-foreground">Checking your session...</p>
-						) : !session.data ? (
-							<p className="text-sm text-muted-foreground">
-								Sign in with the invited email address before accepting this invitation.
+							) : declined ? (
+								<p className="text-sm text-muted-foreground">
+									The invitation was declined. You can return to your account.
+								</p>
+							) : session.isPending ? (
+								<div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+									<Skeleton className="h-3.5 w-32" />
+									<Skeleton className="mt-2 h-3 w-48 max-w-full" />
+								</div>
+							) : !session.data ? (
+								<p className="text-sm text-muted-foreground">
+									Sign in with the invited email address before accepting this invitation.
 							</p>
 						) : (
 							<div className="rounded-lg border bg-muted/30 px-3 py-2.5">

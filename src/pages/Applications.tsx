@@ -3,7 +3,8 @@
  * admin-managed OAuth clients when the session has access. The page consumes
  * paginated Worker APIs and keeps client edit drafts local until an admin saves.
  */
-import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
 	AppWindow,
 	ArrowRight,
@@ -19,12 +20,12 @@ import {
 	RefreshCw,
 	RotateCcw,
 	Save,
-	Upload,
 } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { CheckboxField, Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { type Section } from "@/components/auth/section-nav";
+import { Segmented, type SegmentedOption } from "@/components/auth/segmented";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
@@ -51,9 +52,11 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { uploadImageAsset } from "@/lib/image-upload";
 import { hasAdminRole } from "@/lib/admin-access";
+import { copyTextToClipboard } from "@/lib/clipboard";
+import { uploadImageAsset } from "@/lib/image-upload";
 import { defaultClientScopeString, supportedScopeString } from "@/lib/oauth-scopes";
+import { fetchAPIJSON, queryKeys, readAPIJSON } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +70,11 @@ const SECTIONS: Section[] = [
 const PAGE_LIMIT = 25;
 const DEFAULT_CLIENT_SCOPE_STRING = defaultClientScopeString();
 const SUPPORTED_SCOPE_HINT = `Supported: ${supportedScopeString()}`;
+type ClientType = "browser" | "m2m";
+const CLIENT_TYPE_OPTIONS: SegmentedOption<ClientType>[] = [
+	{ value: "browser", label: "Browser app", icon: AppWindow },
+	{ value: "m2m", label: "M2M", icon: Network },
+];
 
 type AuthorizedApplication = {
 	consentId: string;
@@ -94,14 +102,18 @@ type OAuthClientSummary = {
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
+	grantTypes?: ("authorization_code" | "client_credentials" | "refresh_token")[];
+	allowedAudiences?: string[];
 	clientSecret?: string;
 };
 
 type ClientDraft = {
+	clientType: ClientType;
 	name: string;
 	redirectUris: string;
 	postLogoutRedirectUris: string;
 	scopes: string;
+	allowedAudiences: string;
 	uri: string;
 	icon: string;
 	tos: string;
@@ -124,6 +136,17 @@ type OAuthProxyStatus = {
 type PagePayload = {
 	limit: number;
 	nextCursor?: string;
+};
+
+type ApplicationsPagePayload = {
+	applications: AuthorizedApplication[];
+	page?: PagePayload;
+};
+
+type OAuthClientsPagePayload = {
+	clients: OAuthClientSummary[];
+	page?: PagePayload;
+	adminAvailable: boolean;
 };
 
 type CreateClientStep = "details" | "policies";
@@ -194,12 +217,24 @@ function scopeList(value: string) {
 		.filter(Boolean);
 }
 
+function clientTypeFromGrantTypes(grantTypes?: readonly string[]): ClientType {
+	return grantTypes?.includes("client_credentials") ? "m2m" : "browser";
+}
+
+function grantTypesForClientType(clientType: ClientType) {
+	return clientType === "m2m"
+		? ["client_credentials"]
+		: ["authorization_code", "refresh_token"];
+}
+
 function clientDraft(client?: OAuthClientSummary): ClientDraft {
 	return {
+		clientType: clientTypeFromGrantTypes(client?.grantTypes),
 		name: client?.name ?? "",
 		redirectUris: client?.redirectUris.join("\n") ?? "",
 		postLogoutRedirectUris: client?.postLogoutRedirectUris?.join("\n") ?? "",
 		scopes: client?.scopes?.join(" ") ?? DEFAULT_CLIENT_SCOPE_STRING,
+		allowedAudiences: client?.allowedAudiences?.join("\n") ?? "",
 		uri: client?.uri ?? "",
 		icon: client?.icon ?? "",
 		tos: client?.tos ?? "",
@@ -210,18 +245,39 @@ function clientDraft(client?: OAuthClientSummary): ClientDraft {
 	};
 }
 
-function clientDraftMap(clients: OAuthClientSummary[]) {
-	return Object.fromEntries(
-		clients.map((client) => [client.clientId, clientDraft(client)]),
-	) as Record<string, ClientDraft>;
-}
-
 function pageURL(pathname: string, cursor: string | null) {
 	const params = new URLSearchParams({ limit: String(PAGE_LIMIT) });
 	if (cursor) {
 		params.set("cursor", cursor);
 	}
 	return `${pathname}?${params.toString()}`;
+}
+
+async function fetchApplicationsPage(cursor: string | null): Promise<ApplicationsPagePayload> {
+	return fetchAPIJSON<ApplicationsPagePayload>(pageURL("/api/applications", cursor));
+}
+
+async function fetchOAuthClientsPage(cursor: string | null): Promise<OAuthClientsPagePayload> {
+	const response = await fetch(pageURL("/api/admin/oauth-clients", cursor));
+	if (response.status === 403 || response.status === 401) {
+		return { clients: [], adminAvailable: false };
+	}
+	const payload = await readAPIJSON<Omit<OAuthClientsPagePayload, "adminAvailable">>(response);
+	return { ...payload, adminAvailable: true };
+}
+
+async function fetchOAuthProxyStatus() {
+	const response = await fetch("/api/admin/oauth-proxy");
+	if (response.status === 403 || response.status === 401) return null;
+	if (!response.ok) return null;
+	const payload = (await response.json()) as { oauthProxy: OAuthProxyStatus };
+	return payload.oauthProxy;
+}
+
+async function fetchOIDCConfiguration() {
+	return fetchAPIJSON<OIDCConfiguration>(OIDC_DISCOVERY_PATH, {
+		headers: { accept: "application/json" },
+	});
 }
 
 function formatDate(value?: string | null) {
@@ -231,17 +287,9 @@ function formatDate(value?: string | null) {
 
 export function Applications() {
 	const { data: session } = useRequireSession();
-	const [applications, setApplications] = useState<AuthorizedApplication[]>([]);
-	const [clients, setClients] = useState<OAuthClientSummary[]>([]);
-	const [applicationNextCursor, setApplicationNextCursor] = useState<string | null>(null);
-	const [clientNextCursor, setClientNextCursor] = useState<string | null>(null);
 	const [clientDrafts, setClientDrafts] = useState<Record<string, ClientDraft>>({});
 	const [newClient, setNewClient] = useState<ClientDraft>(() => clientDraft());
 	const [newClientPublic, setNewClientPublic] = useState(false);
-	const [loaded, setLoaded] = useState(false);
-	const [adminAvailable, setAdminAvailable] = useState(false);
-	const [oauthProxyLoaded, setOAuthProxyLoaded] = useState(false);
-	const [oauthProxy, setOAuthProxy] = useState<OAuthProxyStatus | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [revokeTarget, setRevokeTarget] = useState<AuthorizedApplication | null>(null);
@@ -252,137 +300,97 @@ export function Applications() {
 	const [createClientStep, setCreateClientStep] = useState<CreateClientStep>("details");
 	const [oauthProxySheetOpen, setOAuthProxySheetOpen] = useState(false);
 	const [oidcSheetOpen, setOIDCSheetOpen] = useState(false);
-	const [oidcConfig, setOIDCConfig] = useState<OIDCConfiguration | null>(null);
-	const [oidcError, setOIDCError] = useState<string | null>(null);
 	const [copiedKey, setCopiedKey] = useState<string | null>(null);
+	const applicationsQuery = useInfiniteQuery({
+		queryKey: queryKeys.applications(),
+		queryFn: ({ pageParam }) => fetchApplicationsPage(pageParam as string | null),
+		initialPageParam: null as string | null,
+		getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
+		enabled: Boolean(session?.user),
+	});
+	const clientsQuery = useInfiniteQuery({
+		queryKey: queryKeys.managedOAuthClients(),
+		queryFn: ({ pageParam }) => fetchOAuthClientsPage(pageParam as string | null),
+		initialPageParam: null as string | null,
+		getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
+		enabled: Boolean(session?.user),
+	});
+	const oauthProxyQuery = useQuery({
+		queryKey: queryKeys.oauthProxy(),
+		queryFn: fetchOAuthProxyStatus,
+		enabled: Boolean(session?.user),
+	});
+	const oidcConfigQuery = useQuery({
+		queryKey: queryKeys.oidcConfiguration(),
+		queryFn: fetchOIDCConfiguration,
+		enabled: oidcSheetOpen,
+	});
+	const applications = applicationsQuery.data?.pages.flatMap((page) => page.applications) ?? [];
+	const clients = clientsQuery.data?.pages.flatMap((page) => page.clients) ?? [];
+	const loaded = applicationsQuery.isFetched;
+	const adminAvailable = clientsQuery.data?.pages.some((page) => page.adminAvailable) ?? false;
+	const oauthProxyLoaded = oauthProxyQuery.isFetched;
+	const oauthProxy = oauthProxyQuery.data ?? null;
+	const oidcConfig = oidcConfigQuery.data ?? null;
+	const oidcError =
+		oidcConfigQuery.error instanceof Error ? oidcConfigQuery.error.message : null;
+	const applicationNextCursor = applicationsQuery.hasNextPage
+		? applicationsQuery.data?.pages.at(-1)?.page?.nextCursor ?? null
+		: null;
+	const clientNextCursor = clientsQuery.hasNextPage
+		? clientsQuery.data?.pages.at(-1)?.page?.nextCursor ?? null
+		: null;
+	const queryStatus =
+		status ??
+		(applicationsQuery.error instanceof Error
+			? { tone: "error" as const, message: applicationsQuery.error.message }
+			: clientsQuery.error instanceof Error
+				? { tone: "error" as const, message: clientsQuery.error.message }
+				: null);
+	const applicationsRefreshing =
+		applicationsQuery.isFetching && !applicationsQuery.isFetchingNextPage;
+	const clientsAppending = clientsQuery.isFetchingNextPage;
+	const oidcLoading = oidcConfigQuery.isFetching;
 
 	async function loadApplications(options: { append?: boolean } = {}) {
-		const append = Boolean(options.append);
-		const cursor = append ? applicationNextCursor : null;
-		if (append && !cursor) return;
-
 		setStatus(null);
-		setBusy(append ? "applications-more" : "applications");
-		const response = await fetch(pageURL("/api/applications", cursor));
-		setBusy(null);
-		setLoaded(true);
-		if (!response.ok) {
-			const payload = (await response.json()) as { error?: string };
-			if (!append) {
-				setApplicationNextCursor(null);
-			}
-			setStatus({ tone: "error", message: payload.error ?? "Could not load applications." });
+		if (options.append) {
+			await applicationsQuery.fetchNextPage();
 			return;
 		}
-		const payload = (await response.json()) as {
-			applications: AuthorizedApplication[];
-			page?: PagePayload;
-		};
-		setApplications((current) =>
-			append ? [...current, ...payload.applications] : payload.applications,
-		);
-		setApplicationNextCursor(payload.page?.nextCursor ?? null);
+		await applicationsQuery.refetch();
 	}
 
 	async function loadClients(options: { append?: boolean } = {}) {
-		const append = Boolean(options.append);
-		const cursor = append ? clientNextCursor : null;
-		if (append && !cursor) return;
-
-		if (append) {
-			setBusy("clients-more");
-		}
-		const response = await fetch(pageURL("/api/admin/oauth-clients", cursor));
-		if (append) {
-			setBusy(null);
-		}
-		if (response.status === 403 || response.status === 401) {
-			setAdminAvailable(false);
-			if (!append) {
-				setClients([]);
-				setClientDrafts({});
-				setClientNextCursor(null);
-			}
+		if (options.append) {
+			await clientsQuery.fetchNextPage();
 			return;
 		}
-		if (!response.ok) {
-			setAdminAvailable(false);
-			if (!append) {
-				setClientNextCursor(null);
-			}
-			return;
-		}
-		setAdminAvailable(true);
-		const payload = (await response.json()) as {
-			clients: OAuthClientSummary[];
-			page?: PagePayload;
-		};
-		setClients((current) => (append ? [...current, ...payload.clients] : payload.clients));
-		setClientDrafts((current) => {
-			const nextDrafts = clientDraftMap(payload.clients);
-			return append ? { ...current, ...nextDrafts } : nextDrafts;
-		});
-		setClientNextCursor(payload.page?.nextCursor ?? null);
+		setClientDrafts({});
+		await clientsQuery.refetch();
 	}
 
 	async function loadOAuthProxy() {
 		setBusy("oauth-proxy");
-		const response = await fetch("/api/admin/oauth-proxy");
+		await oauthProxyQuery.refetch();
 		setBusy(null);
-		setOAuthProxyLoaded(true);
-		if (response.status === 403 || response.status === 401) {
-			setOAuthProxy(null);
-			return;
-		}
-		if (!response.ok) {
-			setOAuthProxy(null);
-			return;
-		}
-		const payload = (await response.json()) as { oauthProxy: OAuthProxyStatus };
-		setOAuthProxy(payload.oauthProxy);
-	}
-
-	async function loadOIDCConfig() {
-		setBusy("oidc-config");
-		setOIDCError(null);
-		try {
-			const response = await fetch(OIDC_DISCOVERY_PATH, {
-				headers: { accept: "application/json" },
-			});
-			if (!response.ok) {
-				throw new Error(`Discovery returned ${response.status}.`);
-			}
-			setOIDCConfig((await response.json()) as OIDCConfiguration);
-		} catch (error) {
-			setOIDCConfig(null);
-			setOIDCError(
-				error instanceof Error ? error.message : "Could not load OpenID configuration.",
-			);
-		} finally {
-			setBusy(null);
-		}
 	}
 
 	function openOIDCSheet() {
 		setOIDCSheetOpen(true);
-		if (!oidcConfig) void loadOIDCConfig();
 	}
 
 	async function copyValue(key: string, value: string) {
-		await navigator.clipboard.writeText(value);
+		const result = await copyTextToClipboard(value);
+		if (!result.ok) {
+			setCopiedKey(null);
+			setStatus({ tone: "error", message: result.message });
+			return;
+		}
+		setStatus(null);
 		setCopiedKey(key);
 		setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 1500);
 	}
-
-	useEffect(() => {
-		if (!session?.user) return;
-		queueMicrotask(() => {
-			void loadApplications();
-			void loadClients();
-			void loadOAuthProxy();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [session?.user?.id]);
 
 	async function revokeApplication() {
 		if (!revokeTarget) return;
@@ -400,7 +408,7 @@ export function Applications() {
 			return;
 		}
 		setStatus({ tone: "success", message: "Application access revoked." });
-		void loadApplications();
+		void applicationsQuery.refetch();
 	}
 
 	async function createClient(event: FormEvent<HTMLFormElement>) {
@@ -417,14 +425,18 @@ export function Applications() {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				name: newClient.name,
-				redirectUris: lines(newClient.redirectUris),
-				postLogoutRedirectUris: lines(newClient.postLogoutRedirectUris),
+				redirectUris: newClient.clientType === "m2m" ? [] : lines(newClient.redirectUris),
+				postLogoutRedirectUris:
+					newClient.clientType === "m2m" ? [] : lines(newClient.postLogoutRedirectUris),
 				scopes: scopeList(newClient.scopes),
+				grantTypes: grantTypesForClientType(newClient.clientType),
+				allowedAudiences:
+					newClient.clientType === "m2m" ? lines(newClient.allowedAudiences) : undefined,
 				uri: newClient.uri || undefined,
 				icon: newClient.icon || undefined,
 				tos: newClient.tos || undefined,
 				policy: newClient.policy || undefined,
-				public: newClientPublic,
+				public: newClient.clientType === "m2m" ? false : newClientPublic,
 				skipConsent: newClient.skipConsent,
 				enableEndSession: newClient.enableEndSession,
 				backchannelLogoutUri: newClient.backchannelLogoutUri.trim() || undefined,
@@ -442,11 +454,13 @@ export function Applications() {
 		setNewClient(clientDraft());
 		setNewClientPublic(false);
 		setCreateClientStep("details");
-		void loadClients();
+		setClientDrafts({});
+		void clientsQuery.refetch();
 	}
 
 	async function updateClient(clientId: string) {
-		const draft = clientDrafts[clientId];
+		const client = clients.find((item) => item.clientId === clientId);
+		const draft = clientDrafts[clientId] ?? (client ? clientDraft(client) : undefined);
 		if (!draft) return;
 		setBusy(`update:${clientId}`);
 		setStatus(null);
@@ -455,9 +469,13 @@ export function Applications() {
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				name: draft.name,
-				redirectUris: lines(draft.redirectUris),
-				postLogoutRedirectUris: lines(draft.postLogoutRedirectUris),
+				redirectUris: draft.clientType === "m2m" ? [] : lines(draft.redirectUris),
+				postLogoutRedirectUris:
+					draft.clientType === "m2m" ? [] : lines(draft.postLogoutRedirectUris),
 				scopes: scopeList(draft.scopes),
+				grantTypes: grantTypesForClientType(draft.clientType),
+				allowedAudiences:
+					draft.clientType === "m2m" ? lines(draft.allowedAudiences) : undefined,
 				uri: draft.uri || undefined,
 				icon: draft.icon || undefined,
 				tos: draft.tos || undefined,
@@ -474,7 +492,8 @@ export function Applications() {
 			return;
 		}
 		setStatus({ tone: "success", message: "OAuth client updated." });
-		void loadClients();
+		setClientDrafts({});
+		void clientsQuery.refetch();
 	}
 
 	async function rotateSecret(clientId: string) {
@@ -511,7 +530,7 @@ export function Applications() {
 			tone: "success",
 			message: disabled ? "OAuth client disabled." : "OAuth client enabled.",
 		});
-		void loadClients();
+		void clientsQuery.refetch();
 	}
 
 	function setDraft(clientId: string, patch: Partial<ClientDraft>) {
@@ -559,7 +578,13 @@ export function Applications() {
 	}
 
 	async function copySecret(secret: string) {
-		await navigator.clipboard.writeText(secret);
+		const result = await copyTextToClipboard(secret);
+		if (!result.ok) {
+			setSecretCopied(false);
+			setStatus({ tone: "error", message: result.message });
+			return;
+		}
+		setStatus(null);
 		setSecretCopied(true);
 		setTimeout(() => setSecretCopied(false), 1500);
 	}
@@ -581,7 +606,7 @@ export function Applications() {
 			description="Apps authorized to use your account, plus the OAuth clients this server manages."
 			sections={sections}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			<section id="authorized" className="scroll-mt-32">
 				<SettingsCard
@@ -590,20 +615,24 @@ export function Applications() {
 					footer={
 						<SettingsCardFooter
 							hint={
-								loaded
-									? `${applications.length} authorized app${applications.length === 1 ? "" : "s"}.`
-									: "Loading applications…"
-							}
-						>
+									loaded
+										? `${applications.length} authorized app${applications.length === 1 ? "" : "s"}.`
+										: <Skeleton className="h-3 w-36" />
+								}
+							>
 							<Button
 								variant="outline"
 								size="sm"
 								onClick={() => void loadApplications()}
-								disabled={busy === "applications" || busy === "applications-more"}
-							>
-								<RefreshCw className={cn("size-4", busy === "applications" && "animate-spin")} />
-								Refresh
-							</Button>
+									disabled={applicationsQuery.isFetching}
+								>
+									{applicationsRefreshing ? (
+										<Skeleton className="size-4 rounded-full" />
+									) : (
+										<RefreshCw className="size-4" />
+									)}
+									Refresh
+								</Button>
 						</SettingsCardFooter>
 					}
 				>
@@ -634,13 +663,13 @@ export function Applications() {
 								variant="outline"
 								size="sm"
 								onClick={() => void loadApplications({ append: true })}
-								disabled={busy === "applications-more"}
-							>
-								{busy === "applications-more" ? (
-									<RefreshCw className="size-4 animate-spin" />
-								) : (
-									<ChevronDown className="size-4" />
-								)}
+									disabled={applicationsQuery.isFetchingNextPage}
+								>
+									{applicationsQuery.isFetchingNextPage ? (
+										<Skeleton className="size-4 rounded-full" />
+									) : (
+										<ChevronDown className="size-4" />
+									)}
 								Load more
 							</Button>
 						</div>
@@ -720,6 +749,12 @@ export function Applications() {
 															/>
 														</Field>
 													</div>
+													<Segmented
+														value={draft.clientType}
+														onChange={(clientType) => setDraft(client.clientId, { clientType })}
+														options={CLIENT_TYPE_OPTIONS}
+														aria-label="Client type"
+													/>
 													<ClientPictureField
 														value={draft.icon}
 														busy={busy === `upload-picture:${client.clientId}`}
@@ -740,26 +775,39 @@ export function Applications() {
 															}
 														/>
 													</Field>
-													<div className="grid gap-4 sm:grid-cols-2">
-														<Field label="Redirect URIs" hint="One per line.">
+													{draft.clientType === "m2m" ? (
+														<Field label="Allowed audiences" hint="One protected API resource per line.">
 															<FieldTextarea
-																value={draft.redirectUris}
-																onChange={(event) =>
-																	setDraft(client.clientId, { redirectUris: event.target.value })
-																}
-															/>
-														</Field>
-														<Field label="Post-logout URIs" hint="One per line.">
-															<FieldTextarea
-																value={draft.postLogoutRedirectUris}
+																value={draft.allowedAudiences}
 																onChange={(event) =>
 																	setDraft(client.clientId, {
-																		postLogoutRedirectUris: event.target.value,
+																		allowedAudiences: event.target.value,
 																	})
 																}
 															/>
 														</Field>
-													</div>
+													) : (
+														<div className="grid gap-4 sm:grid-cols-2">
+															<Field label="Redirect URIs" hint="One per line.">
+																<FieldTextarea
+																	value={draft.redirectUris}
+																	onChange={(event) =>
+																		setDraft(client.clientId, { redirectUris: event.target.value })
+																	}
+																/>
+															</Field>
+															<Field label="Post-logout URIs" hint="One per line.">
+																<FieldTextarea
+																	value={draft.postLogoutRedirectUris}
+																	onChange={(event) =>
+																		setDraft(client.clientId, {
+																			postLogoutRedirectUris: event.target.value,
+																		})
+																	}
+																/>
+															</Field>
+														</div>
+													)}
 													<div className="grid gap-4 sm:grid-cols-2">
 														<Field label="Terms of service URL">
 															<FieldInput
@@ -870,13 +918,13 @@ export function Applications() {
 									variant="outline"
 									size="sm"
 									onClick={() => void loadClients({ append: true })}
-									disabled={busy === "clients-more"}
-								>
-									{busy === "clients-more" ? (
-										<RefreshCw className="size-4 animate-spin" />
-									) : (
-										<ChevronDown className="size-4" />
-									)}
+										disabled={clientsAppending}
+									>
+										{clientsAppending ? (
+											<Skeleton className="size-4 rounded-full" />
+										) : (
+											<ChevronDown className="size-4" />
+										)}
 									Load more
 								</Button>
 							</div>
@@ -945,6 +993,14 @@ export function Applications() {
 													/>
 												</Field>
 											</div>
+											<Segmented
+												value={newClient.clientType}
+												onChange={(clientType) =>
+													setNewClient((current) => ({ ...current, clientType }))
+												}
+												options={CLIENT_TYPE_OPTIONS}
+												aria-label="Client type"
+											/>
 											<ClientPictureField
 												value={newClient.icon}
 												busy={busy === "upload-picture:new-client"}
@@ -971,40 +1027,58 @@ export function Applications() {
 													placeholder={DEFAULT_CLIENT_SCOPE_STRING}
 												/>
 											</Field>
-											<div className="grid gap-4 sm:grid-cols-2">
-												<Field label="Redirect URIs" hint="One per line.">
+											{newClient.clientType === "m2m" ? (
+												<Field label="Allowed audiences" hint="One protected API resource per line.">
 													<FieldTextarea
-														value={newClient.redirectUris}
+														value={newClient.allowedAudiences}
 														onChange={(event) =>
 															setNewClient((current) => ({
 																...current,
-																redirectUris: event.target.value,
+																allowedAudiences: event.target.value,
 															}))
 														}
-														placeholder="https://app.example.com/callback"
+														placeholder="https://api.example.com"
 														required
 													/>
 												</Field>
-												<Field label="Post-logout URIs" hint="One per line.">
-													<FieldTextarea
-														value={newClient.postLogoutRedirectUris}
-														onChange={(event) =>
-															setNewClient((current) => ({
-																...current,
-																postLogoutRedirectUris: event.target.value,
-															}))
-														}
-														placeholder="https://app.example.com/"
-													/>
-												</Field>
-											</div>
+											) : (
+												<div className="grid gap-4 sm:grid-cols-2">
+													<Field label="Redirect URIs" hint="One per line.">
+														<FieldTextarea
+															value={newClient.redirectUris}
+															onChange={(event) =>
+																setNewClient((current) => ({
+																	...current,
+																	redirectUris: event.target.value,
+																}))
+															}
+															placeholder="https://app.example.com/callback"
+															required
+														/>
+													</Field>
+													<Field label="Post-logout URIs" hint="One per line.">
+														<FieldTextarea
+															value={newClient.postLogoutRedirectUris}
+															onChange={(event) =>
+																setNewClient((current) => ({
+																	...current,
+																	postLogoutRedirectUris: event.target.value,
+																}))
+															}
+															placeholder="https://app.example.com/"
+														/>
+													</Field>
+												</div>
+											)}
 											<div className="flex flex-col gap-3 pt-1">
-												<CheckboxField
-													label="Public client"
-													hint="No secret (SPA / native)."
-													checked={newClientPublic}
-													onCheckedChange={setNewClientPublic}
-												/>
+												{newClient.clientType === "m2m" ? null : (
+													<CheckboxField
+														label="Public client"
+														hint="No secret (SPA / native)."
+														checked={newClientPublic}
+														onCheckedChange={setNewClientPublic}
+													/>
+												)}
 												<CheckboxField
 													label="Skip consent"
 													checked={newClient.skipConsent}
@@ -1117,12 +1191,12 @@ export function Applications() {
 					>
 						<SummaryRow
 							icon={
-								<Network
-									className={cn(
-										"size-[1.15rem]",
-										oauthProxy.proxyActive && "text-emerald-600 dark:text-emerald-500",
-									)}
-								/>
+									<Network
+										className={cn(
+											"size-[1.15rem]",
+											oauthProxy.proxyActive && "text-success",
+										)}
+									/>
 							}
 							title={
 								<span className="flex items-center gap-2">
@@ -1149,13 +1223,13 @@ export function Applications() {
 								</SheetDescription>
 							</SheetHeader>
 							<SheetBody className="space-y-5">
-								<div
-									className={cn(
-										"flex items-center gap-3 rounded-lg border px-3.5 py-3",
-										oauthProxy.proxyActive
-											? "border-emerald-500/30 bg-emerald-500/5"
-											: "bg-muted/30",
-									)}
+									<div
+										className={cn(
+											"flex items-center gap-3 rounded-lg border px-3.5 py-3",
+											oauthProxy.proxyActive
+												? "border-success/30 bg-success/5"
+												: "bg-muted/30",
+										)}
 								>
 									<StatusDot
 										tone={oauthProxy.proxyActive ? "active" : "idle"}
@@ -1220,14 +1294,16 @@ export function Applications() {
 								<Button
 									variant="outline"
 									size="sm"
-									onClick={loadOAuthProxy}
-									disabled={busy === "oauth-proxy"}
-								>
-									<RefreshCw
-										className={cn("size-4", busy === "oauth-proxy" && "animate-spin")}
-									/>
-									Refresh
-								</Button>
+										onClick={loadOAuthProxy}
+										disabled={busy === "oauth-proxy"}
+									>
+										{busy === "oauth-proxy" ? (
+											<Skeleton className="size-4 rounded-full" />
+										) : (
+											<RefreshCw className="size-4" />
+										)}
+										Refresh
+									</Button>
 							</SheetBody>
 						</SheetContent>
 					</Sheet>
@@ -1250,7 +1326,7 @@ export function Applications() {
 							copied={copiedKey === "discovery"}
 							onCopy={() => copyValue("discovery", oidcDiscoveryURL(oidcConfig))}
 						/>
-						{busy === "oidc-config" && !oidcConfig ? (
+						{oidcLoading && !oidcConfig ? (
 							<div className="space-y-3">
 								{[0, 1, 2, 3].map((index) => (
 									<div key={index} className="space-y-1.5">
@@ -1267,7 +1343,7 @@ export function Applications() {
 									variant="outline"
 									size="sm"
 									className="mt-3"
-									onClick={() => void loadOIDCConfig()}
+									onClick={() => void oidcConfigQuery.refetch()}
 								>
 									<RefreshCw className="size-4" />
 									Retry
@@ -1401,7 +1477,7 @@ export function AuthorizedApplicationRow({
 			<AppIcon src={application.icon} />
 			<div className="min-w-0 flex-1">
 				<div className="truncate text-sm font-medium">{application.name}</div>
-				<div className="truncate text-xs text-muted-foreground">
+				<div className="truncate text-xs tabular-nums text-muted-foreground">
 					<span className="font-mono">{application.clientId}</span> · Authorized{" "}
 					{formatDate(application.updatedAt ?? application.authorizedAt)}
 				</div>
@@ -1455,6 +1531,9 @@ export function ManagedOAuthClientRow({
 						<Badge variant={client.public ? "secondary" : "default"}>
 							{client.public ? "Public" : "Confidential"}
 						</Badge>
+						{clientTypeFromGrantTypes(client.grantTypes) === "m2m" ? (
+							<Badge variant="secondary">M2M</Badge>
+						) : null}
 						{client.disabled ? <Badge variant="destructive">Disabled</Badge> : null}
 					</div>
 					<div className="truncate font-mono text-xs text-muted-foreground">
@@ -1495,7 +1574,7 @@ function ClientPictureField({
 	onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
 	return (
-		<div className="flex items-start gap-3 rounded-lg border bg-background p-3">
+		<div className="flex items-start gap-3 rounded-xl border bg-background p-3">
 			<AppIcon src={value} />
 			<div className="min-w-0 flex-1 space-y-3">
 				<Field label="Application picture URL" hint="Upload an image or paste an image URL.">
@@ -1513,21 +1592,24 @@ function ClientPictureField({
 						disabled={busy}
 						onChange={onFileChange}
 					/>
-				</Field>
-				{busy ? (
-					<p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-						<Upload className="size-3.5 animate-pulse" />
-						Uploading
-					</p>
-				) : null}
-			</div>
+					</Field>
+					{busy ? (
+						<Skeleton className="h-3 w-24" />
+					) : null}
+				</div>
 		</div>
 	);
 }
 
 function AppIcon({ src }: { src?: string | null }) {
 	if (src) {
-		return <img src={src} alt="" className="size-9 shrink-0 rounded-lg border object-cover" />;
+		return (
+			<img
+				src={src}
+				alt=""
+				className="size-9 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+			/>
+		);
 	}
 	return (
 		<div className="grid size-9 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground">

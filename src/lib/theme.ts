@@ -1,49 +1,34 @@
-import { useEffect, useState } from "react";
+/**
+ * React hook facade for the app-wide Zustand theme store. It subscribes to OS
+ * color-scheme changes while no explicit localStorage theme exists, and exposes
+ * the stable API used by `ThemeToggle`.
+ */
+import { useEffect } from "react";
 
-export type Theme = "light" | "dark";
+export type { Theme } from "@/lib/theme-store";
 
-const STORAGE_KEY = "theme";
-
-function systemTheme(): Theme {
-	return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-/** The theme already applied to <html> by the inline boot script. */
-function currentTheme(): Theme {
-	return document.documentElement.classList.contains("dark") ? "dark" : "light";
-}
-
-function applyTheme(theme: Theme) {
-	const root = document.documentElement;
-	root.classList.toggle("dark", theme === "dark");
-	root.style.colorScheme = theme;
-}
+import { THEME_STORAGE_KEY, useThemeStore } from "@/lib/theme-store";
 
 /**
  * Reads/sets the active theme. Persists an explicit choice to localStorage and
  * keeps following the OS until the user makes one.
  */
 export function useTheme() {
-	const [theme, setThemeState] = useState<Theme>(currentTheme);
+	const theme = useThemeStore((state) => state.theme);
+	const setTheme = useThemeStore((state) => state.setTheme);
+	const syncSystemTheme = useThemeStore((state) => state.syncSystemTheme);
+	const toggle = useThemeStore((state) => state.toggle);
 
 	useEffect(() => {
 		const media = window.matchMedia("(prefers-color-scheme: dark)");
 		const onChange = () => {
-			if (!localStorage.getItem(STORAGE_KEY)) {
-				const next = systemTheme();
-				setThemeState(next);
-				applyTheme(next);
+			if (!localStorage.getItem(THEME_STORAGE_KEY)) {
+				syncSystemTheme();
 			}
 		};
 		media.addEventListener("change", onChange);
 		return () => media.removeEventListener("change", onChange);
-	}, []);
+	}, [syncSystemTheme]);
 
-	function setTheme(next: Theme) {
-		localStorage.setItem(STORAGE_KEY, next);
-		applyTheme(next);
-		setThemeState(next);
-	}
-
-	return { theme, setTheme, toggle: () => setTheme(theme === "dark" ? "light" : "dark") };
+	return { theme, setTheme, toggle };
 }

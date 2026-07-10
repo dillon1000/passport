@@ -5,6 +5,7 @@ import {
 	ACCOUNT_ACTIVITY_TYPES,
 	accountActivityLabel,
 	accountActivityTypeForPath,
+	parseAccountActivityMetadata,
 } from "./account-activity";
 
 describe("account activity taxonomy", () => {
@@ -34,6 +35,7 @@ describe("account activity taxonomy", () => {
 			"Two-factor authentication enabled",
 		);
 		expect(ACCOUNT_ACTIVITY_LABELS.passkey_removed).toBe("Passkey removed");
+		expect(ACCOUNT_ACTIVITY_LABELS.account_locked).toBe("Account temporarily locked");
 	});
 
 	it("labels every defined type and falls back to a humanized slug", () => {
@@ -41,5 +43,23 @@ describe("account activity taxonomy", () => {
 			expect(accountActivityLabel(type)).toBe(ACCOUNT_ACTIVITY_LABELS[type]);
 		}
 		expect(accountActivityLabel("some_future_event")).toBe("Some Future Event");
+	});
+
+	it("keeps only safe primitive connected-app attribution metadata", () => {
+		expect(
+			parseAccountActivityMetadata(
+				JSON.stringify({
+					clientId: "client_acme",
+					clientName: "ACME",
+					action: "organization.team.create",
+					nested: { secret: "hidden" },
+				}),
+			),
+		).toEqual({
+			clientId: "client_acme",
+			clientName: "ACME",
+			action: "organization.team.create",
+		});
+		expect(parseAccountActivityMetadata("not json")).toBeNull();
 	});
 });

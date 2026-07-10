@@ -4,8 +4,10 @@ import {
 	PASSPORT_EXAMPLE_SCOPES,
 	extractPassportClaimHighlights,
 	passportClaimNames,
+	passportResourceURL,
 } from "./auth";
 import app from "./index";
+import { fetchPassportResource } from "./passport-api";
 
 type TestEnv = Env & {
 	BETTER_AUTH_SECRET: string;
@@ -62,6 +64,20 @@ describe("example-client auth worker", () => {
 		await expect(response.json()).resolves.toEqual({ ok: true });
 	});
 
+	it("keeps provider token endpoints behind the BFF boundary", async () => {
+		for (const path of ["get-access-token", "refresh-token"]) {
+			const response = await app.fetch(
+				new Request(`https://client.test/api/auth/${path}`, { method: "POST" }),
+				env,
+			);
+
+			expect(response.status).toBe(404);
+			await expect(response.json()).resolves.toEqual({
+				error: { code: "not_found", message: "Not found." },
+			});
+		}
+	});
+
 	it("starts Passport OAuth through Better Auth with Passport claim scopes", async () => {
 		const response = await app.fetch(new Request("https://client.test/api/login"), env);
 
@@ -78,8 +94,12 @@ describe("example-client auth worker", () => {
 		expect(authorizationURL.searchParams.get("client_id")).toBe("example-client");
 		expect(authorizationURL.searchParams.get("redirect_uri")).toBe("https://client.test/callback");
 		expect(authorizationURL.searchParams.get("code_challenge_method")).toBe("S256");
+		expect(authorizationURL.searchParams.get("resource")).toBe(
+			"https://passport.test/api/v1",
+		);
 		expect(scopes).toEqual([
 			"openid",
+			"offline_access",
 			"profile",
 			"email",
 			"phone",
@@ -93,6 +113,12 @@ describe("example-client auth worker", () => {
 			"permissions",
 			"account:security",
 			"connections",
+			"profile:write",
+			"organizations:write",
+			"teams:write",
+			"billing:subscriptions",
+			"billing:purchases",
+			"billing:checkout",
 		]);
 		expect(response.headers.get("set-cookie")).toContain("passport-example.oauth_state=");
 		expect(response.headers.get("set-cookie")).not.toContain("better-auth.oauth_state=");
@@ -101,6 +127,7 @@ describe("example-client auth worker", () => {
 	it("keeps the example scope list aligned with the requested Passport claims", () => {
 		expect(PASSPORT_EXAMPLE_SCOPES).toEqual([
 			"openid",
+			"offline_access",
 			"profile",
 			"email",
 			"phone",
@@ -114,7 +141,50 @@ describe("example-client auth worker", () => {
 			"permissions",
 			"account:security",
 			"connections",
+			"profile:write",
+			"organizations:write",
+			"teams:write",
+			"billing:subscriptions",
+			"billing:purchases",
+			"billing:checkout",
 		]);
+	});
+
+	it("derives the delegated resource from the Passport deployment origin", () => {
+		expect(passportResourceURL(env)).toBe("https://passport.test/api/v1");
+		expect(
+			passportResourceURL({ AUTH_ISSUER: "https://passport.test/api/auth" }),
+		).toBe("https://passport.test/api/v1");
+	});
+
+	it("forwards explicit BFF operations with the server-held resource token", async () => {
+		const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+			const request = new Request(input, init);
+			expect(request.url).toBe("https://passport.test/api/v1/organizations");
+			expect(request.method).toBe("POST");
+			expect(request.headers.get("authorization")).toBe("Bearer resource-token");
+			expect(request.headers.get("accept")).toBe("application/json");
+			expect(await request.json()).toEqual({ name: "ACME" });
+			return Response.json({ data: { id: "org_123", name: "ACME" } }, { status: 201 });
+		});
+
+		const response = await fetchPassportResource(
+			env,
+			"resource-token",
+			"organizations",
+			{
+				body: JSON.stringify({ name: "ACME" }),
+				headers: { "content-type": "application/json" },
+				method: "POST",
+			},
+			fetcher,
+		);
+
+		expect(fetcher).toHaveBeenCalledOnce();
+		expect(response.status).toBe(201);
+		await expect(response.json()).resolves.toEqual({
+			data: { id: "org_123", name: "ACME" },
+		});
 	});
 
 	it("names every Passport claim the example client consumes", () => {

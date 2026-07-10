@@ -3,7 +3,8 @@
  * invitations, teams, and image metadata that Better Auth stores on
  * organizations and team records.
  */
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import {
 	Building2,
 	Check,
@@ -56,15 +57,16 @@ import {
 	canRemoveTeamMember,
 	type OrganizationRole,
 } from "@/lib/organization-lifecycle";
+import { queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 /** Deterministic neutral-tinted avatar background from a string seed. */
 function avatarTint(seed: string) {
-	const hue = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 360;
+	const tone = 6 + ([...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 7);
 	return {
-		backgroundColor: `oklch(0.92 0.04 ${hue})`,
-		color: `oklch(0.38 0.08 ${hue})`,
+		backgroundColor: `color-mix(in oklch, var(--foreground) ${tone}%, var(--muted))`,
+		color: "var(--foreground)",
 	};
 }
 
@@ -158,6 +160,38 @@ type ConfirmAction =
 	| { type: "cancel-invitation"; invitation: OrganizationInvitation }
 	| { type: "remove-team"; team: OrganizationTeam };
 
+async function fetchOrganizations() {
+	const result = await authClient.organization.list();
+	if (result.error) {
+		throw new Error(result.error.message ?? "Could not load organizations.");
+	}
+	return (result.data ?? []) as OrganizationSummary[];
+}
+
+async function fetchFullOrganization(organizationId: string) {
+	const result = await authClient.organization.getFullOrganization({
+		query: { organizationId },
+	});
+	if (result.error) {
+		throw new Error(result.error.message ?? "Could not load organization details.");
+	}
+	const organization = (result.data ?? null) as FullOrganization | null;
+	if (!organization?.teams?.length) return organization;
+
+	const teamsWithMembers = await Promise.all(
+		organization.teams.map(async (team) => {
+			const membersResult = await authClient.organization.listTeamMembers({
+				query: { teamId: team.id },
+			});
+			return {
+				...team,
+				members: membersResult.error ? [] : teamMembersFrom(membersResult.data),
+			};
+		}),
+	);
+	return { ...organization, teams: teamsWithMembers };
+}
+
 function slugify(value: string) {
 	return value
 		.trim()
@@ -193,9 +227,8 @@ function memberDisplay(member: OrganizationMember | OrganizationTeamMember) {
 
 export function Organizations() {
 	const { data: session } = useRequireSession();
-	const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
-	const [activeOrganization, setActiveOrganization] = useState<FullOrganization | null>(null);
-	const [loaded, setLoaded] = useState(false);
+	const queryClient = useQueryClient();
+	const [activeOrganizationId, setActiveOrganizationId] = useState<string | undefined>();
 	const [busy, setBusy] = useState<string | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [newName, setNewName] = useState("");
@@ -215,66 +248,53 @@ export function Organizations() {
 	const [teamEditOpen, setTeamEditOpen] = useState(false);
 	const [teamEditTarget, setTeamEditTarget] = useState<OrganizationTeam | null>(null);
 	const [teamEditName, setTeamEditName] = useState("");
+	const organizationsQuery = useQuery({
+		queryKey: queryKeys.organizations(session?.user?.id),
+		queryFn: fetchOrganizations,
+		enabled: Boolean(session?.user),
+	});
+	const organizations = organizationsQuery.data ?? [];
+	const selectedOrganizationId = activeOrganizationId ?? organizations[0]?.id;
+	const activeOrganizationQuery = useQuery({
+		queryKey: queryKeys.organizationDetails(selectedOrganizationId),
+		queryFn: () => {
+			if (!selectedOrganizationId) throw new Error("No organization selected.");
+			return fetchFullOrganization(selectedOrganizationId);
+		},
+		enabled: Boolean(selectedOrganizationId),
+	});
+	const activeOrganization = activeOrganizationQuery.data ?? null;
+	const loaded = organizationsQuery.isFetched;
+	const loadingOrganizations = organizationsQuery.isFetching;
+	const queryStatus =
+		status ??
+		(organizationsQuery.error instanceof Error
+			? { tone: "error" as const, message: organizationsQuery.error.message }
+			: activeOrganizationQuery.error instanceof Error
+				? { tone: "error" as const, message: activeOrganizationQuery.error.message }
+				: null);
 
 	async function loadOrganizations() {
-		setBusy("organizations");
 		setStatus(null);
-		const result = await authClient.organization.list();
-		setBusy(null);
-		setLoaded(true);
-		if (result.error) {
-			setStatus({
-				tone: "error",
-				message: result.error.message ?? "Could not load organizations.",
-			});
-			return;
-		}
-		const nextOrganizations = (result.data ?? []) as OrganizationSummary[];
-		setOrganizations(nextOrganizations);
-		if (!activeOrganization && nextOrganizations[0]) {
-			await loadFullOrganization(nextOrganizations[0].id);
-		}
+		await organizationsQuery.refetch();
 	}
 
 	async function loadFullOrganization(organizationId?: string) {
-		setBusy("active-organization");
-		const result = await authClient.organization.getFullOrganization({
-			query: organizationId ? { organizationId } : undefined,
-		});
-		setBusy(null);
-		if (result.error) {
+		const targetOrganizationId = organizationId ?? selectedOrganizationId;
+		if (!targetOrganizationId) return;
+		setActiveOrganizationId(targetOrganizationId);
+		try {
+			await queryClient.fetchQuery({
+				queryKey: queryKeys.organizationDetails(targetOrganizationId),
+				queryFn: () => fetchFullOrganization(targetOrganizationId),
+			});
+		} catch (error) {
 			setStatus({
 				tone: "error",
-				message: result.error.message ?? "Could not load organization details.",
+				message: error instanceof Error ? error.message : "Could not load organization details.",
 			});
-			return;
 		}
-		const organization = (result.data ?? null) as FullOrganization | null;
-		if (!organization?.teams?.length) {
-			setActiveOrganization(organization);
-			return;
-		}
-		const teamsWithMembers = await Promise.all(
-			organization.teams.map(async (team) => {
-				const membersResult = await authClient.organization.listTeamMembers({
-					query: { teamId: team.id },
-				});
-				return {
-					...team,
-					members: membersResult.error ? [] : teamMembersFrom(membersResult.data),
-				};
-			}),
-		);
-		setActiveOrganization({ ...organization, teams: teamsWithMembers });
 	}
-
-	useEffect(() => {
-		if (!session?.user) return;
-		queueMicrotask(() => {
-			void loadOrganizations();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [session?.user?.id]);
 
 	async function createOrganization(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -301,12 +321,13 @@ export function Organizations() {
 		setNewName("");
 		setNewSlug("");
 		setNewLogo("");
-		await loadOrganizations();
-		const organization = result.data as OrganizationSummary | null;
-		if (organization?.id) {
-			await loadFullOrganization(organization.id);
-		}
+	await loadOrganizations();
+	const organization = result.data as OrganizationSummary | null;
+	if (organization?.id) {
+		setActiveOrganizationId(organization.id);
+		await loadFullOrganization(organization.id);
 	}
+}
 
 	async function activateOrganization(organization: OrganizationSummary) {
 		setBusy(`activate:${organization.id}`);
@@ -322,6 +343,7 @@ export function Organizations() {
 			});
 			return;
 		}
+		setActiveOrganizationId(organization.id);
 		setStatus({ tone: "success", message: `${organization.name} is active.` });
 		await loadFullOrganization(organization.id);
 	}
@@ -668,10 +690,10 @@ export function Organizations() {
 		<DashboardShell
 			user={session?.user}
 			title="Organizations"
-			description="Create tenant workspaces, choose the active organization, invite members, and provision teams."
-			sections={SECTIONS}
-		>
-			<StatusBanner status={status} />
+		description="Create tenant workspaces, choose the active organization, invite members, and provision teams."
+		sections={SECTIONS}
+	>
+		<StatusBanner status={queryStatus} />
 
 			<section id="organizations" className="scroll-mt-32">
 				<SettingsCard
@@ -680,9 +702,11 @@ export function Organizations() {
 					footer={
 						<SettingsCardFooter
 							hint={
-								loaded
-									? `${organizations.length} organization${organizations.length === 1 ? "" : "s"} available.`
-									: "Loading organizations..."
+								loaded ? (
+									`${organizations.length} organization${organizations.length === 1 ? "" : "s"} available.`
+								) : (
+									<Skeleton className="h-3 w-36" />
+								)
 							}
 						>
 							<div className="flex gap-2">
@@ -691,11 +715,13 @@ export function Organizations() {
 									size="sm"
 									type="button"
 									onClick={loadOrganizations}
-									disabled={busy === "organizations"}
+									disabled={loadingOrganizations}
 								>
-									<RefreshCw
-										className={cn("size-4", busy === "organizations" && "animate-spin")}
-									/>
+									{loadingOrganizations ? (
+										<Skeleton className="size-4 rounded-full" />
+									) : (
+										<RefreshCw className="size-4" />
+									)}
 									Refresh
 								</Button>
 								<Button
@@ -716,7 +742,7 @@ export function Organizations() {
 						) : organizations.length ? (
 							<ul className="divide-y">
 								{organizations.map((organization) => {
-									const active = activeOrganization?.id === organization.id;
+									const active = selectedOrganizationId === organization.id;
 									return (
 										<li
 											key={organization.id}
@@ -736,7 +762,7 @@ export function Organizations() {
 														</span>
 													) : null}
 												</div>
-												<div className="truncate text-xs text-muted-foreground">
+												<div className="truncate text-xs tabular-nums text-muted-foreground">
 													<span className="font-mono">{organization.slug}</span> · Created{" "}
 													{formatDate(organization.createdAt)}
 												</div>
@@ -763,7 +789,7 @@ export function Organizations() {
 						)}
 					</div>
 					{activeOrganization ? (
-						<div className="mt-4 flex items-start gap-3 rounded-lg border bg-muted/20 p-3">
+						<div className="mt-4 flex items-start gap-3 rounded-xl border bg-muted/20 p-3">
 							<LogoMark
 								name={activeOrganization.name}
 								logo={activeOrganization.logo}
@@ -821,7 +847,7 @@ export function Organizations() {
 									/>
 								</Field>
 							</div>
-							<div className="flex items-start gap-3 rounded-lg border bg-background p-3">
+							<div className="flex items-start gap-3 rounded-xl border bg-background p-3">
 								<LogoMark name={newName || "Organization"} logo={newLogo} size="lg" />
 								<div className="min-w-0 flex-1 space-y-3">
 									<Field label="Logo URL" hint="Upload a logo or paste an image URL.">
@@ -911,7 +937,11 @@ export function Organizations() {
 											style={avatarTint(display)}
 										>
 											{member.user?.image ? (
-												<img src={member.user.image} alt="" className="size-full object-cover" />
+												<img
+													src={member.user.image}
+													alt=""
+													className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+												/>
 											) : (
 												initials(display)
 											)}
@@ -964,7 +994,7 @@ export function Organizations() {
 									<MailPlus className="size-4 shrink-0 text-muted-foreground" />
 									<div className="min-w-0 flex-1">
 										<div className="truncate text-sm font-medium">{invitation.email}</div>
-										<div className="truncate text-xs text-muted-foreground">
+										<div className="truncate text-xs tabular-nums text-muted-foreground">
 											Expires {formatDate(invitation.expiresAt)}
 										</div>
 									</div>
@@ -1100,7 +1130,7 @@ export function Organizations() {
 											<LogoMark name={team.name} logo={team.logo} size="sm" />
 											<div className="min-w-0 flex-1">
 												<div className="truncate text-sm font-medium">{team.name}</div>
-												<div className="truncate text-xs text-muted-foreground">
+												<div className="truncate text-xs tabular-nums text-muted-foreground">
 													{teamMembers.length} member{teamMembers.length === 1 ? "" : "s"} · Created{" "}
 													{formatDate(team.createdAt)}
 												</div>
@@ -1158,7 +1188,11 @@ export function Organizations() {
 																	style={avatarTint(display)}
 																>
 																	{member.user?.image ? (
-																		<img src={member.user.image} alt="" className="size-full object-cover" />
+																		<img
+																			src={member.user.image}
+																			alt=""
+																			className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+																		/>
 																	) : (
 																		initials(display)
 																	)}
@@ -1236,7 +1270,7 @@ export function Organizations() {
 										required
 									/>
 								</Field>
-								<div className="flex items-start gap-3 rounded-lg border bg-background p-3">
+								<div className="flex items-start gap-3 rounded-xl border bg-background p-3">
 									<LogoMark name={teamName || "Team"} logo={newTeamLogo} size="sm" />
 									<div className="min-w-0 flex-1 space-y-3">
 										<Field label="Logo URL" hint="Upload a logo or paste an image URL.">
@@ -1377,12 +1411,20 @@ function LogoMark({
 	return (
 		<span
 			className={cn(
-				"grid shrink-0 place-items-center overflow-hidden rounded-lg text-xs font-semibold",
+				"grid shrink-0 place-items-center overflow-hidden rounded-md text-xs font-semibold",
 				size === "lg" ? "size-9" : "size-7",
 			)}
 			style={logo ? undefined : avatarTint(name)}
 		>
-			{logo ? <img src={logo} alt="" className="size-full object-cover" /> : initials(name)}
+			{logo ? (
+				<img
+					src={logo}
+					alt=""
+					className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+				/>
+			) : (
+				initials(name)
+			)}
 		</span>
 	);
 }

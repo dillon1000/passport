@@ -11,18 +11,30 @@ type ImageUploadResponse = {
 	error?: string;
 };
 
-export async function uploadImageAsset(file: File, purpose: ImageUploadPurpose) {
+async function readImageUploadResponse(response: Response): Promise<ImageUploadResponse> {
+	try {
+		return (await response.json()) as ImageUploadResponse;
+	} catch {
+		return {};
+	}
+}
+
+async function uploadImageFile(
+	file: File,
+	purpose: ImageUploadPurpose | undefined,
+	failureMessage: string,
+) {
 	const body = new FormData();
-	body.set("purpose", purpose);
+	if (purpose) body.set("purpose", purpose);
 	body.set("image", file);
 
 	const response = await fetch("/api/profile-images", {
 		method: "POST",
 		body,
 	});
-	const payload = (await response.json()) as ImageUploadResponse;
+	const payload = await readImageUploadResponse(response);
 	if (!response.ok) {
-		throw new Error(payload.error ?? "Could not upload image.");
+		throw new Error(payload.error ?? failureMessage);
 	}
 
 	const image = payload.image ?? payload.url;
@@ -30,4 +42,12 @@ export async function uploadImageAsset(file: File, purpose: ImageUploadPurpose) 
 		throw new Error("Image upload did not return a URL.");
 	}
 	return image;
+}
+
+export async function uploadImageAsset(file: File, purpose: ImageUploadPurpose) {
+	return uploadImageFile(file, purpose, "Could not upload image.");
+}
+
+export async function uploadProfileImageAsset(file: File) {
+	return uploadImageFile(file, undefined, "Could not upload profile picture.");
 }

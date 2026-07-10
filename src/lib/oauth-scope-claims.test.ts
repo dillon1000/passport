@@ -13,6 +13,7 @@ import {
 	oauthClaimsSupported,
 	type OAuthClaimContext,
 } from "./oauth-scope-claims";
+import { billingPlanCatalog, parseStripeBillingPlans } from "./billing";
 
 const env = {
 	BETTER_AUTH_URL: "https://passport.test",
@@ -64,6 +65,53 @@ const context: OAuthClaimContext = {
 			updatedAt: "2026-01-03T04:05:06.000Z",
 		},
 	],
+	billingSubscriptions: [
+		{
+			id: "sub_row_123",
+			referenceId: "user_123",
+			customerType: "user",
+			plan: "pro",
+			status: "active",
+			billingInterval: "month",
+			seats: 1,
+			periodStart: new Date("2026-01-01T00:00:00.000Z"),
+			periodEnd: new Date("2026-02-01T00:00:00.000Z"),
+			cancelAtPeriodEnd: false,
+			stripeScheduleId: null,
+		},
+	],
+	billingPurchases: [
+		{
+			id: "otp_row_123",
+			referenceId: "user_123",
+			customerType: "user",
+			plan: "lifetime",
+			status: "completed",
+			quantity: 1,
+			amountTotal: 9900,
+			currency: "usd",
+			purchasedAt: new Date("2026-01-05T00:00:00.000Z"),
+		},
+	],
+	billingCatalog: billingPlanCatalog(
+		parseStripeBillingPlans(
+			JSON.stringify([
+				{
+					name: "pro",
+					priceId: "price_pro_month",
+					limits: { applications: 10 },
+					entitlements: ["billing"],
+				},
+				{
+					name: "lifetime",
+					priceId: "price_lifetime",
+					type: "one_time",
+					limits: { applications: 50 },
+					entitlements: ["lifetime_access"],
+				},
+			]),
+		),
+	),
 };
 
 describe("OAuth scope claims", () => {
@@ -158,6 +206,76 @@ describe("OAuth scope claims", () => {
 		});
 	});
 
+	it("adds billing claims when billing scopes are granted", () => {
+		expect(
+			buildAccessTokenScopeClaims(
+				env,
+				user,
+				["billing:status", "billing:entitlements", "billing:limits"],
+				context,
+			),
+		).toEqual({
+			// billing_status reflects subscriptions only; one-time purchases have no
+			// active/trialing lifecycle so they do not appear here.
+			[oauthClaimURL(env, "billing_status")]: {
+				active: true,
+				trialing: false,
+				pastDue: false,
+				canceled: false,
+				activePlans: ["pro"],
+				plans: ["pro"],
+			},
+			// Entitlements and limits merge active subscriptions with completed
+			// one-time purchases (the "lifetime" purchase adds lifetime_access and
+			// raises the applications limit from 10 to 50).
+			[oauthClaimURL(env, "billing_entitlements")]: ["billing", "lifetime_access"],
+			[oauthClaimURL(env, "billing_limits")]: { applications: 50 },
+		});
+		expect(
+			buildUserInfoScopeClaims(env, user, ["billing:subscriptions"], context),
+		).toEqual({
+			[oauthClaimURL(env, "billing_subscriptions")]: [
+				{
+					id: "sub_row_123",
+					referenceId: "user_123",
+					customerType: "user",
+					plan: "pro",
+					status: "active",
+					billingInterval: "month",
+					seats: 1,
+					periodStart: "2026-01-01T00:00:00.000Z",
+					periodEnd: "2026-02-01T00:00:00.000Z",
+					cancelAtPeriodEnd: false,
+					scheduledChange: false,
+					limits: { applications: 10 },
+					entitlements: ["billing"],
+				},
+			],
+		});
+	});
+
+	it("adds one-time purchase claims under the billing:purchases scope", () => {
+		expect(
+			buildUserInfoScopeClaims(env, user, ["billing:purchases"], context),
+		).toEqual({
+			[oauthClaimURL(env, "billing_purchases")]: [
+				{
+					id: "otp_row_123",
+					referenceId: "user_123",
+					customerType: "user",
+					plan: "lifetime",
+					status: "completed",
+					quantity: 1,
+					amountTotal: 9900,
+					currency: "usd",
+					purchasedAt: "2026-01-05T00:00:00.000Z",
+					limits: { applications: 50 },
+					entitlements: ["lifetime_access"],
+				},
+			],
+		});
+	});
+
 	it("keeps access token claims compact", () => {
 		expect(
 			buildAccessTokenScopeClaims(
@@ -232,6 +350,10 @@ describe("OAuth scope claims", () => {
 				"https://passport.test/claims/mfa_enabled",
 				"https://passport.test/claims/passkey_enabled",
 				"https://passport.test/claims/connections",
+				"https://passport.test/claims/billing_status",
+				"https://passport.test/claims/billing_subscriptions",
+				"https://passport.test/claims/billing_entitlements",
+				"https://passport.test/claims/billing_limits",
 			]),
 		);
 	});

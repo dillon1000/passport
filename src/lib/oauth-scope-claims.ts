@@ -9,9 +9,17 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import * as schema from "../db/schema";
 import type { createDb } from "../db/client";
 import type { AuthEnv } from "../env";
+import { billingPlanCatalog, type BillingPlanCatalog } from "./billing";
+import { loadBillingPlans } from "./billing-plan-store";
+import {
+	buildBillingScopeClaims,
+	type BillingPurchaseClaimSource,
+	type BillingSubscriptionClaimSource,
+} from "./billing-claims";
 import { buildOAuthPolicyClaims } from "./oauth-policy";
 
 type ClaimEnv = Pick<AuthEnv, "BETTER_AUTH_URL">;
+type ClaimContextEnv = Pick<AuthEnv, "STRIPE_BILLING_PLANS">;
 type OAuthClaimDatabase = ReturnType<typeof createDb>;
 
 export type OAuthClaimUser = {
@@ -79,6 +87,9 @@ export type OAuthClaimContext = {
 	policy: OAuthPolicyClaims;
 	security: OAuthSecurityClaimContext;
 	connections: ConnectionClaim[];
+	billingSubscriptions: BillingSubscriptionClaimSource[];
+	billingPurchases: BillingPurchaseClaimSource[];
+	billingCatalog: BillingPlanCatalog;
 };
 
 function hasScope(scopes: readonly string[], scope: string) {
@@ -148,6 +159,11 @@ export function oauthClaimsSupported(env: ClaimEnv) {
 		oauthClaimURL(env, "mfa_enabled"),
 		oauthClaimURL(env, "passkey_enabled"),
 		oauthClaimURL(env, "connections"),
+		oauthClaimURL(env, "billing_status"),
+		oauthClaimURL(env, "billing_subscriptions"),
+		oauthClaimURL(env, "billing_purchases"),
+		oauthClaimURL(env, "billing_entitlements"),
+		oauthClaimURL(env, "billing_limits"),
 	];
 }
 
@@ -259,6 +275,16 @@ function connectionClaims(env: ClaimEnv, scopes: readonly string[], context: OAu
 	};
 }
 
+function billingClaims(env: ClaimEnv, scopes: readonly string[], context: OAuthClaimContext) {
+	return buildBillingScopeClaims(
+		env,
+		scopes,
+		context.billingSubscriptions,
+		context.billingCatalog,
+		context.billingPurchases,
+	);
+}
+
 /**
  * Authentication-context claims for the ID token. Inputs are the authenticated
  * user (the plugin already supplies the session-accurate `auth_time` and `sid`
@@ -325,6 +351,7 @@ export function buildUserInfoScopeClaims(
 		...policyClaims(env, scopes, context),
 		...accountSecurityClaims(env, user, scopes, context),
 		...connectionClaims(env, scopes, context),
+		...billingClaims(env, scopes, context),
 	};
 }
 
@@ -340,13 +367,16 @@ export function buildAccessTokenScopeClaims(
 		...compactMembershipClaims(env, scopes, context),
 		...policyClaims(env, scopes, context),
 		...accountSecurityClaims(env, user, scopes, context),
+		...billingClaims(env, scopes, context),
 	};
 }
 
 export async function loadOAuthClaimContext(
+	env: ClaimContextEnv,
 	db: OAuthClaimDatabase,
 	userId: string,
 ): Promise<OAuthClaimContext> {
+	const billingCatalog_ = billingPlanCatalog(await loadBillingPlans(env, db));
 	const organizations = await db
 		.select({
 			id: schema.organization.id,
@@ -414,6 +444,46 @@ export async function loadOAuthClaimContext(
 			),
 		);
 
+	const subscriptionReferenceIds = unique([userId, ...organizationIds]);
+	const billingSubscriptions = subscriptionReferenceIds.length
+		? await db
+				.select({
+					id: schema.subscription.id,
+					referenceId: schema.subscription.referenceId,
+					plan: schema.subscription.plan,
+					status: schema.subscription.status,
+					periodStart: schema.subscription.periodStart,
+					periodEnd: schema.subscription.periodEnd,
+					trialStart: schema.subscription.trialStart,
+					trialEnd: schema.subscription.trialEnd,
+					cancelAtPeriodEnd: schema.subscription.cancelAtPeriodEnd,
+					cancelAt: schema.subscription.cancelAt,
+					canceledAt: schema.subscription.canceledAt,
+					endedAt: schema.subscription.endedAt,
+					seats: schema.subscription.seats,
+					billingInterval: schema.subscription.billingInterval,
+					stripeScheduleId: schema.subscription.stripeScheduleId,
+				})
+				.from(schema.subscription)
+				.where(inArray(schema.subscription.referenceId, subscriptionReferenceIds))
+		: [];
+
+	const billingPurchases = subscriptionReferenceIds.length
+		? await db
+				.select({
+					id: schema.oneTimePurchase.id,
+					referenceId: schema.oneTimePurchase.referenceId,
+					plan: schema.oneTimePurchase.plan,
+					status: schema.oneTimePurchase.status,
+					quantity: schema.oneTimePurchase.quantity,
+					amountTotal: schema.oneTimePurchase.amountTotal,
+					currency: schema.oneTimePurchase.currency,
+					purchasedAt: schema.oneTimePurchase.purchasedAt,
+				})
+				.from(schema.oneTimePurchase)
+				.where(inArray(schema.oneTimePurchase.referenceId, subscriptionReferenceIds))
+		: [];
+
 	return {
 		organizations,
 		teams,
@@ -434,5 +504,15 @@ export async function loadOAuthClaimContext(
 				...(updatedAt ? { updatedAt } : {}),
 			};
 		}),
+		billingSubscriptions: billingSubscriptions.map((subscription) => ({
+			...subscription,
+			customerType:
+				subscription.referenceId === userId ? "user" : "organization",
+		})),
+		billingPurchases: billingPurchases.map((purchase) => ({
+			...purchase,
+			customerType: purchase.referenceId === userId ? "user" : "organization",
+		})),
+		billingCatalog: billingCatalog_,
 	};
 }

@@ -12,6 +12,7 @@ import {
   integer,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import type { RequestLocation } from "../lib/request-location";
@@ -32,6 +33,7 @@ export const user = pgTable("user", {
   displayUsername: text("display_username"),
   phoneNumber: text("phone_number").unique(),
   phoneNumberVerified: boolean("phone_number_verified"),
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -109,6 +111,7 @@ export const organization = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull().unique(),
     logo: text("logo"),
+    stripeCustomerId: text("stripe_customer_id"),
     createdAt: timestamp("created_at").notNull(),
     metadata: text("metadata"),
   },
@@ -226,6 +229,120 @@ export const twoFactor = pgTable(
   (table) => [
     index("twoFactor_secret_idx").on(table.secret),
     index("twoFactor_userId_idx").on(table.userId),
+  ],
+);
+
+// Better Auth Stripe subscription rows. `referenceId` is intentionally
+// polymorphic: for personal billing it is the user id, and for organization
+// billing it is the organization id. Do not add a uniqueness constraint;
+// Stripe/Better Auth allow resubscription after cancellation history.
+export const subscription = pgTable(
+  "subscription",
+  {
+    id: text("id").primaryKey(),
+    plan: text("plan").notNull(),
+    referenceId: text("reference_id").notNull(),
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    status: text("status").default("incomplete").notNull(),
+    periodStart: timestamp("period_start"),
+    periodEnd: timestamp("period_end"),
+    trialStart: timestamp("trial_start"),
+    trialEnd: timestamp("trial_end"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+    cancelAt: timestamp("cancel_at"),
+    canceledAt: timestamp("canceled_at"),
+    endedAt: timestamp("ended_at"),
+    seats: integer("seats"),
+    billingInterval: text("billing_interval"),
+    stripeScheduleId: text("stripe_schedule_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("subscription_referenceId_idx").on(table.referenceId),
+    index("subscription_stripeCustomerId_idx").on(table.stripeCustomerId),
+    index("subscription_stripeSubscriptionId_idx").on(table.stripeSubscriptionId),
+  ],
+);
+
+// One-time (single payment) purchases settled through the payment-mode Stripe
+// Checkout flow. Unlike `subscription` these never recur; a completed row grants
+// the plan's entitlements and limits permanently. `referenceId` is the user or
+// organization id (mirrors `subscription`); customer type is derived from it.
+export const oneTimePurchase = pgTable(
+  "one_time_purchase",
+  {
+    id: text("id").primaryKey(),
+    plan: text("plan").notNull(),
+    referenceId: text("reference_id").notNull(),
+    stripeCustomerId: text("stripe_customer_id"),
+    // Checkout session id is the idempotency key: Stripe redelivers webhooks, so
+    // the unique constraint keeps repeated deliveries from inserting duplicates.
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").unique(),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    status: text("status").default("completed").notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    amountTotal: integer("amount_total"),
+    currency: text("currency"),
+    purchasedAt: timestamp("purchased_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("oneTimePurchase_referenceId_idx").on(table.referenceId),
+    index("oneTimePurchase_stripeCustomerId_idx").on(table.stripeCustomerId),
+  ],
+);
+
+// Delegated clients create short-lived billing handoffs instead of receiving a
+// Stripe URL directly. The client/idempotency key pair makes creation replayable,
+// while requestHash detects a key reused with different inputs. Stripe work only
+// begins after the same user confirms this row from Passport's session UI.
+export const billingActionIntent = pgTable(
+  "billing_action_intent",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    action: text("action").notNull(),
+    customerType: text("customer_type").default("user").notNull(),
+    referenceId: text("reference_id").notNull(),
+    productId: text("product_id"),
+    subscriptionId: text("subscription_id"),
+    annual: boolean("annual"),
+    seats: integer("seats"),
+    successUrl: text("success_url"),
+    cancelUrl: text("cancel_url"),
+    returnUrl: text("return_url"),
+    registeredReturnUrls: jsonb("registered_return_urls").$type<string[]>().notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    status: text("status").default("pending").notNull(),
+    resultUrl: text("result_url"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => [
+    uniqueIndex("billingActionIntent_clientId_idempotencyKey_idx").on(
+      table.clientId,
+      table.idempotencyKey,
+    ),
+    index("billingActionIntent_expiresAt_idx").on(table.expiresAt),
+    index("billingActionIntent_userId_idx").on(table.userId),
   ],
 );
 
@@ -655,6 +772,76 @@ export const dataExportRequest = pgTable(
     index("dataExportRequest_status_idx").on(table.status),
   ],
 );
+
+// Billing plan catalog. Mirrors BillingPlanDefinition (src/lib/billing.ts).
+// When this table is empty, the plan source falls back to STRIPE_BILLING_PLANS,
+// so existing env-only deployments keep working and the env var can seed.
+export const billingPlan = pgTable(
+  "billing_plan",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull().unique(),
+    label: text("label"),
+    description: text("description"),
+    group: text("group"),
+    priceId: text("price_id"),
+    lookupKey: text("lookup_key"),
+    annualDiscountPriceId: text("annual_discount_price_id"),
+    annualDiscountLookupKey: text("annual_discount_lookup_key"),
+    seatPriceId: text("seat_price_id"),
+    prorationBehavior: text("proration_behavior"),
+    freeTrialDays: integer("free_trial_days"),
+    // "subscription" (recurring Stripe price) or "one_time" (single payment).
+    type: text("type").default("subscription").notNull(),
+    // When true the plan is purchasable only by personal accounts; organization
+    // customers are blocked at checkout.
+    personalOnly: boolean("personal_only").default(false).notNull(),
+    // When true the plan is hidden from the public catalog. It stays purchasable
+    // by anyone who has the direct /billing/product/:id deeplink.
+    hidden: boolean("hidden").default(false).notNull(),
+    displayOrder: integer("display_order").default(0).notNull(),
+    limits: jsonb("limits").$type<Record<string, unknown>>(),
+    entitlements: jsonb("entitlements").$type<string[]>(),
+    lineItems: jsonb("line_items").$type<Record<string, unknown>[]>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("billingPlan_group_idx").on(table.group),
+    index("billingPlan_displayOrder_idx").on(table.displayOrder),
+  ],
+);
+
+// Reusable entitlement registry. Plans reference entries by `key`; `name` is the
+// friendly label shown in pricing tables and the public catalog.
+export const billingEntitlement = pgTable("billing_entitlement", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
+
+// Reusable limit registry. Plans reference entries by `key` and assign a value;
+// `name`/`unit` describe the limit in pricing tables and the public catalog.
+export const billingLimit = pgTable("billing_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  unit: text("unit"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),

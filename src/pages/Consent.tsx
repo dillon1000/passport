@@ -4,17 +4,22 @@
  * a consent POST to `/oauth2/consent` and a browser redirect back to the client
  * with either an authorization code or an OAuth error.
  */
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ComponentType } from "react";
 import {
 	AtSign,
 	Building2,
 	Check,
 	Clock,
+	CreditCard,
 	Fingerprint,
+	Gauge,
 	Image,
+	ListChecks,
 	Link2,
 	Mail,
 	Phone,
+	Receipt,
 	ShieldCheck,
 	UserRound,
 	UsersRound,
@@ -29,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrand } from "@/lib/brand-runtime";
+import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 import {
 	OAUTH_CONSENT_ENDPOINT,
@@ -38,6 +44,7 @@ import {
 import {
 	OAUTH_SCOPE_DEFINITIONS,
 	isSupportedOAuthScope,
+	oauthScopeConsentText,
 	type SupportedOAuthScope,
 } from "@/lib/oauth-scopes";
 import { initialsOf } from "@/lib/session";
@@ -52,12 +59,6 @@ type ConsentClientMetadata = {
 	disabled?: boolean;
 };
 
-type ConsentClientMetadataState = {
-	clientId: string;
-	loaded: boolean;
-	client: ConsentClientMetadata | null;
-};
-
 /** Icons stay local to the React surface while scope copy comes from the shared registry. */
 const SCOPE_ICONS: Record<SupportedOAuthScope, ComponentType<{ className?: string }>> = {
 	openid: Fingerprint,
@@ -67,14 +68,30 @@ const SCOPE_ICONS: Record<SupportedOAuthScope, ComponentType<{ className?: strin
 	offline_access: Clock,
 	"profile:picture": Image,
 	"profile:username": AtSign,
+	"profile:write": UserRound,
 	organizations: Building2,
 	"organizations:ids": Building2,
 	"organizations:roles": ShieldCheck,
+	"organizations:write": Building2,
+	"organization-invitations:read": Mail,
+	"organization-invitations:write": Mail,
+	"organization-members:read": UsersRound,
+	"organization-members:write": UsersRound,
 	teams: UsersRound,
 	"teams:ids": UsersRound,
+	"teams:write": UsersRound,
+	"team-members:read": UsersRound,
+	"team-members:write": UsersRound,
 	permissions: ShieldCheck,
 	"account:security": Fingerprint,
 	connections: Link2,
+	"billing:status": CreditCard,
+	"billing:subscriptions": ListChecks,
+	"billing:purchases": Receipt,
+	"billing:entitlements": ShieldCheck,
+	"billing:limits": Gauge,
+	"billing:checkout": CreditCard,
+	"billing:manage": CreditCard,
 };
 
 /** Past this many requested scopes the list wraps into two columns (and the card
@@ -95,16 +112,26 @@ export function Consent() {
 	const [status, setStatus] = useState<Status | null>(null);
 	const [loading, setLoading] = useState<"accept" | "deny" | null>(null);
 	const [redirecting, setRedirecting] = useState(false);
-	const [clientMetadataState, setClientMetadataState] = useState<ConsentClientMetadataState>({
-		clientId: "",
-		loaded: false,
-		client: null,
+	const hasClientId = Boolean(clientId && clientId !== "Unknown client");
+	const clientMetadataQuery = useQuery({
+		queryKey: queryKeys.consentClientMetadata(clientId),
+		queryFn: async () => {
+			try {
+				const payload = await fetchAPIJSON<{ client?: ConsentClientMetadata }>(
+					`/api/oauth/client-metadata?clientId=${encodeURIComponent(clientId)}`,
+				);
+				return payload.client ?? null;
+			} catch {
+				return null;
+			}
+		},
+		enabled: hasClientId,
 	});
 	const user = session?.user;
 	const signedOut = !sessionPending && !session;
-	const clientMetadataLoaded = clientMetadataState.clientId === clientId ? clientMetadataState.loaded : false;
-	const clientMetadata = clientMetadataState.clientId === clientId ? clientMetadataState.client : null;
-	const clientLabel = clientMetadata?.name ?? (clientMetadataLoaded ? "Unknown registered application" : "Loading application");
+	const clientMetadataLoaded = hasClientId ? clientMetadataQuery.isFetched : true;
+	const clientMetadata = hasClientId ? clientMetadataQuery.data ?? null : null;
+	const clientLabel = clientMetadata?.name ?? (clientMetadataLoaded ? "Unknown Application" : "Loading application");
 	const clientInitials = initialsOf(clientMetadata?.name ?? clientId);
 	const clientLinks = [
 		...(clientMetadata?.uri ? [{ label: "Website", href: clientMetadata.uri }] : []),
@@ -112,38 +139,6 @@ export function Consent() {
 		...(clientMetadata?.policy ? [{ label: "Privacy", href: clientMetadata.policy }] : []),
 	];
 	const approvalBlocked = loading !== null || !clientMetadataLoaded || !clientMetadata || clientMetadata.disabled === true;
-
-	useEffect(() => {
-		let active = true;
-		if (!clientId || clientId === "Unknown client") {
-			queueMicrotask(() => {
-				if (!active) return;
-				setClientMetadataState({ clientId, loaded: true, client: null });
-			});
-			return () => {
-				active = false;
-			};
-		}
-
-		fetch(`/api/oauth/client-metadata?clientId=${encodeURIComponent(clientId)}`)
-			.then(async (response) => {
-				if (!active) return;
-				if (!response.ok) {
-					setClientMetadataState({ clientId, loaded: true, client: null });
-					return;
-				}
-				const payload = (await response.json()) as { client?: ConsentClientMetadata };
-				setClientMetadataState({ clientId, loaded: true, client: payload.client ?? null });
-			})
-			.catch(() => {
-				if (!active) return;
-				setClientMetadataState({ clientId, loaded: true, client: null });
-			});
-
-		return () => {
-			active = false;
-		};
-	}, [clientId]);
 
 	// Consent requires an authenticated visitor. Send signed-out users to
 	// sign-in, preserving the full signed OAuth query so they return to this
@@ -277,7 +272,11 @@ export function Consent() {
 							<div className="flex items-center gap-2.5 rounded-lg border bg-muted/30 px-3 py-2.5">
 								<span className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full border bg-background text-[0.6875rem] font-medium">
 									{user.image ? (
-										<img src={user.image} alt="" className="size-full object-cover" />
+										<img
+											src={user.image}
+											alt=""
+											className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+										/>
 									) : (
 										initialsOf(user.name)
 									)}
@@ -296,6 +295,7 @@ export function Consent() {
 									const definition = isSupportedOAuthScope(scope)
 										? OAUTH_SCOPE_DEFINITIONS[scope]
 										: undefined;
+									const consentText = oauthScopeConsentText(scope);
 									const Icon = definition ? SCOPE_ICONS[definition.scope] : Check;
 									return (
 										<li
@@ -307,14 +307,14 @@ export function Consent() {
 											</span>
 											{twoColumn ? (
 												<span className="min-w-0 flex-1">
-													<span className="block truncate text-sm">{definition?.consent ?? scope}</span>
+													<span className="block truncate text-sm">{consentText}</span>
 													<span className="block truncate font-mono text-[0.6875rem] text-muted-foreground">
 														{scope}
 													</span>
 												</span>
 											) : (
 												<>
-													<span className="flex-1 text-sm">{definition?.consent ?? scope}</span>
+													<span className="flex-1 text-sm">{consentText}</span>
 													<span className="font-mono text-[0.6875rem] text-muted-foreground">{scope}</span>
 												</>
 											)}
@@ -331,14 +331,20 @@ export function Consent() {
 								<X className="size-4" />
 								Deny
 							</Button>
-							<Button autoFocus onClick={() => decide(true)} disabled={approvalBlocked}>
-								<Check className="size-4" />
-								{loading === "accept" ? "Authorizing…" : "Allow"}
-							</Button>
+								<Button autoFocus onClick={() => decide(true)} disabled={approvalBlocked}>
+									{loading === "accept" ? (
+										<Skeleton className="h-4 w-16 bg-primary-foreground/30" />
+									) : (
+										<>
+											<Check className="size-4" />
+											Allow
+										</>
+									)}
+								</Button>
 						</div>
 						<p className="flex items-center gap-1.5 text-center text-xs text-muted-foreground">
 							<ShieldCheck className="size-3.5" />
-							You can revoke this access anytime from Applications.
+							You can revoke this access anytime from Applications. {clientLabel} can send information about you back to {brand.name} that may be used to enrich your profile, or to personalize your experience. {clientLabel} will not be able to access your password.
 						</p>
 					</CardFooter>
 				</Card>
@@ -370,7 +376,7 @@ function Handshake({
 				<img
 					src={clientMetadata.icon}
 					alt=""
-					className="consent-mark consent-mark-client size-11 rounded-xl border bg-muted/40 object-cover"
+					className="consent-mark consent-mark-client size-11 rounded-xl bg-muted/40 object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
 				/>
 			) : (
 				<div className="consent-mark consent-mark-client grid size-11 place-items-center rounded-xl border bg-muted/40 text-sm font-semibold text-muted-foreground">
@@ -388,12 +394,12 @@ function ConsentSkeleton({ scopeCount, twoColumn }: { scopeCount: number; twoCol
 	return (
 		<div className="flex flex-col items-center gap-6">
 			<Card className="w-full gap-0 overflow-hidden py-0">
-				<CardContent className="space-y-5 px-6 pt-6 pb-5">
-					<div className="flex items-center justify-center gap-3">
-						<Skeleton className="size-11 rounded-xl" />
-						<div className="consent-connector" aria-hidden="true" />
-						<Skeleton className="size-11 rounded-xl" />
-					</div>
+					<CardContent className="space-y-5 px-6 pt-6 pb-5">
+						<div className="flex items-center justify-center gap-3">
+							<Skeleton className="size-11 rounded-xl" />
+							<Skeleton className="h-1 w-11 rounded-full" />
+							<Skeleton className="size-11 rounded-xl" />
+						</div>
 					<div className="flex flex-col items-center gap-2">
 						<Skeleton className="h-5 w-40" />
 						<Skeleton className="h-4 w-56" />

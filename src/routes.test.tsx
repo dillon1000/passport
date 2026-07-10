@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { dashboardNav, dashboardNavForUser } from "./lib/nav";
+import { NotFound } from "./pages/NotFound";
 import { appRoutes } from "./routes";
 
 describe("appRoutes", () => {
@@ -8,7 +9,11 @@ describe("appRoutes", () => {
 		expect(appRoutes.map((route) => route.path)).toEqual([
 			"/",
 			"/sign-in",
+			"/about",
 			"/account",
+			"/billing/product/:productId",
+			"/billing/action/:intentId",
+			"/billing/*",
 			"/security",
 			"/sessions",
 			"/settings",
@@ -26,12 +31,19 @@ describe("appRoutes", () => {
 			"*",
 		]);
 	});
+
+	it("keeps the catch-all route separate from sign-in", () => {
+		const catchAll = appRoutes.find((route) => route.path === "*");
+
+		expect(catchAll?.element?.type).toBe(NotFound);
+	});
 });
 
 describe("dashboardNav", () => {
 	it("includes organization and agent management tabs", () => {
 		expect(dashboardNav.map((item) => item.href)).toEqual([
 			"/account",
+			"/billing",
 			"/security",
 			"/sessions",
 			"/organizations",
@@ -47,6 +59,7 @@ describe("dashboardNav", () => {
 	it("hides admin-only tabs from non-admin users", () => {
 		expect(dashboardNavForUser({ role: "user" }).map((item) => item.href)).toEqual([
 			"/account",
+			"/billing",
 			"/security",
 			"/sessions",
 			"/organizations",
@@ -59,6 +72,7 @@ describe("dashboardNav", () => {
 	it("shows admin-only tabs to admin users", () => {
 		expect(dashboardNavForUser({ role: "admin" }).map((item) => item.href)).toEqual([
 			"/account",
+			"/billing",
 			"/security",
 			"/sessions",
 			"/organizations",

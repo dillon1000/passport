@@ -9,6 +9,8 @@ export type FlairMode = "rotate" | "name" | "email" | "datetime" | "greeting" | 
 const STORAGE_KEY = "profile-flair";
 const EVENT = "profile-flair-change";
 
+type FlairStorage = Pick<Storage, "getItem" | "removeItem" | "setItem">;
+
 /** Static choices offered in Settings, in display order. */
 export const FLAIR_STATIC_OPTIONS: { value: Exclude<FlairMode, "rotate">; label: string }[] = [
 	{ value: "name", label: "Name" },
@@ -18,9 +20,7 @@ export const FLAIR_STATIC_OPTIONS: { value: Exclude<FlairMode, "rotate">; label:
 	{ value: "quip", label: "Quip" },
 ];
 
-function read(): FlairMode {
-	if (typeof localStorage === "undefined") return "rotate";
-	const value = localStorage.getItem(STORAGE_KEY);
+export function normalizeFlairMode(value: string | null): FlairMode {
 	if (
 		value === "name" ||
 		value === "email" ||
@@ -31,6 +31,40 @@ function read(): FlairMode {
 		return value;
 	}
 	return "rotate";
+}
+
+export function readStoredFlairMode(storage: Pick<FlairStorage, "getItem"> | undefined): FlairMode {
+	if (!storage) return "rotate";
+	try {
+		return normalizeFlairMode(storage.getItem(STORAGE_KEY));
+	} catch {
+		return "rotate";
+	}
+}
+
+export function writeStoredFlairMode(
+	next: FlairMode,
+	storage: Pick<FlairStorage, "removeItem" | "setItem"> | undefined,
+) {
+	if (!storage) return;
+	try {
+		if (next === "rotate") {
+			storage.removeItem(STORAGE_KEY);
+		} else {
+			storage.setItem(STORAGE_KEY, next);
+		}
+	} catch {
+		// Storage can be disabled by browser policy; keep the in-memory update
+		// notification path alive so the current tab still reflects the click.
+	}
+}
+
+function storage() {
+	return typeof localStorage === "undefined" ? undefined : localStorage;
+}
+
+function read(): FlairMode {
+	return readStoredFlairMode(storage());
 }
 
 function subscribe(callback: () => void) {
@@ -50,11 +84,7 @@ export function useFlairMode() {
 	const mode = useSyncExternalStore(subscribe, read, () => "rotate" as FlairMode);
 
 	function setMode(next: FlairMode) {
-		if (next === "rotate") {
-			localStorage.removeItem(STORAGE_KEY);
-		} else {
-			localStorage.setItem(STORAGE_KEY, next);
-		}
+		writeStoredFlairMode(next, storage());
 		window.dispatchEvent(new Event(EVENT));
 	}
 

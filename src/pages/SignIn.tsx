@@ -538,7 +538,7 @@ export function SignIn() {
 													<div className="flex justify-end">
 														<button
 															type="button"
-															className="cursor-pointer appearance-none border-0 bg-transparent p-0 text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+															className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-xs font-medium text-muted-foreground underline-offset-4 transition-[scale,color] duration-150 ease-out hover:text-foreground hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
 															onClick={() => switchMode("recovery")}
 														>
 															Forgot username, password, or email?
@@ -609,7 +609,7 @@ export function SignIn() {
 					{copy.toggle}{" "}
 					<button
 						type="button"
-						className="cursor-pointer appearance-none border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:underline"
+						className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
 						onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
 					>
 						{copy.switchTo}

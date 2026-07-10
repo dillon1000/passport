@@ -29,4 +29,17 @@ describe("authErrorDetails", () => {
 			description: "The authentication request could not be completed.",
 		});
 	});
+
+	it("normalizes long error descriptions for display", () => {
+		const details = authErrorDetails(
+			new URLSearchParams({
+				error: "server_error",
+				error_description: `${"Auth service ".repeat(30)}\n\nretry later`,
+			}),
+		);
+
+		expect(details.description).toHaveLength(243);
+		expect(details.description.endsWith("...")).toBe(true);
+		expect(details.description).not.toContain("\n");
+	});
 });

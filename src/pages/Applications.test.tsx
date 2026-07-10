@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +24,7 @@ vi.mock("@/components/auth/dashboard-shell", () => ({
 }));
 
 import { Applications, AuthorizedApplicationRow, ManagedOAuthClientRow } from "./Applications";
+import { createAppQueryClient } from "@/lib/query-client";
 
 describe("Applications", () => {
 	beforeEach(() => {
@@ -38,8 +40,16 @@ describe("Applications", () => {
 		};
 	});
 
+	function renderApplications() {
+		return renderToStaticMarkup(
+			<QueryClientProvider client={createAppQueryClient()}>
+				<Applications />
+			</QueryClientProvider>,
+		);
+	}
+
 	it("renders the OAuth client registration control for role admins before the client list loads", () => {
-		const html = renderToStaticMarkup(<Applications />);
+		const html = renderApplications();
 
 		expect(html).toContain("Managed clients");
 		expect(html).toContain("Register client");
@@ -52,7 +62,7 @@ describe("Applications", () => {
 			role: "user",
 		};
 
-		const html = renderToStaticMarkup(<Applications />);
+		const html = renderApplications();
 
 		expect(html).not.toContain("Register client");
 	});
@@ -93,5 +103,26 @@ describe("Applications", () => {
 
 		expect(html).toContain("managed_client_123");
 		expect(html).toContain("Copy client ID");
+	});
+
+	it("labels managed machine-to-machine clients", () => {
+		const html = renderToStaticMarkup(
+			<ManagedOAuthClientRow
+				client={{
+					clientId: "m2m_client_123",
+					name: "Worker Job",
+					redirectUris: [],
+					public: false,
+					grantTypes: ["client_credentials"],
+				}}
+				open={false}
+				copied={false}
+				onCopyClientID={() => undefined}
+				onToggleExpanded={() => undefined}
+			/>,
+		);
+
+		expect(html).toContain("Worker Job");
+		expect(html).toContain("M2M");
 	});
 });

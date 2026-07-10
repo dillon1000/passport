@@ -4,7 +4,7 @@
  * hook context, and request metadata; outputs are Better Auth hook definitions
  * plus the exported IP-address comparison helper used by tests.
  */
-import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import type { BetterAuthOptions } from "better-auth/minimal";
 import { and, eq, ne } from "drizzle-orm";
 
@@ -17,6 +17,12 @@ import {
 	accountActivityTypeForPath,
 	type AccountActivityType,
 } from "../account-activity";
+import {
+	accountLockoutPolicyFromEnv,
+	clearCredentialAttempts,
+	readAccountLockoutStatus,
+	recordFailedCredentialAttempt,
+} from "../account-lockout";
 import { isAdminEmail } from "../admin-access";
 import { DEFAULT_EMAIL_NOTIFICATION_PREFERENCES } from "../notification-preferences";
 import { requestLocationFromRequest } from "../request-location";
@@ -47,6 +53,9 @@ type SessionIPAddressSummary = {
 	ipAddress?: string | null;
 };
 
+const CREDENTIAL_SIGN_IN_PATHS = new Set(["/sign-in/email"]);
+const LOCKOUT_ERROR_MESSAGE = "Too many sign-in attempts. Try again later.";
+
 function hookSessionUser(value: unknown): HookUser | null {
 	if (!value || typeof value !== "object") return null;
 	const session = value as HookSession;
@@ -65,6 +74,17 @@ function hookNewSession(value: unknown): HookNewSession | null {
 function normalizeIPAddress(value: string | null | undefined) {
 	const normalized = value?.trim().toLowerCase();
 	return normalized || null;
+}
+
+function credentialIdentifierFromBody(value: unknown) {
+	if (!value || typeof value !== "object") return null;
+	const body = value as Record<string, unknown>;
+	const identifier = body.email ?? body.username ?? body.phoneNumber;
+	return typeof identifier === "string" ? identifier : null;
+}
+
+function isCredentialSignInPath(path: string | undefined) {
+	return CREDENTIAL_SIGN_IN_PATHS.has(path ?? "");
 }
 
 export function isNewSignInIPAddress(
@@ -164,18 +184,90 @@ async function recordAccountActivity(
 		});
 }
 
+async function userForCredentialIdentifier(db: AuthDatabase, identifier: string | null) {
+	if (!identifier) return null;
+	const [user] = await db
+		.select({
+			id: schema.user.id,
+			email: schema.user.email,
+		})
+		.from(schema.user)
+		.where(eq(schema.user.email, identifier.trim().toLowerCase()))
+		.limit(1);
+	return user ?? null;
+}
+
+async function recordLockoutEvent(
+	env: AuthEnv,
+	db: AuthDatabase,
+	identifier: string | null,
+	request: Request | undefined,
+) {
+	const user = await userForCredentialIdentifier(db, identifier);
+	if (!user) return;
+	await recordAccountActivity(
+		db,
+		user.id,
+		ACCOUNT_ACTIVITY_TYPES.ACCOUNT_LOCKED,
+		request,
+	);
+	await sendSecurityNotification(
+		env,
+		db,
+		user,
+		request,
+		ACCOUNT_ACTIVITY_LABELS[ACCOUNT_ACTIVITY_TYPES.ACCOUNT_LOCKED],
+	);
+}
+
 export function accountSecurityEmailPlugin(env: AuthEnv, db: AuthDatabase) {
+	const lockoutPolicy = accountLockoutPolicyFromEnv(env);
+
 	return {
 		id: "account-security-email",
 		hooks: {
+			before: [
+				{
+					matcher: (ctx: { path?: string }) => isCredentialSignInPath(ctx.path),
+					handler: createAuthMiddleware(async (ctx) => {
+						const identifier = credentialIdentifierFromBody(ctx.body);
+						const status = await readAccountLockoutStatus(
+							env.AUTH_SECONDARY_STORAGE,
+							identifier,
+							lockoutPolicy,
+						);
+						if (!status.locked) return;
+						throw new APIError("TOO_MANY_REQUESTS", {
+							message: LOCKOUT_ERROR_MESSAGE,
+						});
+					}),
+				},
+			],
 			after: [
 				{
 					matcher: () => true,
 					handler: createAuthMiddleware(async (ctx) => {
+						if (isCredentialSignInPath(ctx.path) && isAPIError(ctx.context.returned)) {
+							const identifier = credentialIdentifierFromBody(ctx.body);
+							const result = await recordFailedCredentialAttempt(
+								env.AUTH_SECONDARY_STORAGE,
+								identifier,
+								lockoutPolicy,
+							);
+							if (result.lockoutStarted) {
+								await recordLockoutEvent(env, db, identifier, ctx.request);
+							}
+							return;
+						}
+
 						if (isAPIError(ctx.context.returned)) return;
 
 						const newSession = hookNewSession(ctx.context.newSession);
 						if (newSession?.user) {
+							await clearCredentialAttempts(
+								env.AUTH_SECONDARY_STORAGE,
+								credentialIdentifierFromBody(ctx.body) ?? newSession.user.email,
+							);
 							await recordAccountActivity(
 								db,
 								newSession.user.id,

@@ -198,6 +198,10 @@ A single centered column. Two width tiers off a max-width:
   two-row sticky header, and a `180px` sticky section rail beside the content
   on `lg+` screens (`grid-cols-[180px_1fr]`, `{spacing.2xl}` gap). The rail
   collapses below `lg`; cards stack full-width.
+- **Billing administration** is the only wider dashboard exception:
+  `max-w-5xl`, a third billing tab row, and no section rail. Billing matrices,
+  plan editors, and registry drawers need horizontal comparison space; keep the
+  same neutral chrome, typography, card rhythm, and control styling.
 
 The header is two rows: brand + angled-slash breadcrumb + account menu, then a
 secondary page-tab strip (`{components.navTab}`). Base spacing follows a 4px

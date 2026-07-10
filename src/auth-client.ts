@@ -6,6 +6,7 @@
 import { agentAuthClient } from "@better-auth/agent-auth/client";
 import { passkeyClient } from "@better-auth/passkey/client";
 import { oauthProviderClient } from "@better-auth/oauth-provider/client";
+import { stripeClient } from "@better-auth/stripe/client";
 import { createAuthClient } from "better-auth/react";
 import {
 	adminClient,
@@ -60,5 +61,8 @@ export const authClient = createAuthClient({
 		}),
 		passkeyClient(),
 		oauthProviderClient(),
+		stripeClient({
+			subscription: true,
+		}),
 	],
 });

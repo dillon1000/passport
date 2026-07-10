@@ -335,12 +335,13 @@ function ProfileFlair({ name, email }: { name: string; email: string }) {
 		<span
 			aria-hidden
 			ref={trackRef}
-			className="hidden w-44 overflow-hidden text-sm text-muted-foreground sm:block lg:w-64 [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)]"
+			className="hidden w-44 overflow-hidden text-sm tabular-nums text-muted-foreground sm:block lg:w-64 [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)]"
 		>
 			<span
 				key={text}
 				className={cn(
-					"flex whitespace-nowrap will-change-transform",
+					"flex whitespace-nowrap",
+					(scrolling || anim) && "will-change-transform",
 					scrolling ? "justify-start" : "justify-end",
 					anim === "in" && "flair-swipe-in motion-reduce:animate-none",
 					anim === "out" && "flair-swipe-out motion-reduce:animate-none",
@@ -381,7 +382,7 @@ export function UserMenu({
 				<button
 					type="button"
 					aria-label="Account menu"
-					className="flex items-center gap-2 rounded-full pr-0.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+					className="flex min-h-10 items-center gap-2 rounded-full py-1 pr-1.5 pl-2 transition-[scale,box-shadow] duration-150 ease-out active:scale-[0.96] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 				>
 					<ProfileFlair name={name} email={email} />
 					<Avatar className="size-8 rounded-full">

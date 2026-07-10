@@ -15,6 +15,11 @@ import {
 	type AdminAuditMetadata,
 } from "../src/lib/admin-audit";
 import type { AccountActivitySummary } from "../src/lib/account-activity";
+import {
+	OAUTH_GRANT_TYPES,
+	hasClientCredentialsGrant,
+	type OAuthGrantType,
+} from "../src/lib/oauth-grants";
 import { WEBHOOK_EVENT_TYPE_VALUES, safeWebhookURL } from "../src/lib/webhooks";
 import type { ConsentClientMetadata } from "../src/lib/oauth-client-metadata";
 import { unsupportedOAuthScopesMessage } from "../src/lib/oauth-scopes";
@@ -23,8 +28,14 @@ import {
 	DEFAULT_EMAIL_NOTIFICATION_PREFERENCES,
 	type EmailNotificationPreferences,
 } from "../src/lib/notification-preferences";
+import {
+	billingPlanCatalog,
+	parseStripeBillingPlans,
+	type BillingPlanCatalogEntry,
+} from "../src/lib/billing";
 import type { RequestLocation } from "../src/lib/request-location";
 import { isAdminOperator } from "../src/lib/admin-access";
+import { createClientAPI } from "./client-api";
 
 type AuthHandler = (request: Request, env: Env) => Response | Promise<Response>;
 type ProfileSession = {
@@ -112,6 +123,8 @@ export type OAuthClientSummary = {
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
+	grantTypes?: OAuthGrantType[];
+	allowedAudiences?: string[];
 };
 
 export type OAuthClientWithSecret = OAuthClientSummary & {
@@ -227,6 +240,130 @@ export type WebhookService = {
 	) => PageResult<WebhookDeliverySummary> | Promise<PageResult<WebhookDeliverySummary>>;
 };
 
+// Full plan row exposed to admins (price identifiers included). The public
+// catalog served at /api/billing/plans strips these via billingPlanCatalog.
+export type BillingPlanRecord = {
+	id: string;
+	name: string;
+	label: string | null;
+	description: string | null;
+	group: string | null;
+	priceId: string | null;
+	lookupKey: string | null;
+	annualDiscountPriceId: string | null;
+	annualDiscountLookupKey: string | null;
+	seatPriceId: string | null;
+	prorationBehavior: string | null;
+	freeTrialDays: number | null;
+	type: string;
+	personalOnly: boolean;
+	hidden: boolean;
+	displayOrder: number;
+	limits: Record<string, unknown> | null;
+	entitlements: string[] | null;
+	lineItems: Record<string, unknown>[] | null;
+};
+
+export type BillingPriceInfo = {
+	amount: number | null;
+	currency: string;
+	interval?: string;
+	intervalCount?: number;
+};
+
+export type BillingCatalogLabels = {
+	entitlementLabels: Record<string, string>;
+	limitLabels: Record<string, { name: string; unit?: string }>;
+};
+
+export type BillingPlanService = {
+	catalog: (env: Env) => BillingPlanCatalogEntry[] | Promise<BillingPlanCatalogEntry[]>;
+	/** Resolve a single plan (including hidden ones) by its `prod_…` id. */
+	product: (
+		env: Env,
+		id: string,
+	) => BillingPlanCatalogEntry | null | Promise<BillingPlanCatalogEntry | null>;
+	labels: (env: Env) => BillingCatalogLabels | Promise<BillingCatalogLabels>;
+	list: (env: Env) => BillingPlanRecord[] | Promise<BillingPlanRecord[]>;
+	create: (env: Env, input: unknown) => BillingPlanRecord | Promise<BillingPlanRecord>;
+	update: (
+		env: Env,
+		id: string,
+		input: unknown,
+	) => BillingPlanRecord | null | Promise<BillingPlanRecord | null>;
+	remove: (env: Env, id: string) => boolean | Promise<boolean>;
+	reorder: (env: Env, order: string[]) => number | Promise<number>;
+	prices: (
+		env: Env,
+		ids: string[],
+	) => Record<string, BillingPriceInfo> | Promise<Record<string, BillingPriceInfo>>;
+};
+
+export type BillingEntitlementRecord = {
+	id: string;
+	key: string;
+	name: string;
+	description: string | null;
+};
+
+export type BillingLimitRecord = {
+	id: string;
+	key: string;
+	name: string;
+	unit: string | null;
+};
+
+// One CRUD slice of the billing registry (entitlements or limits) — the route
+// handlers are generic over T so both resources share one pair of handlers.
+export type BillingRegistrySlice<T> = {
+	list: (env: Env) => T[] | Promise<T[]>;
+	create: (env: Env, input: unknown) => T | Promise<T>;
+	update: (env: Env, id: string, input: unknown) => T | null | Promise<T | null>;
+	remove: (env: Env, id: string) => boolean | Promise<boolean>;
+};
+
+export type BillingRegistryService = {
+	entitlements: BillingRegistrySlice<BillingEntitlementRecord>;
+	limits: BillingRegistrySlice<BillingLimitRecord>;
+};
+
+export type BillingCheckoutInput = {
+	plan: string;
+	customerType: "user" | "organization";
+	referenceId?: string;
+	successUrl: string;
+	cancelUrl: string;
+	user: { id: string; email: string };
+};
+
+// Payment-mode checkout for one-time plans. Subscriptions still flow through the
+// Better Auth Stripe plugin under /api/auth/subscription.
+export type BillingCheckoutService = {
+	create: (env: Env, input: BillingCheckoutInput) => Promise<{ url: string }>;
+};
+
+export type BillingPurchaseSummary = {
+	id: string;
+	plan: string;
+	status: string;
+	quantity: number;
+	amountTotal: number | null;
+	currency: string | null;
+	purchasedAt: string | null;
+	createdAt: string;
+};
+
+export type BillingPurchasesInput = {
+	user: { id: string };
+	customerType: "user" | "organization";
+	referenceId?: string;
+};
+
+// Lists completed one-time purchases for the billing UI's purchase-history card.
+export type BillingPurchasesService = {
+	list: (env: Env, input: BillingPurchasesInput) => Promise<BillingPurchaseSummary[]>;
+};
+
 export type AdminUserMutationResult = {
 	userId: string;
 	email?: string | null;
@@ -309,6 +446,8 @@ export type CreateOAuthClientInput = {
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
+	grantTypes?: OAuthGrantType[];
+	allowedAudiences?: string[];
 };
 
 export type UpdateOAuthClientInput = Partial<Omit<CreateOAuthClientInput, "public">>;
@@ -353,6 +492,10 @@ type AppOptions = {
 	emailNotificationPreferences?: EmailNotificationPreferenceService;
 	activityLog?: AccountActivityService;
 	webhooks?: WebhookService;
+	billingPlans?: BillingPlanService;
+	billingRegistry?: BillingRegistryService;
+	billingCheckout?: BillingCheckoutService;
+	billingPurchases?: BillingPurchasesService;
 };
 
 const AUTH_PATH_PREFIXES = [
@@ -400,6 +543,7 @@ type PublicEnv = Env & {
 	CAPTCHA_SECRET_KEY?: string;
 	CAPTCHA_SITE_KEY?: string;
 	ADMIN_USER_IDS?: string;
+	STRIPE_BILLING_PLANS?: string;
 };
 
 const DEFAULT_BRAND = {
@@ -408,9 +552,10 @@ const DEFAULT_BRAND = {
 	capabilities: ["OIDC", "PKCE", "JWKS"],
 };
 
-const requiredOAuthURLArray = z.array(z.string().url()).min(1);
 const optionalOAuthURLArray = z.array(z.string().url());
 const optionalOAuthURL = z.string().url().optional();
+const oauthGrantTypesArray = z.array(z.enum(OAUTH_GRANT_TYPES)).min(1);
+const oauthAudienceArray = z.array(z.string().trim().min(1));
 const oauthScopesArray = z.array(z.string().trim().min(1)).superRefine((scopes, context) => {
 	const message = unsupportedOAuthScopesMessage(scopes);
 	if (!message) return;
@@ -420,11 +565,78 @@ const oauthScopesArray = z.array(z.string().trim().min(1)).superRefine((scopes, 
 	});
 });
 
-const createOAuthClientSchema = z.object({
+function validateCreateOAuthClientGrantShape(
+	value: {
+		redirectUris?: string[];
+		grantTypes?: OAuthGrantType[];
+		allowedAudiences?: string[];
+		public?: boolean;
+	},
+	context: z.RefinementCtx,
+) {
+	const grantTypes = value.grantTypes ?? ["authorization_code"];
+	if (hasClientCredentialsGrant(grantTypes)) {
+		if (value.public) {
+			context.addIssue({
+				code: "custom",
+				message: "Machine-to-machine clients must be confidential.",
+				path: ["public"],
+			});
+		}
+		if (grantTypes.length !== 1) {
+			context.addIssue({
+				code: "custom",
+				message: "Machine-to-machine clients must use only the client_credentials grant.",
+				path: ["grantTypes"],
+			});
+		}
+		if (!value.allowedAudiences?.length) {
+			context.addIssue({
+				code: "custom",
+				message: "Machine-to-machine clients require at least one allowed audience.",
+				path: ["allowedAudiences"],
+			});
+		}
+		return;
+	}
+
+	if (!value.redirectUris?.length) {
+		context.addIssue({
+			code: "custom",
+			message: "Redirect URIs are required for authorization-code clients.",
+			path: ["redirectUris"],
+		});
+	}
+}
+
+function validateUpdateOAuthClientGrantShape(
+	value: {
+		redirectUris?: string[];
+		grantTypes?: OAuthGrantType[];
+		allowedAudiences?: string[];
+	},
+	context: z.RefinementCtx,
+) {
+	if (!value.grantTypes) {
+		if (value.redirectUris && value.redirectUris.length === 0) {
+			context.addIssue({
+				code: "custom",
+				message: "Redirect URIs are required for authorization-code clients.",
+				path: ["redirectUris"],
+			});
+		}
+		return;
+	}
+	validateCreateOAuthClientGrantShape(value, context);
+}
+
+const baseCreateOAuthClientSchema = z.object({
 	name: z.string().trim().min(1),
-	redirectUris: requiredOAuthURLArray,
+	redirectUris: optionalOAuthURLArray.default([]),
 	postLogoutRedirectUris: optionalOAuthURLArray.optional(),
 	scopes: oauthScopesArray.optional(),
+	grantTypes: oauthGrantTypesArray.optional(),
+	allowedAudiences: oauthAudienceArray.optional(),
 	uri: z.string().url().optional(),
 	icon: z.string().url().optional(),
 	tos: optionalOAuthURL,
@@ -435,11 +647,21 @@ const createOAuthClientSchema = z.object({
 	backchannelLogoutUri: z.string().url().nullable().optional(),
 });
 
-const updateOAuthClientSchema = createOAuthClientSchema
+const createOAuthClientSchema = baseCreateOAuthClientSchema.superRefine(
+	validateCreateOAuthClientGrantShape,
+);
+
+const updateOAuthClientSchema = baseCreateOAuthClientSchema
 	.omit({
 		public: true,
+		name: true,
+	})
+	.extend({
+		name: z.string().trim().min(1).optional(),
+		redirectUris: optionalOAuthURLArray.optional(),
 	})
 	.partial()
+	.superRefine(validateUpdateOAuthClientGrantShape)
 	.refine((value) => Object.keys(value).length > 0, {
 		message: "Provide at least one field to update.",
 	});
@@ -484,6 +706,8 @@ function routeTraceName(pathname: string) {
 	if (pathname === "/.well-known/agent-configuration") return "agent-configuration";
 	if (pathname === "/api/brand-config") return "brand-config";
 	if (pathname === "/api/captcha-config") return "captcha-config";
+	if (pathname === "/api/billing/plans") return "billing-plans";
+	if (pathname.startsWith("/api/billing/products/")) return "billing-product";
 	if (pathname === "/api/account/password") return "account-password";
 	if (pathname === "/api/settings/notifications") return "notification-preferences";
 	if (pathname === "/api/applications" || /^\/api\/applications\/[^/]+\/revoke$/.test(pathname)) {
@@ -492,6 +716,7 @@ function routeTraceName(pathname: string) {
 	if (pathname === "/api/oauth/client-metadata") return "oauth-client-metadata";
 	if (pathname.startsWith("/api/data-export-requests")) return "data-export";
 	if (pathname === "/api/admin/oauth-clients") return "admin-oauth";
+	if (pathname.startsWith("/api/admin/billing/")) return "admin-billing";
 	if (pathname === "/api/admin/oauth-proxy") return "admin-oauth-proxy";
 	if (pathname === "/api/admin/audit-events") return "admin-audit";
 	if (pathname.startsWith("/api/admin/oauth-clients/")) return "admin-oauth";
@@ -659,6 +884,15 @@ function captchaConfig(env: Env) {
 		enabled: true,
 		provider: publicEnv.CAPTCHA_PROVIDER?.trim() || "cloudflare-turnstile",
 		siteKey,
+	};
+}
+
+function billingPlansConfig(env: Env) {
+	const publicEnv = env as PublicEnv;
+	return {
+		plans: Object.values(
+			billingPlanCatalog(parseStripeBillingPlans(publicEnv.STRIPE_BILLING_PLANS)),
+		),
 	};
 }
 
@@ -1021,6 +1255,312 @@ async function handleAdminWebhookAction(
 	return new Response(null, { status: 405 });
 }
 
+// Plan validation throws TypeError (via validateBillingPlanInput); surface it as
+// a 400 instead of a generic 500 so admins see the offending field.
+async function billingPlanResponse(callback: () => Promise<Response>) {
+	try {
+		return await callback();
+	} catch (error) {
+		if (error instanceof TypeError) {
+			return jsonError(error.message, 400);
+		}
+		console.error("Admin billing plan request failed", error);
+		return jsonError("Could not manage billing plan.", 500);
+	}
+}
+
+async function handleAdminBillingPlans(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	billingPlans: BillingPlanService | undefined,
+) {
+	const admin = await requireAdminSession(
+		request,
+		env,
+		getSession,
+		"Sign in to manage billing plans.",
+		"You do not have access to manage billing plans.",
+	);
+	if ("response" in admin) return admin.response;
+	if (!billingPlans) return jsonError("Billing plan management is not configured.", 501);
+
+	if (request.method === "GET") {
+		const plans = await billingPlans.list(env);
+		return Response.json({ plans });
+	}
+
+	if (request.method === "POST") {
+		return billingPlanResponse(async () => {
+			const plan = await billingPlans.create(env, await readJSON(request));
+			return Response.json({ plan }, { status: 201 });
+		});
+	}
+
+	return new Response(null, { status: 405 });
+}
+
+async function handleAdminBillingPlanAction(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	billingPlans: BillingPlanService | undefined,
+	id: string,
+) {
+	const admin = await requireAdminSession(
+		request,
+		env,
+		getSession,
+		"Sign in to manage billing plans.",
+		"You do not have access to manage billing plans.",
+	);
+	if ("response" in admin) return admin.response;
+	if (!billingPlans) return jsonError("Billing plan management is not configured.", 501);
+
+	if (request.method === "PATCH") {
+		return billingPlanResponse(async () => {
+			const plan = await billingPlans.update(env, id, await readJSON(request));
+			if (!plan) return jsonError("Billing plan not found.", 404);
+			return Response.json({ plan });
+		});
+	}
+
+	if (request.method === "DELETE") {
+		const removed = await billingPlans.remove(env, id);
+		if (!removed) return jsonError("Billing plan not found.", 404);
+		return new Response(null, { status: 204 });
+	}
+
+	return new Response(null, { status: 405 });
+}
+
+async function handleAdminBillingPlanReorder(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	billingPlans: BillingPlanService | undefined,
+) {
+	if (request.method !== "PATCH") return new Response(null, { status: 405 });
+	const admin = await requireAdminSession(
+		request,
+		env,
+		getSession,
+		"Sign in to manage billing plans.",
+		"You do not have access to manage billing plans.",
+	);
+	if ("response" in admin) return admin.response;
+	if (!billingPlans) return jsonError("Billing plan management is not configured.", 501);
+
+	return billingPlanResponse(async () => {
+		const body = (await readJSON(request)) as { order?: unknown };
+		if (!Array.isArray(body.order) || body.order.some((id) => typeof id !== "string")) {
+			return jsonError("order must be an array of plan ids.", 400);
+		}
+		await billingPlans.reorder(env, body.order as string[]);
+		return new Response(null, { status: 204 });
+	});
+}
+
+async function handleAdminBillingPrices(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	billingPlans: BillingPlanService | undefined,
+) {
+	if (request.method !== "GET") return new Response(null, { status: 405 });
+	const admin = await requireAdminSession(
+		request,
+		env,
+		getSession,
+		"Sign in to manage billing plans.",
+		"You do not have access to manage billing plans.",
+	);
+	if ("response" in admin) return admin.response;
+	if (!billingPlans) return jsonError("Billing plan management is not configured.", 501);
+
+	const ids = (new URL(request.url).searchParams.get("ids") ?? "")
+		.split(",")
+		.map((id) => id.trim())
+		.filter(Boolean);
+	const prices = await billingPlans.prices(env, ids);
+	return Response.json({ prices });
+}
+
+async function handleAdminRegistryCollection<T>(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	slice: BillingRegistrySlice<T> | undefined,
+) {
+	const admin = await requireAdminSession(
+		request,
+		env,
+		getSession,
+		"Sign in to manage billing plans.",
+		"You do not have access to manage billing plans.",
+	);
+	if ("response" in admin) return admin.response;
+	if (!slice) return jsonError("Billing registry management is not configured.", 501);
+
+	if (request.method === "GET") {
+		return Response.json({ items: await slice.list(env) });
+	}
+	if (request.method === "POST") {
+		return billingPlanResponse(async () => {
+			const item = await slice.create(env, await readJSON(request));
+			return Response.json({ item }, { status: 201 });
+		});
+	}
+	return new Response(null, { status: 405 });
+}
+
+async function handleAdminRegistryItem<T>(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	slice: BillingRegistrySlice<T> | undefined,
+	id: string,
+) {
+	const admin = await requireAdminSession(
+		request,
+		env,
+		getSession,
+		"Sign in to manage billing plans.",
+		"You do not have access to manage billing plans.",
+	);
+	if ("response" in admin) return admin.response;
+	if (!slice) return jsonError("Billing registry management is not configured.", 501);
+
+	if (request.method === "PATCH") {
+		return billingPlanResponse(async () => {
+			const item = await slice.update(env, id, await readJSON(request));
+			if (!item) return jsonError("Registry entry not found.", 404);
+			return Response.json({ item });
+		});
+	}
+	if (request.method === "DELETE") {
+		const removed = await slice.remove(env, id);
+		if (!removed) return jsonError("Registry entry not found.", 404);
+		return new Response(null, { status: 204 });
+	}
+	return new Response(null, { status: 405 });
+}
+
+function billingCheckoutError(error: unknown) {
+	if (error && typeof error === "object") {
+		const candidate = error as {
+			statusCode?: number;
+			body?: { message?: string };
+			message?: string;
+		};
+		const status =
+			typeof candidate.statusCode === "number" ? candidate.statusCode : 400;
+		const message =
+			candidate.body?.message ?? candidate.message ?? "Could not start checkout.";
+		return jsonError(message, status);
+	}
+	return jsonError("Could not start checkout.", 500);
+}
+
+async function handleBillingCheckout(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	billingCheckout: BillingCheckoutService | undefined,
+) {
+	if (request.method !== "POST") return new Response(null, { status: 405 });
+	const sessionResult = await requireSession(
+		request,
+		env,
+		getSession,
+		"Sign in to complete a purchase.",
+	);
+	if ("response" in sessionResult) return sessionResult.response;
+	if (!billingCheckout) return jsonError("Billing checkout is not configured.", 501);
+
+	const body = (await readJSON(request)) as Record<string, unknown>;
+	const plan = typeof body.plan === "string" ? body.plan.trim() : "";
+	if (!plan) return jsonError("A plan is required.", 400);
+
+	const email = sessionResult.session.user.email;
+	if (!email) return jsonError("Your account is missing an email address.", 400);
+
+	const customerType = body.customerType === "organization" ? "organization" : "user";
+	try {
+		const result = await billingCheckout.create(env, {
+			plan,
+			customerType,
+			referenceId: typeof body.referenceId === "string" ? body.referenceId : undefined,
+			successUrl:
+				typeof body.successUrl === "string" ? body.successUrl : "/billing?checkout=success",
+			cancelUrl:
+				typeof body.cancelUrl === "string" ? body.cancelUrl : "/billing?checkout=cancel",
+			user: { id: sessionResult.session.user.id, email },
+		});
+		return Response.json(result);
+	} catch (error) {
+		return billingCheckoutError(error);
+	}
+}
+
+async function handleBillingPurchases(
+	request: Request,
+	env: Env,
+	getSession: SessionResolver | undefined,
+	billingPurchases: BillingPurchasesService | undefined,
+) {
+	if (request.method !== "GET") return new Response(null, { status: 405 });
+	const sessionResult = await requireSession(
+		request,
+		env,
+		getSession,
+		"Sign in to view your purchases.",
+	);
+	if ("response" in sessionResult) return sessionResult.response;
+	if (!billingPurchases) return jsonError("Billing is not configured.", 501);
+
+	const url = new URL(request.url);
+	const referenceId = url.searchParams.get("referenceId") ?? undefined;
+	const customerType =
+		url.searchParams.get("customerType") === "organization" ? "organization" : "user";
+	try {
+		const purchases = await billingPurchases.list(env, {
+			user: { id: sessionResult.session.user.id },
+			customerType,
+			referenceId,
+		});
+		return Response.json(purchases);
+	} catch (error) {
+		return billingCheckoutError(error);
+	}
+}
+
+// Block organization customers from subscribing to personal-only plans before
+// the request reaches the Better Auth subscription endpoint, which is unaware of
+// Passport's per-plan personalOnly flag.
+async function enforceSubscriptionPersonalOnly(
+	request: Request,
+	env: Env,
+	billingPlans: BillingPlanService | undefined,
+) {
+	if (request.method !== "POST" || !billingPlans) return undefined;
+	let body: Record<string, unknown>;
+	try {
+		body = (await request.clone().json()) as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+	if (body.customerType !== "organization") return undefined;
+	const plan = typeof body.plan === "string" ? body.plan.toLowerCase() : "";
+	if (!plan) return undefined;
+	const catalog = await billingPlans.catalog(env);
+	const entry = catalog.find((candidate) => candidate.name.toLowerCase() === plan);
+	if (entry?.personalOnly) {
+		return jsonError("This plan can only be purchased by personal accounts.", 403);
+	}
+	return undefined;
+}
+
 async function updateAccountPassword(
 	request: Request,
 	env: Env,
@@ -1213,6 +1753,8 @@ async function handleAdminOAuthClients(
 					redirectUris: client.redirectUris,
 					scopes: client.scopes,
 					public: client.public,
+					grantTypes: client.grantTypes,
+					allowedAudiences: client.allowedAudiences,
 					skipConsent: client.skipConsent,
 					enableEndSession: client.enableEndSession,
 				},
@@ -1455,8 +1997,15 @@ export function createWorkerApp({
 	emailNotificationPreferences,
 	activityLog,
 	webhooks,
+	billingPlans,
+	billingRegistry,
+	billingCheckout,
+	billingPurchases,
 }: AppOptions) {
 	const app = new Hono<{ Bindings: Env }>();
+	// The versioned resource API owns its explicit routes before this app's
+	// catch-all reaches Better Auth or the static asset binding.
+	app.route("/", createClientAPI());
 
 	app.all("*", async (c) => {
 		const request = c.req.raw;
@@ -1477,6 +2026,37 @@ export function createWorkerApp({
 						"cache-control": "public, max-age=60",
 					},
 				});
+			}
+
+			if (url.pathname === "/api/billing/plans" && request.method === "GET") {
+				const all = billingPlans
+					? await billingPlans.catalog(c.env)
+					: billingPlansConfig(c.env).plans;
+				// Hidden plans are excluded from the public catalog; they remain
+				// reachable by id via /api/billing/products/:id (the deeplink).
+				const plans = all.filter((plan) => !plan.hidden);
+				const labels = billingPlans
+					? await billingPlans.labels(c.env)
+					: { entitlementLabels: {}, limitLabels: {} };
+				return Response.json(
+					{ plans, ...labels },
+					{
+						headers: {
+							"cache-control": "public, max-age=60",
+						},
+					},
+				);
+			}
+
+			const productMatch = /^\/api\/billing\/products\/([^/]+)$/.exec(url.pathname);
+			if (productMatch && request.method === "GET") {
+				if (!billingPlans) return jsonError("Billing is not configured.", 501);
+				const id = decodeURIComponent(productMatch[1]);
+				const product = await billingPlans.product(c.env, id);
+				if (!product) return jsonError("Product not found.", 404);
+				// A deeplink is the access grant for hidden products, so this is not
+				// cached publicly and returns the entry regardless of `hidden`.
+				return Response.json({ product }, { headers: { "cache-control": "no-store" } });
 			}
 
 			if (url.pathname === "/.well-known/agent-configuration") {
@@ -1562,6 +2142,75 @@ export function createWorkerApp({
 				return handleAdminOAuthClients(request, c.env, getSession, adminOAuth, adminAudit);
 			}
 
+			if (url.pathname === "/api/admin/billing/plans") {
+				return handleAdminBillingPlans(request, c.env, getSession, billingPlans);
+			}
+
+			if (url.pathname === "/api/admin/billing/plans/reorder") {
+				return handleAdminBillingPlanReorder(request, c.env, getSession, billingPlans);
+			}
+
+			if (url.pathname === "/api/admin/billing/prices") {
+				return handleAdminBillingPrices(request, c.env, getSession, billingPlans);
+			}
+
+			if (url.pathname === "/api/admin/billing/entitlements") {
+				return handleAdminRegistryCollection(
+					request,
+					c.env,
+					getSession,
+					billingRegistry?.entitlements,
+				);
+			}
+
+			const adminEntitlementMatch = url.pathname.match(
+				/^\/api\/admin\/billing\/entitlements\/([^/]+)$/,
+			);
+			if (adminEntitlementMatch) {
+				return handleAdminRegistryItem(
+					request,
+					c.env,
+					getSession,
+					billingRegistry?.entitlements,
+					decodeURIComponent(adminEntitlementMatch[1] ?? ""),
+				);
+			}
+
+			if (url.pathname === "/api/admin/billing/limits") {
+				return handleAdminRegistryCollection(
+					request,
+					c.env,
+					getSession,
+					billingRegistry?.limits,
+				);
+			}
+
+			const adminLimitMatch = url.pathname.match(
+				/^\/api\/admin\/billing\/limits\/([^/]+)$/,
+			);
+			if (adminLimitMatch) {
+				return handleAdminRegistryItem(
+					request,
+					c.env,
+					getSession,
+					billingRegistry?.limits,
+					decodeURIComponent(adminLimitMatch[1] ?? ""),
+				);
+			}
+
+			const adminBillingPlanMatch = url.pathname.match(
+				/^\/api\/admin\/billing\/plans\/([^/]+)$/,
+			);
+			if (adminBillingPlanMatch) {
+				return handleAdminBillingPlanAction(
+					request,
+					c.env,
+					getSession,
+					billingPlans,
+					decodeURIComponent(adminBillingPlanMatch[1] ?? ""),
+				);
+			}
+
 			if (url.pathname === "/api/admin/oauth-proxy") {
 				return handleAdminOAuthProxy(request, c.env, getSession);
 			}
@@ -1616,6 +2265,19 @@ export function createWorkerApp({
 					decodeURIComponent(adminUserMatch[1] ?? ""),
 					adminUserMatch[2] ? decodeURIComponent(adminUserMatch[2]) : undefined,
 				);
+			}
+
+			if (url.pathname === "/api/billing/checkout") {
+				return handleBillingCheckout(request, c.env, getSession, billingCheckout);
+			}
+
+			if (url.pathname === "/api/billing/purchases") {
+				return handleBillingPurchases(request, c.env, getSession, billingPurchases);
+			}
+
+			if (url.pathname === "/api/auth/subscription/upgrade") {
+				const blocked = await enforceSubscriptionPersonalOnly(request, c.env, billingPlans);
+				if (blocked) return blocked;
 			}
 
 			if (isAuthRoute(url.pathname)) {

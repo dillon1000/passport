@@ -74,6 +74,7 @@ export type ExampleSessionPayload =
 const PASSPORT_PROVIDER_ID = "passport";
 export const PASSPORT_EXAMPLE_SCOPES = [
 	"openid",
+	"offline_access",
 	"profile",
 	"email",
 	"phone",
@@ -87,6 +88,12 @@ export const PASSPORT_EXAMPLE_SCOPES = [
 	"permissions",
 	"account:security",
 	"connections",
+	"profile:write",
+	"organizations:write",
+	"teams:write",
+	"billing:subscriptions",
+	"billing:purchases",
+	"billing:checkout",
 ] as const;
 
 type DiscoveryMetadata = {
@@ -103,6 +110,15 @@ function withoutTrailingSlash(value: string) {
 
 function absoluteURL(baseURL: string, path: string) {
 	return new URL(path, `${withoutTrailingSlash(baseURL)}/`).toString();
+}
+
+/**
+ * Returns the delegated Passport API resource identifier. `AUTH_ISSUER` may
+ * point at an issuer path, so the leading slash deliberately resolves from the
+ * deployment origin.
+ */
+export function passportResourceURL(env: Pick<ClientEnv, "AUTH_ISSUER">) {
+	return absoluteURL(env.AUTH_ISSUER, "/api/v1");
 }
 
 export function passportClaimURL(env: Pick<ClientEnv, "AUTH_ISSUER">, name: string) {
@@ -311,6 +327,12 @@ export function createExampleAuth(env: ClientEnv) {
 						redirectURI: redirectURI(env),
 						pkce: true,
 						scopes: [...PASSPORT_EXAMPLE_SCOPES],
+						authorizationUrlParams: {
+							resource: passportResourceURL(env),
+						},
+						tokenUrlParams: {
+							resource: passportResourceURL(env),
+						},
 					},
 				],
 			}),

@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
-import { Check, Copy, CreditCard, MailPlus, Save, Upload } from "lucide-react";
+import { Check, Copy, MailPlus, Save, Upload } from "lucide-react";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -10,13 +10,15 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { normalizeEmailChangeValue } from "@/lib/account";
+import { copyTextToClipboard } from "@/lib/clipboard";
+import { uploadProfileImageAsset } from "@/lib/image-upload";
 import { initialsOf, useRequireSession } from "@/lib/session";
 
 const SECTIONS: Section[] = [
 	{ id: "profile", label: "Profile" },
 	{ id: "email", label: "Email" },
 	{ id: "picture", label: "Picture" },
-	{ id: "billing", label: "Billing" },
 	{ id: "user-id", label: "User ID" },
 ];
 
@@ -28,10 +30,6 @@ type AccountUser = {
 	image?: string | null;
 	username?: string | null;
 	displayUsername?: string | null;
-};
-
-type ProfileImageUploadResponse = {
-	image: string;
 };
 
 export function Account() {
@@ -57,7 +55,13 @@ export function Account() {
 	const user = session?.user as AccountUser | undefined;
 
 	async function copyId(id: string) {
-		await navigator.clipboard.writeText(id);
+		const result = await copyTextToClipboard(id);
+		if (!result.ok) {
+			setCopied(false);
+			setStatus({ tone: "error", message: result.message });
+			return;
+		}
+		setStatus(null);
 		setCopied(true);
 		setTimeout(() => setCopied(false), 1500);
 	}
@@ -83,10 +87,15 @@ export function Account() {
 
 	async function changeEmail(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
+		const nextEmail = normalizeEmailChangeValue(newEmail);
+		if (!nextEmail) {
+			setStatus({ tone: "error", message: "Enter a new email address." });
+			return;
+		}
 		setStatus(null);
 		setBusy("email");
 		const result = await authClient.changeEmail({
-			newEmail,
+			newEmail: nextEmail,
 			callbackURL: "/account?emailChanged=1",
 		});
 		setBusy(null);
@@ -110,39 +119,26 @@ export function Account() {
 
 		setStatus(null);
 		setBusy("picture");
-		const formData = new FormData();
-		formData.set("image", imageFile);
-		const uploadResponse = await fetch("/api/profile-images", {
-			method: "POST",
-			body: formData,
-		});
-		if (!uploadResponse.ok) {
-			const payload = (await uploadResponse.json()) as { error?: string };
+		try {
+			const image = await uploadProfileImageAsset(imageFile);
+			const result = await authClient.updateUser({ image });
+			if (result.error) {
+				setStatus({
+					tone: "error",
+					message: result.error.message ?? "Could not save profile picture.",
+				});
+				return;
+			}
+			setImageURL(image);
+			setStatus({ tone: "success", message: "Profile picture updated." });
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not upload profile picture.",
+			});
+		} finally {
 			setBusy(null);
-			setStatus({
-				tone: "error",
-				message: payload.error ?? "Could not upload profile picture.",
-			});
-			return;
 		}
-
-		const payload = (await uploadResponse.json()) as ProfileImageUploadResponse;
-		const result = await authClient.updateUser({ image: payload.image });
-		setBusy(null);
-		if (result.error) {
-			setStatus({
-				tone: "error",
-				message: result.error.message ?? "Could not save profile picture.",
-			});
-			return;
-		}
-		setImageURL(payload.image);
-		setStatus({ tone: "success", message: "Profile picture updated." });
-	}
-
-	function saveBilling(event: FormEvent<HTMLFormElement>) {
-		event.preventDefault();
-		setStatus({ tone: "success", message: "Billing info left unchanged." });
 	}
 
 	return (
@@ -200,7 +196,11 @@ export function Account() {
 									<SettingsCardFooter
 										hint={user.emailVerified ? "Current email verified." : "Current email unverified."}
 									>
-										<Button size="sm" type="submit" disabled={busy === "email" || !newEmail}>
+										<Button
+											size="sm"
+											type="submit"
+											disabled={busy === "email" || !normalizeEmailChangeValue(newEmail)}
+										>
 											<MailPlus className="size-4" />
 											Change email
 										</Button>
@@ -256,32 +256,6 @@ export function Account() {
 											accept="image/png,image/jpeg,image/gif,image/webp"
 											onChange={selectImage}
 										/>
-									</Field>
-								</div>
-							</SettingsCard>
-						</form>
-					</section>
-
-					<section id="billing" className="scroll-mt-32">
-						<form onSubmit={saveBilling}>
-							<SettingsCard
-								title="Billing Info"
-								description="Billing fields are available here without persistence."
-								footer={
-									<SettingsCardFooter hint="No billing backend is connected.">
-										<Button size="sm" type="submit" variant="outline">
-											<CreditCard className="size-4" />
-											Save
-										</Button>
-									</SettingsCardFooter>
-								}
-							>
-								<div className="grid gap-4 sm:grid-cols-2">
-									<Field label="Billing name">
-										<FieldInput autoComplete="cc-name" placeholder="Ada Lovelace" />
-									</Field>
-									<Field label="ZIP code">
-										<FieldInput autoComplete="postal-code" placeholder="12345" />
 									</Field>
 								</div>
 							</SettingsCard>

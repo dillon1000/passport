@@ -4,6 +4,7 @@ import {
 	canReactivateAgentStatus,
 	canRevokeAgentStatus,
 	canRevokeGrantStatus,
+	normalizeAgentApprovalInput,
 	parseCapabilityList,
 } from "./agent-auth";
 
@@ -15,6 +16,26 @@ describe("agent auth helpers", () => {
 			"write_profile",
 		]);
 		expect(parseCapabilityList("   ")).toEqual([]);
+	});
+
+	it("normalizes optional approval identifiers before submission", () => {
+		expect(
+			normalizeAgentApprovalInput({
+				agentId: " agent_123 ",
+				approvalId: " approval_123 ",
+				userCode: " ABCD-1234 ",
+				action: "approve",
+				capabilities: [" read_sessions ", "", " write_profile "],
+				reason: " approved from browser ",
+			}),
+		).toEqual({
+			agentId: "agent_123",
+			approvalId: "approval_123",
+			userCode: "ABCD-1234",
+			action: "approve",
+			capabilities: ["read_sessions", "write_profile"],
+			reason: "approved from browser",
+		});
 	});
 
 	it("offers revoke controls only for live agent states", () => {

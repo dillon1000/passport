@@ -12,12 +12,17 @@ import {
 	createWorkerApp,
 	type AccountPasswordInput,
 	type AdminAuditEventSummary,
+	type BillingEntitlementRecord,
+	type BillingLimitRecord,
+	type BillingPlanRecord,
 	type ApplicationSummary,
+	type CreateOAuthClientInput,
 	type EmailNotificationPreferenceService,
 	type OAuthClientSummary,
 	type OAuthClientWithSecret,
 	type PageInput,
 	type PageResult,
+	type UpdateOAuthClientInput,
 	type WebhookEndpointSummary,
 } from "./app";
 import {
@@ -32,23 +37,66 @@ import { auth } from "../src/auth";
 import { createDb } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { parseOAuthClientSeeds, type AuthEnv } from "../src/env";
+import { billingPlanCatalog, billingPlanCatalogEntry, catalogPriceIds } from "../src/lib/billing";
+import {
+	createBillingPlan,
+	deleteBillingPlan,
+	getBillingPlanById,
+	listBillingPlans,
+	loadBillingPlans,
+	reorderBillingPlans,
+	rowToDefinition,
+	updateBillingPlan,
+} from "../src/lib/billing-plan-store";
+import {
+	createEntitlement,
+	createLimit,
+	deleteEntitlement,
+	deleteLimit,
+	listEntitlements,
+	listLimits,
+	loadRegistryLabels,
+	updateEntitlement,
+	updateLimit,
+	type BillingEntitlementRow,
+	type BillingLimitRow,
+} from "../src/lib/billing-registry-store";
+import {
+	applyStripeProvisioning,
+	createOneTimeCheckout,
+	listOneTimePurchases,
+	resolveStripePrices,
+} from "../src/lib/auth-server/stripe";
 import { auditMetadataJSON } from "../src/lib/admin-audit";
 import { DEFAULT_EMAIL_NOTIFICATION_PREFERENCES } from "../src/lib/notification-preferences";
+import { parseAccountActivityMetadata } from "../src/lib/account-activity";
 import { emitWebhookEvent, generateWebhookSecret, WEBHOOK_EVENT_TYPES } from "../src/lib/webhooks";
 import {
 	backchannelLogoutIssuer,
 	buildLogoutTokenClaims,
 } from "../src/lib/backchannel-logout";
 import {
+	BROWSER_OAUTH_GRANT_TYPES,
+	MACHINE_OAUTH_GRANT_TYPES,
+	hasClientCredentialsGrant,
+	type OAuthGrantType,
+} from "../src/lib/oauth-grants";
+import {
 	consentMetadataFromRegisteredClient,
 	consentMetadataFromSeedClient,
 	type ConsentClientMetadata,
 } from "../src/lib/oauth-client-metadata";
 import {
+	PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY,
+	allowedAudiencesFromMetadata,
+	metadataWithAllowedAudiences,
+} from "../src/lib/oauth-resources";
+import {
 	parseRequestLocation,
 	requestLocationFromRequest,
 } from "../src/lib/request-location";
 import { mergeOAuthClientPassportFields } from "./oauth-client-fields";
+import { cleanupBillingActionIntents } from "./client-api";
 
 export { DataExportWorkflow };
 export { WebhookDeliveryWorkflow } from "./webhooks";
@@ -68,6 +116,9 @@ type OAuthClientAPIShape = {
 	disabled?: boolean;
 	skip_consent?: boolean;
 	enable_end_session?: boolean;
+	grant_types?: OAuthGrantType[];
+	metadata?: unknown;
+	[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY]?: unknown;
 };
 
 type OAuthConsentAPIShape = {
@@ -114,8 +165,16 @@ function mapOAuthClient(client: OAuthClientAPIShape): OAuthClientWithSecret {
 		disabled: client.disabled,
 		skipConsent: client.skip_consent,
 		enableEndSession: client.enable_end_session,
+		grantTypes: client.grant_types,
+		allowedAudiences: allowedAudiencesFromMetadata(client),
 		clientSecret: client.client_secret,
 	};
+}
+
+function oauthGrantTypesFromDatabase(value: string[] | null | undefined) {
+	return value?.filter((grant): grant is OAuthGrantType =>
+		["authorization_code", "client_credentials", "refresh_token"].includes(grant),
+	);
 }
 
 function mapDatabaseClient(client: typeof schema.oauthClient.$inferSelect): OAuthClientSummary {
@@ -134,6 +193,8 @@ function mapDatabaseClient(client: typeof schema.oauthClient.$inferSelect): OAut
 		skipConsent: client.skipConsent ?? undefined,
 		enableEndSession: client.enableEndSession ?? undefined,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
+		grantTypes: oauthGrantTypesFromDatabase(client.grantTypes),
+		allowedAudiences: allowedAudiencesFromMetadata(client.metadata),
 	};
 }
 
@@ -153,23 +214,146 @@ function redactClientSecret(client: OAuthClientWithSecret): OAuthClientSummary {
 		skipConsent: client.skipConsent,
 		enableEndSession: client.enableEndSession,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
+		grantTypes: client.grantTypes,
+		allowedAudiences: client.allowedAudiences,
 	};
 }
 
-// Persists Passport-owned OAuth client columns that Better Auth's client APIs do
-// not manage. Currently just the OIDC back-channel logout URI. Returns the
-// stored value (or null when cleared) so callers can echo it back.
-async function persistBackchannelLogoutUri(
+function base64URL(bytes: Uint8Array) {
+	let binary = "";
+	for (const byte of bytes) {
+		binary += String.fromCharCode(byte);
+	}
+	return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function randomBase64URL(length: number) {
+	const bytes = new Uint8Array(length);
+	crypto.getRandomValues(bytes);
+	return base64URL(bytes);
+}
+
+async function sha256Base64URL(value: string) {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+	return base64URL(new Uint8Array(digest));
+}
+
+function oauthClientMetadata(allowedAudiences: string[] | undefined) {
+	return metadataWithAllowedAudiences(allowedAudiences);
+}
+
+async function createMachineOAuthClient(
+	env: Env,
+	session: { user: { id: string } },
+	input: CreateOAuthClientInput,
+) {
+	const now = new Date();
+	const clientId = `client_${randomBase64URL(18)}`;
+	const clientSecret = randomBase64URL(32);
+	const [client] = await createDb(env as AuthEnv)
+		.insert(schema.oauthClient)
+		.values({
+			id: crypto.randomUUID(),
+			clientId,
+			clientSecret: await sha256Base64URL(clientSecret),
+			name: input.name,
+			uri: input.uri,
+			icon: input.icon,
+			tos: input.tos,
+			policy: input.policy,
+			redirectUris: [],
+			postLogoutRedirectUris: input.postLogoutRedirectUris,
+			scopes: input.scopes,
+			grantTypes: [...MACHINE_OAUTH_GRANT_TYPES],
+			responseTypes: [],
+			tokenEndpointAuthMethod: "client_secret_basic",
+			public: false,
+			disabled: false,
+			skipConsent: input.skipConsent,
+			enableEndSession: false,
+			userId: session.user.id,
+			metadata: oauthClientMetadata(input.allowedAudiences),
+			backchannelLogoutUri: input.backchannelLogoutUri ?? null,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.returning();
+	if (!client) {
+		throw new Error("OAuth client could not be created.");
+	}
+	return {
+		...mapDatabaseClient(client),
+		clientSecret,
+	};
+}
+
+async function updateMachineOAuthClient(
 	env: Env,
 	clientId: string,
-	uri: string | null | undefined,
+	input: UpdateOAuthClientInput,
 ) {
-	if (uri === undefined) return undefined;
+	const update: Partial<typeof schema.oauthClient.$inferInsert> = {
+		updatedAt: new Date(),
+	};
+	if (input.name !== undefined) update.name = input.name;
+	if (input.uri !== undefined) update.uri = input.uri;
+	if (input.icon !== undefined) update.icon = input.icon;
+	if (input.tos !== undefined) update.tos = input.tos;
+	if (input.policy !== undefined) update.policy = input.policy;
+	if (input.redirectUris !== undefined) update.redirectUris = input.redirectUris;
+	if (input.postLogoutRedirectUris !== undefined) {
+		update.postLogoutRedirectUris = input.postLogoutRedirectUris;
+	}
+	if (input.scopes !== undefined) update.scopes = input.scopes;
+	if (input.skipConsent !== undefined) update.skipConsent = input.skipConsent;
+	if (input.enableEndSession !== undefined) update.enableEndSession = input.enableEndSession;
+	if (input.grantTypes !== undefined) update.grantTypes = input.grantTypes;
+	if (input.allowedAudiences !== undefined) {
+		update.metadata = oauthClientMetadata(input.allowedAudiences);
+	}
+	if (input.backchannelLogoutUri !== undefined) {
+		update.backchannelLogoutUri = input.backchannelLogoutUri;
+	}
+
+	const [client] = await createDb(env as AuthEnv)
+		.update(schema.oauthClient)
+		.set(update)
+		.where(eq(schema.oauthClient.clientId, clientId))
+		.returning();
+	if (!client) {
+		throw new Error("OAuth client not found.");
+	}
+	return mapDatabaseClient(client);
+}
+
+// Persists Passport-owned OAuth client columns that Better Auth's client APIs do
+// not manage directly. Returns only the fields the caller provided so service
+// responses can echo current state without another read.
+async function persistOAuthClientPassportFields(
+	env: Env,
+	clientId: string,
+	input: {
+		backchannelLogoutUri?: string | null;
+		grantTypes?: OAuthGrantType[];
+		allowedAudiences?: string[];
+	},
+) {
+	const update: Partial<typeof schema.oauthClient.$inferInsert> = {};
+	if (input.backchannelLogoutUri !== undefined) {
+		update.backchannelLogoutUri = input.backchannelLogoutUri;
+	}
+	if (input.grantTypes !== undefined) {
+		update.grantTypes = input.grantTypes;
+	}
+	if (input.allowedAudiences !== undefined) {
+		update.metadata = oauthClientMetadata(input.allowedAudiences);
+	}
+	if (Object.keys(update).length === 0) return undefined;
 	await createDb(env as AuthEnv)
 		.update(schema.oauthClient)
-		.set({ backchannelLogoutUri: uri, updatedAt: new Date() })
+		.set({ ...update, updatedAt: new Date() })
 		.where(eq(schema.oauthClient.clientId, clientId));
-	return uri;
+	return input;
 }
 
 function pageOffset(page: PageInput) {
@@ -233,6 +417,40 @@ function mapWebhookEndpoint(
 		disabled: row.disabled,
 		createdAt: toISOString(row.createdAt) ?? new Date(0).toISOString(),
 	};
+}
+
+function mapBillingPlanRow(
+	row: typeof schema.billingPlan.$inferSelect,
+): BillingPlanRecord {
+	return {
+		id: row.id,
+		name: row.name,
+		label: row.label,
+		description: row.description,
+		group: row.group,
+		priceId: row.priceId,
+		lookupKey: row.lookupKey,
+		annualDiscountPriceId: row.annualDiscountPriceId,
+		annualDiscountLookupKey: row.annualDiscountLookupKey,
+		seatPriceId: row.seatPriceId,
+		prorationBehavior: row.prorationBehavior,
+		freeTrialDays: row.freeTrialDays,
+		type: row.type,
+		personalOnly: row.personalOnly,
+		hidden: row.hidden,
+		displayOrder: row.displayOrder,
+		limits: row.limits ?? null,
+		entitlements: row.entitlements ?? null,
+		lineItems: row.lineItems ?? null,
+	};
+}
+
+function mapEntitlementRow(row: BillingEntitlementRow): BillingEntitlementRecord {
+	return { id: row.id, key: row.key, name: row.name, description: row.description };
+}
+
+function mapLimitRow(row: BillingLimitRow): BillingLimitRecord {
+	return { id: row.id, key: row.key, name: row.name, unit: row.unit };
 }
 
 function mapAuditEvent(event: typeof schema.adminAuditEvent.$inferSelect): AdminAuditEventSummary {
@@ -590,6 +808,7 @@ const app = createWorkerApp({
 					ipAddress: event.ipAddress,
 					location: parseRequestLocation(event.location),
 					userAgent: event.userAgent,
+					metadata: parseAccountActivityMetadata(event.metadata),
 				})),
 				...(rows.length > page.limit ? { nextCursor: String(offset + page.limit) } : {}),
 			};
@@ -680,6 +899,79 @@ const app = createWorkerApp({
 			};
 		},
 	},
+	billingPlans: {
+		catalog: async (env) => {
+			const plans = await loadBillingPlans(env as AuthEnv, createDb(env as AuthEnv));
+			const prices = await resolveStripePrices(env as AuthEnv, catalogPriceIds(plans));
+			return Object.values(billingPlanCatalog(plans, prices));
+		},
+		product: async (env, id) => {
+			const row = await getBillingPlanById(createDb(env as AuthEnv), id);
+			if (!row) return null;
+			const definition = rowToDefinition(row);
+			const prices = await resolveStripePrices(env as AuthEnv, catalogPriceIds([definition]));
+			return billingPlanCatalogEntry(definition, row.id, prices);
+		},
+		labels: async (env) => loadRegistryLabels(createDb(env as AuthEnv)),
+		list: async (env) =>
+			(await listBillingPlans(createDb(env as AuthEnv))).map(mapBillingPlanRow),
+		create: async (env, input) => {
+			// When the payload carries a `stripe` block, create the Stripe
+			// Product/Price(s) first and persist the resulting `price_…` ids.
+			const provisioned = await applyStripeProvisioning(env as AuthEnv, input);
+			const row = await createBillingPlan(createDb(env as AuthEnv), provisioned);
+			if (!row) throw new Error("Could not create billing plan.");
+			return mapBillingPlanRow(row);
+		},
+		update: async (env, id, input) => {
+			const row = await updateBillingPlan(createDb(env as AuthEnv), id, input);
+			return row ? mapBillingPlanRow(row) : null;
+		},
+		remove: async (env, id) => {
+			const row = await deleteBillingPlan(createDb(env as AuthEnv), id);
+			return Boolean(row);
+		},
+		reorder: async (env, order) => reorderBillingPlans(createDb(env as AuthEnv), order),
+		prices: async (env, ids) => resolveStripePrices(env as AuthEnv, ids),
+	},
+	billingRegistry: {
+		entitlements: {
+			list: async (env) =>
+				(await listEntitlements(createDb(env as AuthEnv))).map(mapEntitlementRow),
+			create: async (env, input) => {
+				const row = await createEntitlement(createDb(env as AuthEnv), input);
+				if (!row) throw new Error("Could not create entitlement.");
+				return mapEntitlementRow(row);
+			},
+			update: async (env, id, input) => {
+				const row = await updateEntitlement(createDb(env as AuthEnv), id, input);
+				return row ? mapEntitlementRow(row) : null;
+			},
+			remove: async (env, id) =>
+				Boolean(await deleteEntitlement(createDb(env as AuthEnv), id)),
+		},
+		limits: {
+			list: async (env) => (await listLimits(createDb(env as AuthEnv))).map(mapLimitRow),
+			create: async (env, input) => {
+				const row = await createLimit(createDb(env as AuthEnv), input);
+				if (!row) throw new Error("Could not create limit.");
+				return mapLimitRow(row);
+			},
+			update: async (env, id, input) => {
+				const row = await updateLimit(createDb(env as AuthEnv), id, input);
+				return row ? mapLimitRow(row) : null;
+			},
+			remove: async (env, id) => Boolean(await deleteLimit(createDb(env as AuthEnv), id)),
+		},
+	},
+	billingCheckout: {
+		create: async (env, input) =>
+			createOneTimeCheckout(env as AuthEnv, createDb(env as AuthEnv), input),
+	},
+	billingPurchases: {
+		list: async (env, input) =>
+			listOneTimePurchases(createDb(env as AuthEnv), input),
+	},
 	adminOAuth: {
 		list: async ({ request, env }, page) => {
 			const clients =
@@ -696,6 +988,8 @@ const app = createWorkerApp({
 				.select({
 					clientId: schema.oauthClient.clientId,
 					backchannelLogoutUri: schema.oauthClient.backchannelLogoutUri,
+					grantTypes: schema.oauthClient.grantTypes,
+					allowedAudiences: schema.oauthClient.metadata,
 				})
 				.from(schema.oauthClient)
 				.where(
@@ -706,10 +1000,21 @@ const app = createWorkerApp({
 				);
 			return {
 				...result,
-				items: mergeOAuthClientPassportFields(result.items, passportFields),
+				items: mergeOAuthClientPassportFields(
+					result.items,
+					passportFields.map((field) => ({
+						clientId: field.clientId,
+						backchannelLogoutUri: field.backchannelLogoutUri,
+						grantTypes: oauthGrantTypesFromDatabase(field.grantTypes),
+						allowedAudiences: allowedAudiencesFromMetadata(field.allowedAudiences),
+					})),
+				),
 			};
 		},
-		create: async ({ request, env }, input) => {
+		create: async ({ request, env, session }, input) => {
+			if (hasClientCredentialsGrant(input.grantTypes)) {
+				return createMachineOAuthClient(env, session, input);
+			}
 			const client = (await auth(env as AuthEnv).api.adminCreateOAuthClient({
 				headers: request.headers,
 				body: {
@@ -722,19 +1027,24 @@ const app = createWorkerApp({
 					post_logout_redirect_uris: input.postLogoutRedirectUris,
 					scope: input.scopes?.join(" "),
 					token_endpoint_auth_method: input.public ? "none" : "client_secret_basic",
+					grant_types: input.grantTypes ?? [...BROWSER_OAUTH_GRANT_TYPES],
 					skip_consent: input.skipConsent,
 					enable_end_session: input.enableEndSession,
+					metadata: oauthClientMetadata(input.allowedAudiences),
 				},
 			})) as OAuthClientAPIShape;
 			const created = mapOAuthClient(client);
-			const storedUri = await persistBackchannelLogoutUri(
-				env,
-				created.clientId,
-				input.backchannelLogoutUri,
-			);
-			return storedUri === undefined ? created : { ...created, backchannelLogoutUri: storedUri };
+			const storedFields = await persistOAuthClientPassportFields(env, created.clientId, {
+				backchannelLogoutUri: input.backchannelLogoutUri,
+				grantTypes: input.grantTypes,
+				allowedAudiences: input.allowedAudiences,
+			});
+			return storedFields === undefined ? created : { ...created, ...storedFields };
 		},
 		update: async ({ request, env }, clientId, input) => {
+			if (hasClientCredentialsGrant(input.grantTypes)) {
+				return updateMachineOAuthClient(env, clientId, input);
+			}
 			const client = (await auth(env as AuthEnv).api.adminUpdateOAuthClient({
 				headers: request.headers,
 				body: {
@@ -748,14 +1058,20 @@ const app = createWorkerApp({
 						policy_uri: input.policy,
 						post_logout_redirect_uris: input.postLogoutRedirectUris,
 						scope: input.scopes?.join(" "),
+						grant_types: input.grantTypes,
 						skip_consent: input.skipConsent,
 						enable_end_session: input.enableEndSession,
+						metadata: oauthClientMetadata(input.allowedAudiences),
 					},
 				},
 			})) as OAuthClientAPIShape;
 			const updated = redactClientSecret(mapOAuthClient(client));
-			const storedUri = await persistBackchannelLogoutUri(env, clientId, input.backchannelLogoutUri);
-			return storedUri === undefined ? updated : { ...updated, backchannelLogoutUri: storedUri };
+			const storedFields = await persistOAuthClientPassportFields(env, clientId, {
+				backchannelLogoutUri: input.backchannelLogoutUri,
+				grantTypes: input.grantTypes,
+				allowedAudiences: input.allowedAudiences,
+			});
+			return storedFields === undefined ? updated : { ...updated, ...storedFields };
 		},
 		rotateSecret: async ({ request, env }, clientId) => {
 			const client = (await auth(env as AuthEnv).api.rotateClientSecret({
@@ -784,4 +1100,13 @@ const app = createWorkerApp({
 	},
 });
 
-export default app satisfies ExportedHandler<Env>;
+const worker = {
+	fetch(request: Request, env: Env, context: ExecutionContext) {
+		return app.fetch(request, env, context);
+	},
+	scheduled(_controller: ScheduledController, env: Env, context: ExecutionContext) {
+		context.waitUntil(cleanupBillingActionIntents(createDb(env as AuthEnv)));
+	},
+} satisfies ExportedHandler<Env>;
+
+export default worker;

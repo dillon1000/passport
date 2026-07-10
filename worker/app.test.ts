@@ -102,7 +102,10 @@ describe("createWorkerApp", () => {
 		"/reset-password/reset-token",
 		"/api/auth/.well-known/openid-configuration",
 		"/api/auth/.well-known/oauth-authorization-server",
+		"/api/auth/stripe/webhook",
 		"/oauth2/token",
+		"/oauth2/introspect",
+		"/oauth2/revoke",
 	])("routes %s to the auth handler", async (pathname) => {
 		const authHandler = vi.fn(
 			(request: Request) =>
@@ -155,6 +158,47 @@ describe("createWorkerApp", () => {
 			env: requestEnv,
 		});
 		expect(authHandler).not.toHaveBeenCalled();
+	});
+
+	it("serves a secret-free Stripe billing plan catalog", async () => {
+		const requestEnv = {
+			...createEnv(),
+			STRIPE_BILLING_PLANS: JSON.stringify([
+				{
+					name: "pro",
+					label: "Pro",
+					priceId: "price_secret_month",
+					annualDiscountPriceId: "price_secret_year",
+					limits: { applications: 10 },
+					entitlements: ["billing"],
+				},
+			]),
+		};
+		const app = createWorkerApp({ authHandler: vi.fn(() => new Response("auth")) });
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/billing/plans"),
+			requestEnv,
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			plans: [
+				{
+					name: "pro",
+					label: "Pro",
+					limits: { applications: 10 },
+					entitlements: ["billing"],
+					hasFreeTrial: false,
+					hasAnnualDiscount: true,
+					type: "subscription",
+					personalOnly: false,
+					hidden: false,
+				},
+			],
+			entitlementLabels: {},
+			limitLabels: {},
+		});
 	});
 
 	it("rejects profile image uploads without a signed-in session", async () => {
@@ -1488,6 +1532,116 @@ describe("createWorkerApp", () => {
 		});
 	});
 
+	it("creates a machine-to-machine OAuth client without redirect URIs", async () => {
+		const requestEnv = createEnv();
+		const adminOAuth = {
+			list: vi.fn(),
+			create: vi.fn(() => ({
+				clientId: "m2m-client",
+				clientSecret: "secret-once",
+				name: "Worker Job",
+				redirectUris: [],
+				scopes: ["permissions"],
+				grantTypes: ["client_credentials" as const],
+				allowedAudiences: ["https://api.example.com"],
+				public: false,
+				disabled: false,
+			})),
+			update: vi.fn(),
+			rotateSecret: vi.fn(),
+			setDisabled: vi.fn(),
+		};
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_123", email: "admin@example.com" } })),
+			adminOAuth,
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/oauth-clients", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "Worker Job",
+					redirectUris: [],
+					scopes: ["permissions"],
+					grantTypes: ["client_credentials"],
+					allowedAudiences: ["https://api.example.com"],
+					public: false,
+				}),
+			}),
+			requestEnv,
+		);
+
+		expect(response.status).toBe(201);
+		expect(adminOAuth.create).toHaveBeenCalledWith(
+			{
+				request: expect.any(Request),
+				env: requestEnv,
+				session: { user: { id: "admin_123", email: "admin@example.com" } },
+			},
+			{
+				name: "Worker Job",
+				redirectUris: [],
+				scopes: ["permissions"],
+				grantTypes: ["client_credentials" as const],
+				allowedAudiences: ["https://api.example.com"],
+				public: false,
+			},
+		);
+		expect(await response.json()).toEqual({
+			client: {
+				clientId: "m2m-client",
+				clientSecret: "secret-once",
+				name: "Worker Job",
+				redirectUris: [],
+				scopes: ["permissions"],
+				grantTypes: ["client_credentials" as const],
+				allowedAudiences: ["https://api.example.com"],
+				public: false,
+				disabled: false,
+			},
+		});
+	});
+
+	it("rejects public machine-to-machine clients", async () => {
+		const requestEnv = createEnv();
+		const adminOAuth = {
+			list: vi.fn(),
+			create: vi.fn(),
+			update: vi.fn(),
+			rotateSecret: vi.fn(),
+			setDisabled: vi.fn(),
+		};
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_123", email: "admin@example.com" } })),
+			adminOAuth,
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/oauth-clients", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "Worker Job",
+					redirectUris: [],
+					scopes: ["permissions"],
+					grantTypes: ["client_credentials"],
+					allowedAudiences: ["https://api.example.com"],
+					public: true,
+				}),
+			}),
+			requestEnv,
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			error: "Machine-to-machine clients must be confidential.",
+		});
+		expect(adminOAuth.create).not.toHaveBeenCalled();
+	});
+
 	it("returns JSON when admin OAuth client creation fails", async () => {
 		const requestEnv = createEnv();
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -1867,6 +2021,61 @@ describe("createWorkerApp", () => {
 		);
 	});
 
+	it("passes grant types and allowed audiences when updating a client", async () => {
+		const requestEnv = createEnv();
+		const adminOAuth = {
+			list: vi.fn(),
+			create: vi.fn(),
+			update: vi.fn(() => ({
+				clientId: "existing-client",
+				name: "Existing Client",
+				redirectUris: [],
+				scopes: ["permissions"],
+				grantTypes: ["client_credentials" as const],
+				allowedAudiences: ["https://api.example.com"],
+				public: false,
+				disabled: false,
+			})),
+			rotateSecret: vi.fn(),
+			setDisabled: vi.fn(),
+		};
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_123", email: "admin@example.com" } })),
+			adminOAuth,
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/oauth-clients/existing-client", {
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					redirectUris: [],
+					scopes: ["permissions"],
+					grantTypes: ["client_credentials"],
+					allowedAudiences: ["https://api.example.com"],
+				}),
+			}),
+			requestEnv,
+		);
+
+		expect(response.status).toBe(200);
+		expect(adminOAuth.update).toHaveBeenCalledWith(
+			{
+				request: expect.any(Request),
+				env: requestEnv,
+				session: { user: { id: "admin_123", email: "admin@example.com" } },
+			},
+			"existing-client",
+			{
+				redirectUris: [],
+				scopes: ["permissions"],
+				grantTypes: ["client_credentials"],
+				allowedAudiences: ["https://api.example.com"],
+			},
+		);
+	});
+
 	it("passes terms of service and privacy policy URLs when updating a client", async () => {
 		const requestEnv = createEnv();
 		const adminOAuth = {
@@ -2088,5 +2297,211 @@ describe("createWorkerApp", () => {
 			expect.objectContaining({ action: "user.ban", targetId: "user_456" }),
 			expect.objectContaining({ action: "user.unban", targetId: "user_456" }),
 		]);
+	});
+
+	function billingPlanService(overrides: Record<string, unknown> = {}) {
+		return {
+			catalog: vi.fn(() => []),
+			product: vi.fn(() => null),
+			labels: vi.fn(() => ({ entitlementLabels: {}, limitLabels: {} })),
+			list: vi.fn(() => []),
+			create: vi.fn(),
+			update: vi.fn(),
+			remove: vi.fn(),
+			reorder: vi.fn(() => 0),
+			prices: vi.fn(() => ({})),
+			...overrides,
+		};
+	}
+
+	it("serves the public plan catalog from the billing plan service", async () => {
+		const billingPlans = billingPlanService({
+			catalog: vi.fn(() => [
+				{ name: "pro", group: "Acme", entitlements: [], hasFreeTrial: false, hasAnnualDiscount: true },
+			]),
+		});
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			billingPlans,
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/billing/plans"),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(200);
+		const payload = (await response.json()) as { plans: { name: string }[] };
+		expect(payload.plans).toEqual([expect.objectContaining({ name: "pro" })]);
+		expect(billingPlans.catalog).toHaveBeenCalledOnce();
+	});
+
+	it("hides hidden plans from the public catalog", async () => {
+		const billingPlans = billingPlanService({
+			catalog: vi.fn(() => [
+				{ name: "pro", entitlements: [], hasFreeTrial: false, hasAnnualDiscount: false, hidden: false },
+				{ name: "secret", entitlements: [], hasFreeTrial: false, hasAnnualDiscount: false, hidden: true },
+			]),
+		});
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			billingPlans,
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/billing/plans"),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(200);
+		const payload = (await response.json()) as { plans: { name: string }[] };
+		expect(payload.plans.map((plan) => plan.name)).toEqual(["pro"]);
+	});
+
+	it("resolves a single product by id, including hidden ones", async () => {
+		const product = vi.fn(() => ({
+			id: "prod_secret",
+			name: "secret",
+			entitlements: [],
+			hasFreeTrial: false,
+			hasAnnualDiscount: false,
+			type: "one_time" as const,
+			personalOnly: false,
+			hidden: true,
+		}));
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			billingPlans: billingPlanService({ product }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/billing/products/prod_secret"),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(200);
+		const payload = (await response.json()) as { product: { name: string; hidden: boolean } };
+		expect(payload.product).toEqual(expect.objectContaining({ name: "secret", hidden: true }));
+		expect(product).toHaveBeenCalledWith(expect.anything(), "prod_secret");
+	});
+
+	it("returns 404 for an unknown product id", async () => {
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			billingPlans: billingPlanService({ product: vi.fn(() => null) }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/billing/products/prod_missing"),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(404);
+	});
+
+	it("forbids non-admins from managing billing plans", async () => {
+		const create = vi.fn();
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "user_123", email: "user@example.com", role: "user" } })),
+			billingPlans: billingPlanService({ create }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/billing/plans", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "pro", priceId: "price_123" }),
+			}),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(403);
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("creates a billing plan for admins", async () => {
+		const create = vi.fn(() => ({ id: "plan_1", name: "pro" }));
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_1", email: "admin@example.com", role: "admin" } })),
+			billingPlans: billingPlanService({ create }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/billing/plans", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "pro", priceId: "price_123", group: "Acme" }),
+			}),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(201);
+		const payload = (await response.json()) as { plan: { id: string } };
+		expect(payload.plan.id).toBe("plan_1");
+		expect(create).toHaveBeenCalledOnce();
+	});
+
+	it("surfaces plan validation errors as 400", async () => {
+		const create = vi.fn(() => {
+			throw new TypeError("plan must define priceId or lookupKey.");
+		});
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_1", email: "admin@example.com", role: "admin" } })),
+			billingPlans: billingPlanService({ create }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/billing/plans", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "pro" }),
+			}),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(400);
+		const payload = (await response.json()) as { error: string };
+		expect(payload.error).toContain("priceId or lookupKey");
+	});
+
+	it("returns 404 when updating a missing plan", async () => {
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_1", email: "admin@example.com", role: "admin" } })),
+			billingPlans: billingPlanService({ update: vi.fn(() => null) }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/billing/plans/plan_404", {
+				method: "PATCH",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ name: "pro", priceId: "price_123" }),
+			}),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(404);
+	});
+
+	it("deletes a billing plan for admins", async () => {
+		const remove = vi.fn(() => true);
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_1", email: "admin@example.com", role: "admin" } })),
+			billingPlans: billingPlanService({ remove }),
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/billing/plans/plan_1", {
+				method: "DELETE",
+			}),
+			createEnv(),
+		);
+
+		expect(response.status).toBe(204);
+		expect(remove).toHaveBeenCalledWith(expect.anything(), "plan_1");
 	});
 });

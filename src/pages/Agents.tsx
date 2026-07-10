@@ -1,4 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+/**
+ * Agent Auth dashboard page. Inputs are the signed-in user's Agent Auth
+ * discovery, capability, agent, and host APIs; outputs are discovery copy
+ * affordances plus confirmed trust mutations for agent, grant, and host state.
+ * Keep destructive trust changes behind this confirmation flow so automated
+ * agent access is not removed or restored by an accidental click.
+ */
+import { useQuery } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
 import { Bot, Copy, KeyRound, RefreshCw, RotateCcw, ServerCog, Trash2 } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -8,6 +16,15 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	canReactivateAgentStatus,
@@ -18,8 +35,9 @@ import {
 	revokeAgentCapability,
 	revokeHost,
 } from "@/lib/agent-auth";
+import { copyTextToClipboard } from "@/lib/clipboard";
+import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 /** Map a free-form status string onto a status-dot tone. */
 function statusTone(status: string): DotTone {
@@ -87,70 +105,140 @@ type HostSummary = {
 	last_used_at?: string | Date | null;
 };
 
+type TrustAction =
+	| { kind: "grant-revoke"; agentId: string; agentName: string; capability: string }
+	| { kind: "agent-reactivate"; agentId: string; agentName: string }
+	| { kind: "agent-revoke"; agentId: string; agentName: string }
+	| { kind: "host-revoke"; hostId: string; hostName: string };
+
+type AgentDashboardData = {
+	configuration: AgentConfiguration;
+	capabilities: AgentCapability[];
+	agents: AgentSummary[];
+	hosts: HostSummary[];
+};
+
 function formatDate(value?: string | Date | null) {
 	if (!value) return "Never";
 	return new Date(value).toLocaleString();
 }
 
-async function readJSON<T>(response: Response) {
-	if (!response.ok) {
-		const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-		throw new Error(payload?.error ?? `Request failed with ${response.status}.`);
+function trustActionBusyKey(action: TrustAction) {
+	switch (action.kind) {
+		case "grant-revoke":
+			return `grant:${action.agentId}:${action.capability}`;
+		case "agent-reactivate":
+			return `agent-reactivate:${action.agentId}`;
+		case "agent-revoke":
+			return `agent-revoke:${action.agentId}`;
+		case "host-revoke":
+			return `host-revoke:${action.hostId}`;
 	}
-	return (await response.json()) as T;
+}
+
+function trustActionTitle(action: TrustAction) {
+	switch (action.kind) {
+		case "grant-revoke":
+			return "Revoke capability grant?";
+		case "agent-reactivate":
+			return "Reactivate agent?";
+		case "agent-revoke":
+			return "Revoke agent?";
+		case "host-revoke":
+			return "Revoke host?";
+	}
+}
+
+function trustActionDescription(action: TrustAction) {
+	switch (action.kind) {
+		case "grant-revoke":
+			return (
+				<>
+					This removes <span className="font-medium text-foreground">{action.capability}</span>{" "}
+					from <span className="font-medium text-foreground">{action.agentName}</span>.
+				</>
+			);
+		case "agent-reactivate":
+			return (
+				<>
+					This restores access for{" "}
+					<span className="font-medium text-foreground">{action.agentName}</span>.
+				</>
+			);
+		case "agent-revoke":
+			return (
+				<>
+					This removes access for{" "}
+					<span className="font-medium text-foreground">{action.agentName}</span>.
+				</>
+			);
+		case "host-revoke":
+			return (
+				<>
+					This removes access for host{" "}
+					<span className="font-medium text-foreground">{action.hostName}</span>.
+				</>
+			);
+	}
+}
+
+function trustActionButton(action: TrustAction) {
+	return action.kind === "agent-reactivate" ? "Reactivate" : "Revoke";
+}
+
+async function fetchAgentDashboardData(): Promise<AgentDashboardData> {
+	const [configuration, capabilityPayload, agentPayload, hostPayload] = await Promise.all([
+		fetchAPIJSON<AgentConfiguration>("/.well-known/agent-configuration"),
+		fetchAPIJSON<{ capabilities: AgentCapability[] }>("/api/auth/capability/list"),
+		fetchAPIJSON<{ agents: AgentSummary[] }>("/api/auth/agent/list"),
+		fetchAPIJSON<{ hosts: HostSummary[] }>("/api/auth/host/list"),
+	]);
+	return {
+		configuration,
+		capabilities: capabilityPayload.capabilities,
+		agents: agentPayload.agents,
+		hosts: hostPayload.hosts,
+	};
 }
 
 export function Agents() {
 	const { data: session } = useRequireSession();
-	const [configuration, setConfiguration] = useState<AgentConfiguration | null>(null);
-	const [capabilities, setCapabilities] = useState<AgentCapability[]>([]);
-	const [agents, setAgents] = useState<AgentSummary[]>([]);
-	const [hosts, setHosts] = useState<HostSummary[]>([]);
-	const [loaded, setLoaded] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [copied, setCopied] = useState<string | null>(null);
-
-	async function refreshAgentData() {
-		const [configurationPayload, capabilityPayload, agentPayload, hostPayload] =
-			await Promise.all([
-				fetch("/.well-known/agent-configuration").then(readJSON<AgentConfiguration>),
-				fetch("/api/auth/capability/list").then(readJSON<{ capabilities: AgentCapability[] }>),
-				fetch("/api/auth/agent/list").then(readJSON<{ agents: AgentSummary[] }>),
-				fetch("/api/auth/host/list").then(readJSON<{ hosts: HostSummary[] }>),
-			]);
-		setConfiguration(configurationPayload);
-		setCapabilities(capabilityPayload.capabilities);
-		setAgents(agentPayload.agents);
-		setHosts(hostPayload.hosts);
-		setLoaded(true);
-	}
+	const [confirmAction, setConfirmAction] = useState<TrustAction | null>(null);
+	const agentDataQuery = useQuery({
+		queryKey: queryKeys.agents(session?.user?.id),
+		queryFn: fetchAgentDashboardData,
+		enabled: Boolean(session?.user),
+	});
+	const configuration = agentDataQuery.data?.configuration ?? null;
+	const capabilities = agentDataQuery.data?.capabilities ?? [];
+	const agents = agentDataQuery.data?.agents ?? [];
+	const hosts = agentDataQuery.data?.hosts ?? [];
+	const loaded = agentDataQuery.isFetched;
+	const loadingAgents = agentDataQuery.isFetching;
+	const queryStatus =
+		status ??
+		(agentDataQuery.error instanceof Error
+			? { tone: "error" as const, message: agentDataQuery.error.message }
+			: null);
 
 	async function loadAgents() {
 		setBusy("load");
 		setStatus(null);
-		try {
-			await refreshAgentData();
-		} catch (error) {
-			setStatus({
-				tone: "error",
-				message: error instanceof Error ? error.message : "Could not load Agent Auth data.",
-			});
-		} finally {
-			setBusy(null);
-		}
+		await agentDataQuery.refetch();
+		setBusy(null);
 	}
 
-	useEffect(() => {
-		if (!session?.user) return;
-		queueMicrotask(() => {
-			void loadAgents();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [session?.user?.id]);
-
 	async function copyValue(key: string, value: string) {
-		await navigator.clipboard.writeText(value);
+		const result = await copyTextToClipboard(value);
+		if (!result.ok) {
+			setCopied(null);
+			setStatus({ tone: "error", message: result.message });
+			return;
+		}
+		setStatus(null);
 		setCopied(key);
 		setTimeout(() => setCopied(null), 1500);
 	}
@@ -171,7 +259,8 @@ export function Agents() {
 				});
 				return;
 			}
-			await refreshAgentData();
+			await agentDataQuery.refetch();
+			setConfirmAction(null);
 			setStatus({ tone: "success", message: successMessage });
 		} catch (error) {
 			setStatus({
@@ -180,6 +269,41 @@ export function Agents() {
 			});
 		} finally {
 			setBusy(null);
+		}
+	}
+
+	async function runConfirmedTrustAction() {
+		if (!confirmAction) return;
+		const action = confirmAction;
+		switch (action.kind) {
+			case "grant-revoke":
+				await runTrustAction(
+					trustActionBusyKey(action),
+					"Capability grant revoked.",
+					() => revokeAgentCapability(action.agentId, action.capability),
+				);
+				return;
+			case "agent-reactivate":
+				await runTrustAction(
+					trustActionBusyKey(action),
+					"Agent reactivated.",
+					() => reactivateAgent(action.agentId),
+				);
+				return;
+			case "agent-revoke":
+				await runTrustAction(
+					trustActionBusyKey(action),
+					"Agent revoked.",
+					() => revokeAgent(action.agentId),
+				);
+				return;
+			case "host-revoke":
+				await runTrustAction(
+					trustActionBusyKey(action),
+					"Host revoked.",
+					() => revokeHost(action.hostId),
+				);
+				return;
 		}
 	}
 
@@ -192,7 +316,7 @@ export function Agents() {
 			description="Review Agent Auth discovery metadata, visible capabilities, registered agents, and enrolled hosts."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			<section id="discovery" className="scroll-mt-32">
 				<SettingsCard
@@ -202,10 +326,19 @@ export function Agents() {
 						<SettingsCardFooter
 							hint={configuration?.provider_name ?? "Agent Auth provider metadata."}
 						>
-							<Button variant="outline" size="sm" onClick={loadAgents} disabled={busy === "load"}>
-								<RefreshCw className={cn("size-4", busy === "load" && "animate-spin")} />
-								Refresh
-							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+									onClick={loadAgents}
+									disabled={busy === "load" || loadingAgents}
+								>
+									{busy === "load" || loadingAgents ? (
+										<Skeleton className="size-4 rounded-full" />
+									) : (
+										<RefreshCw className="size-4" />
+									)}
+									Refresh
+								</Button>
 						</SettingsCardFooter>
 					}
 				>
@@ -316,7 +449,7 @@ export function Agents() {
 											</div>
 											<div className="flex gap-1.5">
 												<dt className="text-muted-foreground/70">Last used</dt>
-												<dd>{formatDate(agent.last_used_at)}</dd>
+												<dd className="tabular-nums">{formatDate(agent.last_used_at)}</dd>
 											</div>
 										</dl>
 										{agent.agent_capability_grants?.length ? (
@@ -335,15 +468,12 @@ export function Agents() {
 																	aria-label={`Revoke ${grant.capability}`}
 																	disabled={busy === busyKey}
 																	onClick={() =>
-																		void runTrustAction(
-																			busyKey,
-																			"Capability grant revoked.",
-																			() =>
-																				revokeAgentCapability(
-																					agent.agent_id,
-																					grant.capability,
-																				),
-																		)
+																		setConfirmAction({
+																			kind: "grant-revoke",
+																			agentId: agent.agent_id,
+																			agentName: agent.name,
+																			capability: grant.capability,
+																		})
 																	}
 																	className="rounded text-muted-foreground hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
 																>
@@ -364,11 +494,11 @@ export function Agents() {
 												type="button"
 												disabled={busy === `agent-reactivate:${agent.agent_id}`}
 												onClick={() =>
-													void runTrustAction(
-														`agent-reactivate:${agent.agent_id}`,
-														"Agent reactivated.",
-														() => reactivateAgent(agent.agent_id),
-													)
+													setConfirmAction({
+														kind: "agent-reactivate",
+														agentId: agent.agent_id,
+														agentName: agent.name,
+													})
 												}
 											>
 												<RotateCcw className="size-3.5" />
@@ -382,11 +512,11 @@ export function Agents() {
 												type="button"
 												disabled={busy === `agent-revoke:${agent.agent_id}`}
 												onClick={() =>
-													void runTrustAction(
-														`agent-revoke:${agent.agent_id}`,
-														"Agent revoked.",
-														() => revokeAgent(agent.agent_id),
-													)
+													setConfirmAction({
+														kind: "agent-revoke",
+														agentId: agent.agent_id,
+														agentName: agent.name,
+													})
 												}
 											>
 												<Trash2 className="size-3.5" />
@@ -437,7 +567,7 @@ export function Agents() {
 											</div>
 											<div className="flex gap-1.5">
 												<dt className="text-muted-foreground/70">Last used</dt>
-												<dd>{formatDate(host.last_used_at)}</dd>
+												<dd className="tabular-nums">{formatDate(host.last_used_at)}</dd>
 											</div>
 										</dl>
 										{host.default_capabilities?.length ? (
@@ -456,11 +586,11 @@ export function Agents() {
 											className="shrink-0 sm:ml-auto"
 											disabled={busy === `host-revoke:${host.id}`}
 											onClick={() =>
-												void runTrustAction(
-													`host-revoke:${host.id}`,
-													"Host revoked.",
-													() => revokeHost(host.id),
-												)
+												setConfirmAction({
+													kind: "host-revoke",
+													hostId: host.id,
+													hostName: host.name,
+												})
 											}
 										>
 											<Trash2 className="size-3.5" />
@@ -475,6 +605,31 @@ export function Agents() {
 					)}
 				</SettingsCard>
 			</section>
+			<Dialog open={Boolean(confirmAction)} onOpenChange={(open) => !open && setConfirmAction(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>{confirmAction ? trustActionTitle(confirmAction) : null}</DialogTitle>
+						<DialogDescription>
+							{confirmAction ? trustActionDescription(confirmAction) : null}
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button type="button" variant="outline">
+								Cancel
+							</Button>
+						</DialogClose>
+						<Button
+							type="button"
+							variant={confirmAction?.kind === "agent-reactivate" ? "default" : "destructive"}
+							disabled={Boolean(confirmAction && busy === trustActionBusyKey(confirmAction))}
+							onClick={() => void runConfirmedTrustAction()}
+						>
+							{confirmAction ? trustActionButton(confirmAction) : "Confirm"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</DashboardShell>
 	);
 }

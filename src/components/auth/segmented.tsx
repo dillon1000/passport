@@ -44,7 +44,7 @@ export function Segmented<T extends string>({
 						aria-selected={active}
 						onClick={() => onChange(option.value)}
 						className={cn(
-							"relative flex flex-1 items-center justify-center gap-1.5 px-2 pb-2.5 pt-1 text-sm font-medium transition-colors outline-none",
+							"relative flex min-h-10 flex-1 items-center justify-center gap-1.5 px-2 pb-2.5 pt-1 text-sm font-medium transition-[scale,color] duration-150 ease-out outline-none active:scale-[0.96]",
 							"focus-visible:text-foreground",
 							active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
 						)}
@@ -54,8 +54,8 @@ export function Segmented<T extends string>({
 						<span
 							aria-hidden="true"
 							className={cn(
-								"absolute inset-x-0 -bottom-px h-0.5 rounded-full transition-all",
-								active ? "bg-brand opacity-100" : "opacity-0",
+								"absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand transition-opacity duration-150 ease-out",
+								active ? "opacity-100" : "opacity-0",
 							)}
 						/>
 					</button>

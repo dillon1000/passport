@@ -3,8 +3,8 @@ import { cn } from "@/lib/utils";
 export type DotTone = "active" | "warn" | "danger" | "idle";
 
 const TONES: Record<DotTone, string> = {
-	active: "bg-emerald-500",
-	warn: "bg-amber-500",
+	active: "bg-success",
+	warn: "bg-muted-foreground",
 	danger: "bg-destructive",
 	idle: "bg-muted-foreground/40",
 };

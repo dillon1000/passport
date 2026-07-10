@@ -60,7 +60,7 @@ function SheetContent({
         data-slot="sheet-content"
         data-pushed={pushed ? "true" : undefined}
         className={cn(
-          "fixed inset-y-2 right-2 z-50 flex w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl shadow-black/20 ring-1 ring-black/5 outline-none sm:inset-y-3 sm:right-3 dark:ring-white/5",
+          "fixed inset-y-2 right-2 z-50 flex w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg shadow-black/10 ring-1 ring-black/5 outline-none sm:inset-y-3 sm:right-3 dark:ring-white/5",
           className
         )}
         {...props}
@@ -70,7 +70,7 @@ function SheetContent({
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon"
               className="absolute top-3.5 right-3.5 text-muted-foreground hover:text-foreground"
             >
               <XIcon />
@@ -126,7 +126,7 @@ function SheetTitle({
   return (
     <SheetPrimitive.Title
       data-slot="sheet-title"
-      className={cn("font-heading text-base leading-none font-medium", className)}
+      className={cn("font-heading text-base leading-none font-medium text-balance", className)}
       {...props}
     />
   )
@@ -139,7 +139,7 @@ function SheetDescription({
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("text-sm leading-relaxed text-muted-foreground", className)}
+      className={cn("text-sm leading-relaxed text-pretty text-muted-foreground", className)}
       {...props}
     />
   )

@@ -4,7 +4,8 @@
  * and ban state. The page hides obvious self-actions but does not use client UI
  * as an authorization boundary.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
 import { Ban, RefreshCw, Search, ShieldCheck, Unlock, UserCog } from "lucide-react";
 
 import { authClient } from "@/auth-client";
@@ -31,8 +32,8 @@ import {
 	checkAdminPromotionTarget,
 	normalizedUserSearch,
 } from "@/lib/admin-users";
+import { queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 25;
 const ADMIN_ROLES = ["user", "admin"] as const;
@@ -61,6 +62,31 @@ type AdminUsersPayload = {
 	total: number;
 };
 
+async function fetchAdminUsers(input: {
+	offset: number;
+	search?: string;
+}): Promise<AdminUsersPayload> {
+	const result = await authClient.admin.listUsers({
+		query: {
+			limit: PAGE_SIZE,
+			offset: input.offset,
+			sortBy: "createdAt",
+			sortDirection: "desc",
+			...(input.search
+				? {
+						searchValue: input.search,
+						searchField: "email" as const,
+						searchOperator: "contains" as const,
+					}
+				: {}),
+		},
+	});
+	if (result.error) {
+		throw new Error(result.error.message ?? "No access to user administration.");
+	}
+	return (result.data ?? { users: [], total: 0 }) as AdminUsersPayload;
+}
+
 async function postAdminUserAction(path: string, body?: Record<string, unknown>) {
 	const response = await fetch(path, {
 		method: "POST",
@@ -82,69 +108,59 @@ function formatDate(value?: string | Date | null) {
 
 export function AdminUsers() {
 	const { data: session } = useRequireSession();
-	const [users, setUsers] = useState<AdminUser[]>([]);
-	const [total, setTotal] = useState(0);
+	const queryClient = useQueryClient();
 	const [offset, setOffset] = useState(0);
 	const [searchInput, setSearchInput] = useState("");
 	const [activeSearch, setActiveSearch] = useState<string | undefined>();
 	const [promoteEmail, setPromoteEmail] = useState("");
-	const [loaded, setLoaded] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [banTarget, setBanTarget] = useState<AdminUser | null>(null);
 	const [banReason, setBanReason] = useState("");
 	const [banDays, setBanDays] = useState("");
+	const usersInput = { offset, search: activeSearch };
+	const usersQuery = useQuery({
+		queryKey: queryKeys.adminUsers(usersInput),
+		queryFn: () => fetchAdminUsers(usersInput),
+		enabled: Boolean(session?.user),
+	});
+	const users = usersQuery.data?.users ?? [];
+	const total = usersQuery.data?.total ?? 0;
+	const loaded = usersQuery.isFetched;
+	const loadingUsers = usersQuery.isFetching;
+	const queryStatus =
+		status ??
+		(usersQuery.error instanceof Error
+			? { tone: "error" as const, message: usersQuery.error.message }
+			: null);
 
 	async function loadUsers(nextOffset = offset, nextSearch = activeSearch) {
-		setBusy("users");
 		setStatus(null);
-		const result = await authClient.admin.listUsers({
-			query: {
-				limit: PAGE_SIZE,
-				offset: nextOffset,
-				sortBy: "createdAt",
-				sortDirection: "desc",
-				...(nextSearch
-					? {
-							searchValue: nextSearch,
-							searchField: "email" as const,
-							searchOperator: "contains" as const,
-						}
-					: {}),
-			},
-		});
-		setBusy(null);
-		setLoaded(true);
-		if (result.error) {
-			setUsers([]);
-			setTotal(0);
+		const input = { offset: nextOffset, search: nextSearch };
+		setOffset(nextOffset);
+		setActiveSearch(nextSearch);
+		try {
+			await queryClient.fetchQuery({
+				queryKey: queryKeys.adminUsers(input),
+				queryFn: () => fetchAdminUsers(input),
+			});
+			return true;
+		} catch (error) {
 			setStatus({
 				tone: "error",
-				message: result.error.message ?? "No access to user administration.",
+				message: error instanceof Error ? error.message : "No access to user administration.",
 			});
 			return false;
 		}
-		const payload = (result.data ?? { users: [], total: 0 }) as AdminUsersPayload;
-		setUsers(payload.users);
-		setTotal(payload.total);
-		setOffset(nextOffset);
-		return true;
 	}
 
 	async function focusUsersByEmail(email: string, nextStatus: Status) {
 		setSearchInput(email);
 		setActiveSearch(email);
 		const refreshed = await loadUsers(0, email);
+		setBusy(null);
 		if (refreshed) setStatus(nextStatus);
 	}
-
-	useEffect(() => {
-		if (!session?.user) return;
-		queueMicrotask(() => {
-			void loadUsers(0, activeSearch);
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [session?.user?.id]);
 
 	async function searchUsers(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -230,6 +246,7 @@ export function AdminUsers() {
 		}
 		const refreshed = await loadUsers(offset, activeSearch);
 		if (refreshed) setStatus({ tone: "success", message: "User role updated." });
+		setBusy(null);
 	}
 
 	async function banUser(event: FormEvent<HTMLFormElement>) {
@@ -251,6 +268,7 @@ export function AdminUsers() {
 		setBanDays("");
 		const refreshed = await loadUsers(offset, activeSearch);
 		if (refreshed) setStatus({ tone: "success", message: "User banned." });
+		setBusy(null);
 	}
 
 	async function unbanUser(user: AdminUser) {
@@ -264,6 +282,7 @@ export function AdminUsers() {
 		}
 		const refreshed = await loadUsers(offset, activeSearch);
 		if (refreshed) setStatus({ tone: "success", message: "User unbanned." });
+		setBusy(null);
 	}
 
 	return (
@@ -273,7 +292,7 @@ export function AdminUsers() {
 			description="Find users, confirm account state, adjust role, and manage bans."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			<section id="promote" className="scroll-mt-32">
 				<SettingsCard
@@ -308,9 +327,11 @@ export function AdminUsers() {
 					footer={
 						<SettingsCardFooter
 							hint={
-								loaded
-									? `${users.length} of ${total} user${total === 1 ? "" : "s"} shown.`
-									: "Loading users..."
+								loaded ? (
+									`${users.length} of ${total} user${total === 1 ? "" : "s"} shown.`
+								) : (
+									<Skeleton className="h-3 w-24" />
+								)
 							}
 						>
 							<Button
@@ -318,9 +339,9 @@ export function AdminUsers() {
 								size="sm"
 								type="button"
 								onClick={() => void loadUsers(offset, activeSearch)}
-								disabled={busy === "users"}
+								disabled={loadingUsers}
 							>
-								<RefreshCw className={cn("size-4", busy === "users" && "animate-spin")} />
+								{loadingUsers ? <Skeleton className="size-4 rounded-full" /> : <RefreshCw className="size-4" />}
 								Refresh
 							</Button>
 						</SettingsCardFooter>
@@ -335,7 +356,7 @@ export function AdminUsers() {
 								placeholder="alice@example.com"
 							/>
 						</Field>
-						<Button type="submit" className="mt-6" disabled={busy === "users"}>
+						<Button type="submit" className="mt-6" disabled={loadingUsers}>
 							<Search className="size-4" />
 							Search
 						</Button>
@@ -380,7 +401,7 @@ export function AdminUsers() {
 												{user.banned ? (
 													<div className="flex gap-1.5">
 														<dt className="text-muted-foreground/70">Ban expires</dt>
-														<dd>{formatDate(user.banExpires)}</dd>
+															<dd className="tabular-nums">{formatDate(user.banExpires)}</dd>
 													</div>
 												) : null}
 											</dl>
@@ -443,19 +464,19 @@ export function AdminUsers() {
 							variant="outline"
 							size="sm"
 							type="button"
-							disabled={offset === 0 || busy === "users"}
+							disabled={offset === 0 || loadingUsers}
 							onClick={() => void loadUsers(Math.max(0, offset - PAGE_SIZE), activeSearch)}
 						>
 							Previous
 						</Button>
-						<span className="text-xs text-muted-foreground">
+						<span className="text-xs tabular-nums text-muted-foreground">
 							{total ? `${offset + 1}-${Math.min(offset + users.length, total)} of ${total}` : "0 users"}
 						</span>
 						<Button
 							variant="outline"
 							size="sm"
 							type="button"
-							disabled={offset + users.length >= total || busy === "users"}
+							disabled={offset + users.length >= total || loadingUsers}
 							onClick={() => void loadUsers(offset + PAGE_SIZE, activeSearch)}
 						>
 							Next

@@ -11,6 +11,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { resolveAuthCallbackURL } from "@/lib/auth-flow";
+import { normalizeTwoFactorVerificationCode } from "@/lib/two-factor";
 
 type VerificationMethod = "totp" | "otp" | "backup";
 
@@ -57,15 +58,16 @@ export function TwoFactor() {
 	async function submit(value: string) {
 		setLoading(true);
 		setStatus(null);
+		const verificationCode = normalizeTwoFactorVerificationCode(method, value);
 		if (method === "totp") {
-			finish((await authClient.twoFactor.verifyTotp({ code: value, trustDevice })).error);
+			finish((await authClient.twoFactor.verifyTotp({ code: verificationCode, trustDevice })).error);
 			return;
 		}
 		if (method === "otp") {
-			finish((await authClient.twoFactor.verifyOtp({ code: value, trustDevice })).error);
+			finish((await authClient.twoFactor.verifyOtp({ code: verificationCode, trustDevice })).error);
 			return;
 		}
-		finish((await authClient.twoFactor.verifyBackupCode({ code: value, trustDevice })).error);
+		finish((await authClient.twoFactor.verifyBackupCode({ code: verificationCode, trustDevice })).error);
 	}
 
 	function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -174,7 +176,7 @@ export function TwoFactor() {
 
 				<a
 					href="/sign-in"
-					className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+					className="inline-flex min-h-10 items-center text-xs text-muted-foreground underline-offset-4 transition-[scale,color] duration-150 ease-out hover:text-foreground hover:underline active:scale-[0.96]"
 				>
 					Use a different account
 				</a>

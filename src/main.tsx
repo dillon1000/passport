@@ -5,14 +5,17 @@ import { Toaster } from 'sonner'
 import './index.css'
 import App from './App.tsx'
 import { BrandProvider } from './lib/brand-context.tsx'
+import { AppQueryProvider } from './lib/query-provider.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrandProvider>
-      <BrowserRouter>
-        <App />
-        <Toaster closeButton richColors position="top-right" />
-      </BrowserRouter>
-    </BrandProvider>
+    <AppQueryProvider>
+      <BrandProvider>
+        <BrowserRouter>
+          <App />
+          <Toaster closeButton richColors position="top-right" />
+        </BrowserRouter>
+      </BrandProvider>
+    </AppQueryProvider>
   </StrictMode>,
 )

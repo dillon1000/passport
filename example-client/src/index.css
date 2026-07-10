@@ -86,12 +86,49 @@
 body {
 	min-width: 320px;
 	margin: 0;
+	/* Example client uses the same neutral surface language as the provider UI
+	   so screenshots and OAuth handoffs feel like one whitelabelable system. */
 	background:
-		linear-gradient(120deg, oklch(0.92 0.04 180 / 0.88), transparent 38rem),
-		linear-gradient(300deg, oklch(0.9 0.08 35 / 0.82), transparent 32rem),
+		radial-gradient(
+			120% 70% at 50% -10%,
+			color-mix(in oklch, var(--foreground) 5%, transparent),
+			transparent 55%
+		),
 		var(--background);
 	color: var(--foreground);
 	font-family: var(--font-sans);
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+[data-slot="card-title"] {
+	text-wrap: balance;
+}
+
+p,
+li,
+[data-slot="card-description"],
+[data-slot="alert-description"] {
+	text-wrap: pretty;
+}
+
+time,
+.tabular-nums {
+	font-variant-numeric: tabular-nums;
+}
+
+[data-slot="card"] > img {
+	outline: 1px solid rgba(0, 0, 0, 0.1);
+	outline-offset: -1px;
+}
+
+.dark [data-slot="card"] > img {
+	outline-color: rgba(255, 255, 255, 0.1);
 }
 
 #root {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeSession, isCurrentSession } from "./sessions";
+import { describeSession, isCurrentSession, relativeTime } from "./sessions";
 
 describe("session display helpers", () => {
 	it("marks a listed session as current when tokens match", () => {
@@ -33,5 +33,9 @@ describe("session display helpers", () => {
 
 	it("falls back when metadata is missing", () => {
 		expect(describeSession({})).toBe("Unknown device");
+	});
+
+	it("does not describe invalid timestamps as just now", () => {
+		expect(relativeTime("not-a-date")).toBe("unknown");
 	});
 });

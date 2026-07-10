@@ -4,7 +4,8 @@
  * protections and connected providers while keeping provider marks sourced from
  * `public/icons` through the shared social provider config.
  */
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
 	Check,
 	Copy,
@@ -41,6 +42,14 @@ import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { SummaryRow } from "@/components/auth/summary-row";
 import { Button } from "@/components/ui/button";
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
 	Sheet,
 	SheetBody,
 	SheetClose,
@@ -50,8 +59,16 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/auth-client";
+import { copyTextToClipboard } from "@/lib/clipboard";
+import {
+	getPasswordConfirmationError,
+	isPasswordConfirmationReady,
+} from "@/lib/password-confirmation";
+import { queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
+import { normalizeTwoFactorVerificationCode } from "@/lib/two-factor";
 
 const SECTIONS: Section[] = [
 	{ id: "passkeys", label: "Passkeys" },
@@ -92,10 +109,42 @@ type LinkedAccountSummary = {
 	createdAt?: string | Date | null;
 };
 
+export type SecurityConfirmationAction =
+	| { type: "delete-passkey"; passkeyId: string }
+	| { type: "unlink-provider"; account: LinkedAccountSummary }
+	| { type: "disable-two-factor" };
+
 type TwoFactorSetup = {
 	totpURI: string;
 	backupCodes: string[];
 };
+
+type SecurityCredentialsPayload = {
+	passkeys: PasskeySummary[];
+	accounts: LinkedAccountSummary[];
+	errorMessage: string | null;
+};
+
+async function fetchSecurityCredentials(): Promise<SecurityCredentialsPayload> {
+	const [passkeyResult, accountResult] = await Promise.all([
+		authClient.passkey.listUserPasskeys(),
+		authClient.listAccounts(),
+	]);
+	const errors: string[] = [];
+	if (passkeyResult.error) {
+		errors.push(passkeyResult.error.message ?? "Could not load passkeys.");
+	}
+	if (accountResult.error) {
+		errors.push(accountResult.error.message ?? "Could not load connected accounts.");
+	}
+	return {
+		passkeys: passkeyResult.error ? [] : ((passkeyResult.data ?? []) as PasskeySummary[]),
+		accounts: accountResult.error
+			? []
+			: ((accountResult.data ?? []) as LinkedAccountSummary[]),
+		errorMessage: errors.length ? errors.join(" ") : null,
+	};
+}
 
 export function Security() {
 	const { data: session } = useRequireSession();
@@ -122,9 +171,6 @@ export function Security() {
 	const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
 	const [passwordSheetOpen, setPasswordSheetOpen] = useState(false);
 	const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
-	const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
-	const [accounts, setAccounts] = useState<LinkedAccountSummary[]>([]);
-	const [credentialsLoaded, setCredentialsLoaded] = useState(false);
 	const [twoFactorPassword, setTwoFactorPassword] = useState("");
 	const [twoFactorCode, setTwoFactorCode] = useState("");
 	const [twoFactorSetup, setTwoFactorSetup] = useState<TwoFactorSetup | null>(null);
@@ -137,7 +183,24 @@ export function Security() {
 	const [backupCopied, setBackupCopied] = useState(false);
 	const [newPassword, setNewPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
+	const [confirmationAction, setConfirmationAction] =
+		useState<SecurityConfirmationAction | null>(null);
 	const user = session?.user as SecurityUser | undefined;
+	const credentialsQuery = useQuery({
+		queryKey: queryKeys.securityCredentials(user?.id),
+		queryFn: fetchSecurityCredentials,
+		enabled: Boolean(user),
+	});
+	const passkeys = credentialsQuery.data?.passkeys ?? [];
+	const accounts = credentialsQuery.data?.accounts ?? [];
+	const credentialsLoaded = credentialsQuery.isFetched;
+	const queryStatus =
+		status ??
+		(credentialsQuery.data?.errorMessage
+			? { tone: "error" as const, message: credentialsQuery.data.errorMessage }
+			: credentialsQuery.error instanceof Error
+				? { tone: "error" as const, message: credentialsQuery.error.message }
+				: null);
 	const twoFactorEnabled =
 		twoFactorEnabledOverride && twoFactorEnabledOverride.userId === user?.id
 			? twoFactorEnabledOverride.enabled
@@ -145,37 +208,9 @@ export function Security() {
 	const hasCredentialAccount =
 		!credentialsLoaded || accounts.some((account) => account.providerId === "credential");
 
-	async function loadCredentials() {
-		const [passkeyResult, accountResult] = await Promise.all([
-			authClient.passkey.listUserPasskeys(),
-			authClient.listAccounts(),
-		]);
-		if (passkeyResult.error) {
-			setStatus({
-				tone: "error",
-				message: passkeyResult.error.message ?? "Could not load passkeys.",
-			});
-		} else {
-			setPasskeys((passkeyResult.data ?? []) as PasskeySummary[]);
-		}
-		if (accountResult.error) {
-			setStatus({
-				tone: "error",
-				message: accountResult.error.message ?? "Could not load connected accounts.",
-			});
-		} else {
-			setAccounts((accountResult.data ?? []) as LinkedAccountSummary[]);
-		}
-		setCredentialsLoaded(true);
+	function loadCredentials() {
+		void credentialsQuery.refetch();
 	}
-
-	useEffect(() => {
-		if (!user) return;
-		queueMicrotask(() => {
-			void loadCredentials();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [user?.id]);
 
 	async function addPasskey(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -194,7 +229,6 @@ export function Security() {
 	}
 
 	async function deletePasskey(id: string) {
-		if (!window.confirm("Remove this passkey from your account?")) return;
 		setStatus(null);
 		setBusy(true);
 		const result = await authClient.passkey.deletePasskey({ id });
@@ -224,7 +258,6 @@ export function Security() {
 	}
 
 	async function unlinkProvider(account: LinkedAccountSummary) {
-		if (!window.confirm(`Unlink ${account.providerId} from this account?`)) return;
 		setStatus(null);
 		setBusy(true);
 		const result = await authClient.unlinkAccount({
@@ -273,7 +306,7 @@ export function Security() {
 		setStatus(null);
 		setBusy(true);
 		const result = await authClient.twoFactor.verifyTotp({
-			code: twoFactorCode,
+			code: normalizeTwoFactorVerificationCode("totp", twoFactorCode),
 			trustDevice: true,
 		});
 		setBusy(false);
@@ -290,9 +323,12 @@ export function Security() {
 		setStatus({ tone: "success", message: "Two-factor authentication is enabled." });
 	}
 
-	async function disableTwoFactor(event: FormEvent<HTMLFormElement>) {
+	function requestDisableTwoFactor(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		if (!window.confirm("Disable two-factor authentication for this account?")) return;
+		setConfirmationAction({ type: "disable-two-factor" });
+	}
+
+	async function disableTwoFactor() {
 		setStatus(null);
 		setBusy(true);
 		const result = await authClient.twoFactor.disable({
@@ -311,6 +347,20 @@ export function Security() {
 		setTwoFactorCode("");
 		setBackupCodes([]);
 		setStatus({ tone: "success", message: "Two-factor authentication is disabled." });
+	}
+
+	async function confirmSecurityAction() {
+		if (!confirmationAction) return;
+		if (confirmationAction.type === "delete-passkey") {
+			await deletePasskey(confirmationAction.passkeyId);
+		}
+		if (confirmationAction.type === "unlink-provider") {
+			await unlinkProvider(confirmationAction.account);
+		}
+		if (confirmationAction.type === "disable-two-factor") {
+			await disableTwoFactor();
+		}
+		setConfirmationAction(null);
 	}
 
 	async function generateBackupCodes(event: FormEvent<HTMLFormElement>) {
@@ -335,7 +385,13 @@ export function Security() {
 	}
 
 	async function copyBackupCodes() {
-		await navigator.clipboard.writeText(backupCodes.join("\n"));
+		const result = await copyTextToClipboard(backupCodes.join("\n"));
+		if (!result.ok) {
+			setBackupCopied(false);
+			setStatus({ tone: "error", message: result.message });
+			return;
+		}
+		setStatus(null);
 		setBackupCopied(true);
 		setTimeout(() => setBackupCopied(false), 1500);
 	}
@@ -363,7 +419,7 @@ export function Security() {
 		setBusy(true);
 		const result = await authClient.phoneNumber.verify({
 			phoneNumber: pendingPhoneNumber,
-			code: phoneCode,
+			code: normalizeTwoFactorVerificationCode("otp", phoneCode),
 			updatePhoneNumber: true,
 		});
 		setBusy(false);
@@ -399,8 +455,9 @@ export function Security() {
 		const form = event.currentTarget;
 		const formData = new FormData(form);
 		const currentPassword = String(formData.get("currentPassword") ?? "");
-		if (newPassword !== confirmPassword) {
-			setStatus({ tone: "error", message: "New passwords do not match." });
+		const confirmationError = getPasswordConfirmationError(newPassword, confirmPassword);
+		if (confirmationError) {
+			setStatus({ tone: "error", message: confirmationError });
 			return;
 		}
 
@@ -477,7 +534,7 @@ export function Security() {
 			description="Control how you sign in and protect access to your account."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			{user && session ? (
 				<>
@@ -503,17 +560,30 @@ export function Security() {
 												onChange={(event) => setPasskeyName(event.target.value)}
 											/>
 										</Field>
-										<div className="overflow-hidden rounded-lg border">
-											{passkeys.length ? (
-												<ul className="divide-y">
-													{passkeys.map((passkey) => (
-														<li key={passkey.id} className="flex items-center gap-3 px-3 py-2.5">
+											<div className="overflow-hidden rounded-lg border">
+												{!credentialsLoaded ? (
+													<div className="divide-y">
+														{[0, 1].map((index) => (
+															<div key={index} className="flex items-center gap-3 px-3 py-2.5">
+																<Skeleton className="size-4 shrink-0 rounded-full" />
+																<div className="min-w-0 flex-1 space-y-1.5">
+																	<Skeleton className="h-3.5 w-32" />
+																	<Skeleton className="h-3 w-48 max-w-full" />
+																</div>
+																<Skeleton className="h-8 w-20 rounded-lg" />
+															</div>
+														))}
+													</div>
+												) : passkeys.length ? (
+													<ul className="divide-y">
+														{passkeys.map((passkey) => (
+															<li key={passkey.id} className="flex items-center gap-3 px-3 py-2.5">
 															<KeyRound className="size-4 shrink-0 text-muted-foreground" />
 															<div className="min-w-0 flex-1">
 																<div className="truncate text-sm font-medium">
 																	{passkey.name || "Passkey"}
 																</div>
-																<div className="truncate text-xs text-muted-foreground">
+																<div className="truncate text-xs tabular-nums text-muted-foreground">
 																	{[
 																		passkey.deviceType,
 																		passkey.backedUp ? "Backed up" : "Single device",
@@ -530,19 +600,24 @@ export function Security() {
 																variant="ghost"
 																size="sm"
 																className="shrink-0 text-muted-foreground hover:text-destructive"
-																onClick={() => deletePasskey(passkey.id)}
+																onClick={() =>
+																	setConfirmationAction({
+																		type: "delete-passkey",
+																		passkeyId: passkey.id,
+																	})
+																}
 																disabled={busy}
 															>
 																Remove
 															</Button>
 														</li>
 													))}
-												</ul>
-											) : (
-												<p className="px-3 py-6 text-center text-sm text-muted-foreground">
-													{credentialsLoaded ? "No passkeys registered." : "Loading passkeys..."}
-												</p>
-											)}
+													</ul>
+												) : (
+													<p className="px-3 py-6 text-center text-sm text-muted-foreground">
+														No passkeys registered.
+													</p>
+												)}
 										</div>
 									</div>
 								</SettingsCard>
@@ -581,7 +656,7 @@ export function Security() {
 								<SummaryRow
 									icon={
 										twoFactorEnabled ? (
-											<ShieldCheck className="size-[1.15rem] text-emerald-600 dark:text-emerald-500" />
+											<ShieldCheck className="size-[1.15rem]" />
 										) : (
 											<ShieldOff className="size-[1.15rem]" />
 										)
@@ -665,11 +740,11 @@ export function Security() {
 										) : null}
 
 										{backupCodes.length ? (
-											<div className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+											<div className="space-y-3 rounded-lg border bg-muted/20 p-4">
 												<div className="flex flex-wrap items-center justify-between gap-3">
 													<div>
 														<div className="flex items-center gap-1.5 text-sm font-medium">
-															<KeyRound className="size-4 text-amber-600 dark:text-amber-500" />
+															<KeyRound className="size-4 text-muted-foreground" />
 															Save your backup codes
 														</div>
 														<p className="text-xs text-muted-foreground">
@@ -724,7 +799,7 @@ export function Security() {
 												</form>
 												<form
 													className="space-y-2.5 border-t pt-5"
-													onSubmit={disableTwoFactor}
+													onSubmit={requestDisableTwoFactor}
 												>
 													<Field
 														label="Turn off two-factor"
@@ -773,7 +848,12 @@ export function Security() {
 													<Button
 														variant="outline"
 														size="sm"
-														onClick={() => unlinkProvider(account)}
+														onClick={() =>
+															setConfirmationAction({
+																type: "unlink-provider",
+																account,
+															})
+														}
 														disabled={busy}
 													>
 														<Unlink className="size-4" />
@@ -793,11 +873,9 @@ export function Security() {
 										);
 									})}
 								</ul>
-								{credentialsLoaded ? null : (
-									<p className="mt-2 text-xs text-muted-foreground">Loading connected accounts...</p>
-								)}
-							</SettingsCard>
-						</section>
+									{credentialsLoaded ? null : <Skeleton className="mt-3 h-3 w-40" />}
+								</SettingsCard>
+							</section>
 
 			<section id="email" className="scroll-mt-32">
 				<SettingsCard
@@ -961,23 +1039,33 @@ export function Security() {
 							</Button>
 						</SettingsCardFooter>
 					}
-				>
-					<SummaryRow
-						icon={<LockKeyhole className="size-[1.15rem]" />}
-						title={
-							credentialsLoaded
-								? hasCredentialAccount
-									? "Password is set"
-									: "No password set"
-								: "Checking password status"
-						}
-						subtitle={
-							hasCredentialAccount
-								? "Used together with any second factor at sign-in."
-								: "Social and passwordless sign-in still work."
-						}
-					/>
-				</SettingsCard>
+					>
+						<SummaryRow
+							icon={<LockKeyhole className="size-[1.15rem]" />}
+							title={
+								credentialsLoaded ? (
+									hasCredentialAccount ? (
+										"Password is set"
+									) : (
+										"No password set"
+									)
+								) : (
+									<Skeleton className="h-3.5 w-36" />
+								)
+							}
+							subtitle={
+								credentialsLoaded ? (
+									hasCredentialAccount ? (
+										"Used together with any second factor at sign-in."
+									) : (
+										"Social and passwordless sign-in still work."
+									)
+								) : (
+									<Skeleton className="h-3 w-52 max-w-full" />
+								)
+							}
+						/>
+					</SettingsCard>
 
 				<Sheet open={passwordSheetOpen} onOpenChange={setPasswordSheetOpen}>
 					<SheetContent>
@@ -1013,8 +1101,8 @@ export function Security() {
 									<Field
 										label="Confirm new password"
 										error={
-											confirmPassword && newPassword !== confirmPassword
-												? "Passwords don't match"
+											confirmPassword
+												? (getPasswordConfirmationError(newPassword, confirmPassword) ?? undefined)
 												: undefined
 										}
 									>
@@ -1039,9 +1127,7 @@ export function Security() {
 									type="submit"
 									disabled={
 										busy ||
-										!newPassword ||
-										!confirmPassword ||
-										newPassword !== confirmPassword
+										!isPasswordConfirmationReady(newPassword, confirmPassword)
 									}
 								>
 									<LockKeyhole className="size-4" />
@@ -1056,9 +1142,15 @@ export function Security() {
 			<section id="session" className="scroll-mt-32">
 				<SettingsCard
 					title="Session"
-					description={`This browser session expires ${new Date(
-						session.session.expiresAt,
-					).toLocaleString()}.`}
+					description={
+						<>
+							This browser session expires{" "}
+							<span className="tabular-nums">
+								{new Date(session.session.expiresAt).toLocaleString()}
+							</span>
+							.
+						</>
+					}
 					footer={
 						<SettingsCardFooter hint="Sign out everywhere this session is active.">
 							<Button
@@ -1150,11 +1242,99 @@ export function Security() {
 							</SheetContent>
 						</Sheet>
 					</section>
+					<SecurityConfirmationDialog
+						action={confirmationAction}
+						busy={busy}
+						onCancel={() => setConfirmationAction(null)}
+						onConfirm={() => void confirmSecurityAction()}
+					/>
 					<SignOutDialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen} />
 				</>
 			) : null}
 		</DashboardShell>
 	);
+}
+
+type SecurityConfirmationCopy = {
+	title: string;
+	description: string;
+	confirmLabel: string;
+	Icon: React.ComponentType<{ className?: string }>;
+};
+
+/**
+ * Confirmation dialog for destructive security mutations. The caller supplies
+ * the pending action and owns the mutation; this component keeps native browser
+ * confirmations out of the page while sharing the app's Dialog styling.
+ */
+export function SecurityConfirmationDialog({
+	action,
+	busy,
+	onCancel,
+	onConfirm,
+}: {
+	action: SecurityConfirmationAction | null;
+	busy: boolean;
+	onCancel: () => void;
+	onConfirm: () => void;
+}) {
+	const copy = action ? securityConfirmationCopy(action) : null;
+	const Icon = copy?.Icon;
+
+	return (
+		<Dialog open={Boolean(action)} onOpenChange={(open) => !open && onCancel()}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>{copy?.title}</DialogTitle>
+					<DialogDescription>{copy?.description}</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button variant="outline" type="button" onClick={onCancel}>
+						Cancel
+					</Button>
+					<Button
+						variant="destructive"
+						type="button"
+						onClick={onConfirm}
+						disabled={!action || busy}
+					>
+						{Icon ? <Icon className="size-4" /> : null}
+						{copy?.confirmLabel ?? "Confirm"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function securityConfirmationCopy(action: SecurityConfirmationAction): SecurityConfirmationCopy {
+	if (action.type === "delete-passkey") {
+		return {
+			title: "Remove passkey?",
+			description:
+				"This removes the passkey from your account. You can add it again from this device later.",
+			confirmLabel: "Remove passkey",
+			Icon: Trash2,
+		};
+	}
+	if (action.type === "unlink-provider") {
+		return {
+			title: "Unlink account?",
+			description: `Unlink ${providerLabel(action.account.providerId)} from this Passport account. You can reconnect it later.`,
+			confirmLabel: "Unlink account",
+			Icon: Unlink,
+		};
+	}
+	return {
+		title: "Disable 2FA?",
+		description: "Password sign-ins will no longer require an authenticator code.",
+		confirmLabel: "Disable 2FA",
+		Icon: ShieldOff,
+	};
+}
+
+function providerLabel(providerId: string) {
+	return SOCIAL_PROVIDERS.find((provider) => provider.id === providerId)?.label ?? providerId;
 }
 
 /** Card title paired with a small status pill (dot + label). */

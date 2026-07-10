@@ -17,9 +17,9 @@ const REQUIREMENTS: Requirement[] = [
 const LEVELS = [
 	{ label: "Too weak", className: "bg-destructive" },
 	{ label: "Weak", className: "bg-destructive" },
-	{ label: "Fair", className: "bg-amber-500" },
-	{ label: "Good", className: "bg-amber-500" },
-	{ label: "Strong", className: "bg-emerald-500" },
+	{ label: "Fair", className: "bg-muted-foreground/50" },
+	{ label: "Good", className: "bg-muted-foreground" },
+	{ label: "Strong", className: "bg-foreground" },
 ] as const;
 
 /** Number of satisfied requirements, 0–4, mapped onto the 5 strength levels. */
@@ -70,7 +70,7 @@ export function PasswordStrength({ value }: { value: string }) {
 							<span
 								className={cn(
 									"grid size-3.5 shrink-0 place-items-center rounded-full border transition-colors",
-									met ? "border-emerald-500 bg-emerald-500 text-white" : "border-border",
+									met ? "border-foreground bg-foreground text-background" : "border-border",
 								)}
 							>
 								{met ? <Check className="size-2.5" strokeWidth={3} /> : null}

@@ -42,4 +42,35 @@ describe("OAuth client Passport-owned fields", () => {
 			},
 		]);
 	});
+
+	it("keeps grant types and allowed audiences when listing Better Auth clients", () => {
+		const clients: OAuthClientSummary[] = [
+			{
+				clientId: "m2m-client",
+				name: "M2M Client",
+				redirectUris: [],
+				backchannelLogoutUri: null,
+			},
+		];
+
+		const merged = mergeOAuthClientPassportFields(clients, [
+			{
+				clientId: "m2m-client",
+				backchannelLogoutUri: null,
+				grantTypes: ["client_credentials"],
+				allowedAudiences: ["https://api.example.com"],
+			},
+		]);
+
+		expect(merged).toEqual([
+			{
+				clientId: "m2m-client",
+				name: "M2M Client",
+				redirectUris: [],
+				backchannelLogoutUri: null,
+				grantTypes: ["client_credentials"],
+				allowedAudiences: ["https://api.example.com"],
+			},
+		]);
+	});
 });

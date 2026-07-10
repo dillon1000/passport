@@ -65,6 +65,15 @@ describe("resolveAuthCallbackURL", () => {
 	it("falls back to the account dashboard for ordinary sign-ins", () => {
 		expect(resolveAuthCallbackURL(new URLSearchParams())).toBe("/account");
 	});
+
+	it("rejects callback URLs that browsers can reinterpret as external origins", () => {
+		expect(resolveAuthCallbackURL(new URLSearchParams({ callbackURL: "//evil.example" }))).toBe(
+			"/account",
+		);
+		expect(
+			resolveAuthCallbackURL(new URLSearchParams({ callbackURL: "/\\evil.example/path" })),
+		).toBe("/account");
+	});
 });
 
 describe("resolvePasswordResetRedirectURL", () => {
@@ -106,6 +115,9 @@ describe("resolveAddAccountURL", () => {
 			"/sign-in?flow=add-account&callbackURL=%2Forganizations",
 		);
 		expect(resolveAddAccountURL("https://evil.example")).toBe(
+			"/sign-in?flow=add-account&callbackURL=%2Fsessions",
+		);
+		expect(resolveAddAccountURL("/\\evil.example/path")).toBe(
 			"/sign-in?flow=add-account&callbackURL=%2Fsessions",
 		);
 	});

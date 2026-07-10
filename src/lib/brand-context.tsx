@@ -1,7 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, type ReactNode } from "react";
 
 import { brand } from "@/lib/brand";
 import { BrandContext, type BrandConfig, type BrandTheme } from "@/lib/brand-runtime";
+import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
+
+const defaultBrand = brand as BrandConfig;
 
 const THEME_VARIABLES: Record<keyof BrandTheme, string> = {
 	brand: "--brand",
@@ -12,33 +16,27 @@ const THEME_VARIABLES: Record<keyof BrandTheme, string> = {
 };
 
 export function BrandProvider({ children }: { children: ReactNode }) {
-	const [currentBrand, setCurrentBrand] = useState<BrandConfig>(brand);
+	const { data: currentBrand = defaultBrand } = useQuery<BrandConfig>({
+		queryKey: queryKeys.brandConfig(),
+		queryFn: async () => {
+			try {
+				return await fetchAPIJSON<BrandConfig>("/api/brand-config");
+			} catch {
+				return brand satisfies BrandConfig;
+			}
+		},
+		staleTime: Number.POSITIVE_INFINITY,
+	});
 
 	useEffect(() => {
-		let cancelled = false;
-		async function loadBrand() {
-			try {
-				const response = await fetch("/api/brand-config");
-				if (!response.ok) return;
-				const config = (await response.json()) as BrandConfig;
-				if (cancelled) return;
-				setCurrentBrand(config);
-				for (const [key, variable] of Object.entries(THEME_VARIABLES) as [
-					keyof BrandTheme,
-					string,
-				][]) {
-					const value = config.theme?.[key];
-					if (value) document.documentElement.style.setProperty(variable, value);
-				}
-			} catch {
-				// The default brand is usable when runtime config is unavailable.
-			}
+		for (const [key, variable] of Object.entries(THEME_VARIABLES) as [
+			keyof BrandTheme,
+			string,
+		][]) {
+			const value = currentBrand.theme?.[key];
+			if (value) document.documentElement.style.setProperty(variable, value);
 		}
-		void loadBrand();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
+	}, [currentBrand]);
 
 	return <BrandContext value={currentBrand}>{children}</BrandContext>;
 }

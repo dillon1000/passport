@@ -31,9 +31,9 @@ export function SettingsCard({
 	return (
 		<Card className={cn("gap-0 py-0", className)}>
 			<CardHeader className={cn("px-5 pt-5", children ? "pb-0" : "pb-5")}>
-				<CardTitle className="text-[0.9375rem] tracking-tight">{title}</CardTitle>
+				<CardTitle className="text-[0.9375rem] tracking-tight text-balance">{title}</CardTitle>
 				{description ? (
-					<CardDescription className="mt-1 leading-relaxed">{description}</CardDescription>
+					<CardDescription className="mt-1 leading-relaxed text-pretty">{description}</CardDescription>
 				) : null}
 			</CardHeader>
 			{children ? <CardContent className="px-5 pt-4 pb-5">{children}</CardContent> : null}
@@ -56,8 +56,8 @@ export function SettingsCardFooter({
 }) {
 	return (
 		<>
-			<span className="text-muted-foreground">{hint}</span>
-			{children ? <span className="shrink-0">{children}</span> : null}
+			<div className="min-w-0 tabular-nums text-muted-foreground">{hint}</div>
+			{children ? <div className="shrink-0">{children}</div> : null}
 		</>
 	);
 }

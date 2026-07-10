@@ -5,7 +5,9 @@
  * the helpers keep each protected Better Auth client call using the same token
  * header and gating messages.
  */
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 
 type CaptchaConfigResponse =
 	| {
@@ -35,39 +37,28 @@ const disabledCaptchaConfig: CaptchaConfig = {
 	enabled: false,
 };
 
-export function useCaptchaConfig() {
-	const [config, setConfig] = useState<CaptchaConfig>({ loaded: false, enabled: false });
-
-	useEffect(() => {
-		let cancelled = false;
-		async function loadCaptchaConfig() {
-			try {
-				const response = await fetch("/api/captcha-config");
-				if (!response.ok) {
-					if (!cancelled) setConfig(disabledCaptchaConfig);
-					return;
+async function loadCaptchaConfig(): Promise<CaptchaConfig> {
+	try {
+		const payload = await fetchAPIJSON<CaptchaConfigResponse>("/api/captcha-config");
+		return payload.enabled
+			? {
+					loaded: true,
+					enabled: true,
+					provider: payload.provider,
+					siteKey: payload.siteKey,
 				}
-				const payload = (await response.json()) as CaptchaConfigResponse;
-				if (cancelled) return;
-				setConfig(
-					payload.enabled
-						? {
-								loaded: true,
-								enabled: true,
-								provider: payload.provider,
-								siteKey: payload.siteKey,
-							}
-						: disabledCaptchaConfig,
-				);
-			} catch {
-				if (!cancelled) setConfig(disabledCaptchaConfig);
-			}
-		}
-		void loadCaptchaConfig();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
+			: disabledCaptchaConfig;
+	} catch {
+		return disabledCaptchaConfig;
+	}
+}
+
+export function useCaptchaConfig() {
+	const { data: config = { loaded: false, enabled: false } } = useQuery({
+		queryKey: queryKeys.captchaConfig(),
+		queryFn: loadCaptchaConfig,
+		staleTime: Number.POSITIVE_INFINITY,
+	});
 
 	return config;
 }

@@ -5,19 +5,20 @@
  * public DTOs before the dashboard turns them back into editable drafts.
  */
 import type { OAuthClientSummary } from "./app";
+import type { OAuthGrantType } from "../src/lib/oauth-grants";
 
 export type OAuthClientPassportFields = {
 	clientId: string;
 	backchannelLogoutUri: string | null;
+	grantTypes?: OAuthGrantType[] | null;
+	allowedAudiences?: string[] | null;
 };
 
 export function mergeOAuthClientPassportFields(
 	clients: OAuthClientSummary[],
 	fields: OAuthClientPassportFields[],
 ): OAuthClientSummary[] {
-	const fieldsByClientId = new Map(
-		fields.map((field) => [field.clientId, field.backchannelLogoutUri]),
-	);
+	const fieldsByClientId = new Map(fields.map((field) => [field.clientId, field]));
 
 	return clients.map((client) => {
 		if (!fieldsByClientId.has(client.clientId)) {
@@ -27,9 +28,12 @@ export function mergeOAuthClientPassportFields(
 			};
 		}
 
+		const field = fieldsByClientId.get(client.clientId);
 		return {
 			...client,
-			backchannelLogoutUri: fieldsByClientId.get(client.clientId) ?? null,
+			backchannelLogoutUri: field?.backchannelLogoutUri ?? null,
+			grantTypes: field?.grantTypes ?? client.grantTypes,
+			allowedAudiences: field?.allowedAudiences ?? client.allowedAudiences,
 		};
 	});
 }

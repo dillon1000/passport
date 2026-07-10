@@ -1,12 +1,14 @@
 /**
  * Webhooks admin page. Inputs are the operator session and the webhook
  * subscription API under `/api/admin/webhooks`; outputs are endpoint management
- * (create, enable/disable, rotate secret, delete) and a recent-delivery view.
- * Event-type wording comes from the shared `webhook-events` map. Signing secrets
- * are shown exactly once, right after create or rotate, and never refetched.
+ * (create, enable/disable, rotate secret, confirmed delete), one-time signing
+ * secret copy, and a recent-delivery view. Event-type wording comes from the
+ * shared `webhook-events` map. Signing secrets are shown exactly once, right
+ * after create or rotate, and never refetched.
  */
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Plus, RefreshCw, Send, Trash2, Webhook } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
+import { Check, Copy, Plus, RefreshCw, Send, Trash2, Webhook } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { CheckboxField, Field, FieldInput, FieldTextarea } from "@/components/auth/field";
@@ -16,13 +18,22 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	WEBHOOK_EVENT_TYPE_VALUES,
 	webhookEventLabel,
 } from "@/lib/webhook-events";
+import { fetchAPIJSON, queryKeys, readAPIJSON } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 const SECTIONS: Section[] = [
 	{ id: "create", label: "New endpoint" },
@@ -51,6 +62,11 @@ type WebhookDelivery = {
 	deliveredAt?: string | null;
 };
 
+async function fetchWebhookEndpoints() {
+	const payload = await fetchAPIJSON<{ endpoints: WebhookEndpoint[] }>("/api/admin/webhooks?limit=50");
+	return payload.endpoints;
+}
+
 function deliveryTone(status: string) {
 	if (status === "delivered") return "default";
 	if (status === "failed") return "destructive";
@@ -59,41 +75,36 @@ function deliveryTone(status: string) {
 
 export function Webhooks() {
 	const { data: session } = useRequireSession();
-	const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
-	const [loaded, setLoaded] = useState(false);
+	const queryClient = useQueryClient();
 	const [busy, setBusy] = useState(false);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [revealedSecret, setRevealedSecret] = useState<WebhookEndpointWithSecret | null>(null);
+	const [secretCopied, setSecretCopied] = useState(false);
+	const [deleteTarget, setDeleteTarget] = useState<WebhookEndpoint | null>(null);
 
 	const [url, setUrl] = useState("");
 	const [description, setDescription] = useState("");
 	const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
 
 	const [deliveries, setDeliveries] = useState<Record<string, WebhookDelivery[]>>({});
+	const endpointsQuery = useQuery({
+		queryKey: queryKeys.webhooks(),
+		queryFn: fetchWebhookEndpoints,
+		enabled: Boolean(session?.user),
+	});
+	const endpoints = endpointsQuery.data ?? [];
+	const loaded = endpointsQuery.isFetched;
+	const loadingEndpoints = endpointsQuery.isFetching;
+	const queryStatus =
+		status ??
+		(endpointsQuery.error instanceof Error
+			? { tone: "error" as const, message: endpointsQuery.error.message }
+			: null);
 
-	const loadEndpoints = useCallback(async () => {
-		setBusy(true);
+	function loadEndpoints() {
 		setStatus(null);
-		const response = await fetch("/api/admin/webhooks?limit=50");
-		setBusy(false);
-		setLoaded(true);
-		if (!response.ok) {
-			const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-			setEndpoints([]);
-			setStatus({ tone: "error", message: payload?.error ?? "Could not load webhooks." });
-			return;
-		}
-		const payload = (await response.json()) as { endpoints: WebhookEndpoint[] };
-		setEndpoints(payload.endpoints);
-	}, []);
-
-	useEffect(() => {
-		if (!session?.user) return;
-		queueMicrotask(() => {
-			void loadEndpoints();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [session?.user?.id, loadEndpoints]);
+		void endpointsQuery.refetch();
+	}
 
 	function toggleEvent(type: string, checked: boolean) {
 		setSelectedEvents((current) =>
@@ -109,28 +120,33 @@ export function Webhooks() {
 		}
 		setBusy(true);
 		setStatus(null);
-		const response = await fetch("/api/admin/webhooks", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				url,
-				events: selectedEvents,
-				...(description.trim() ? { description: description.trim() } : {}),
-			}),
-		});
-		setBusy(false);
-		if (!response.ok) {
-			const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-			setStatus({ tone: "error", message: payload?.error ?? "Could not create webhook." });
-			return;
+		try {
+			const payload = await readAPIJSON<{ endpoint: WebhookEndpointWithSecret }>(
+				await fetch("/api/admin/webhooks", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						url,
+						events: selectedEvents,
+						...(description.trim() ? { description: description.trim() } : {}),
+					}),
+				}),
+			);
+			setRevealedSecret(payload.endpoint);
+			setSecretCopied(false);
+			setUrl("");
+			setDescription("");
+			setSelectedEvents([]);
+			setStatus({ tone: "success", message: "Webhook endpoint created." });
+			void endpointsQuery.refetch();
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not create webhook.",
+			});
+		} finally {
+			setBusy(false);
 		}
-		const payload = (await response.json()) as { endpoint: WebhookEndpointWithSecret };
-		setRevealedSecret(payload.endpoint);
-		setUrl("");
-		setDescription("");
-		setSelectedEvents([]);
-		setStatus({ tone: "success", message: "Webhook endpoint created." });
-		void loadEndpoints();
 	}
 
 	async function setDisabled(endpoint: WebhookEndpoint, disabled: boolean) {
@@ -145,7 +161,7 @@ export function Webhooks() {
 			setStatus({ tone: "error", message: "Could not update webhook." });
 			return;
 		}
-		void loadEndpoints();
+		void endpointsQuery.refetch();
 	}
 
 	async function rotateSecret(endpoint: WebhookEndpoint) {
@@ -160,6 +176,7 @@ export function Webhooks() {
 		}
 		const payload = (await response.json()) as { endpoint: WebhookEndpointWithSecret };
 		setRevealedSecret(payload.endpoint);
+		setSecretCopied(false);
 		setStatus({ tone: "success", message: "Signing secret rotated." });
 	}
 
@@ -171,18 +188,38 @@ export function Webhooks() {
 			setStatus({ tone: "error", message: "Could not delete webhook." });
 			return;
 		}
+		setDeleteTarget(null);
 		setStatus({ tone: "success", message: "Webhook endpoint deleted." });
-		void loadEndpoints();
+		void endpointsQuery.refetch();
+	}
+
+	async function copyRevealedSecret() {
+		if (!revealedSecret?.secret) return;
+		try {
+			await navigator.clipboard.writeText(revealedSecret.secret);
+			setSecretCopied(true);
+			window.setTimeout(() => setSecretCopied(false), 1500);
+		} catch {
+			setStatus({ tone: "error", message: "Could not copy the signing secret." });
+		}
 	}
 
 	async function loadDeliveries(endpoint: WebhookEndpoint) {
-		const response = await fetch(`/api/admin/webhooks/${endpoint.id}/deliveries?limit=20`);
-		if (!response.ok) {
-			setStatus({ tone: "error", message: "Could not load deliveries." });
-			return;
+		try {
+			const payload = await queryClient.fetchQuery({
+				queryKey: queryKeys.webhookDeliveries(endpoint.id),
+				queryFn: () =>
+					fetchAPIJSON<{ deliveries: WebhookDelivery[] }>(
+						`/api/admin/webhooks/${endpoint.id}/deliveries?limit=20`,
+					),
+			});
+			setDeliveries((current) => ({ ...current, [endpoint.id]: payload.deliveries }));
+		} catch (error) {
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not load deliveries.",
+			});
 		}
-		const payload = (await response.json()) as { deliveries: WebhookDelivery[] };
-		setDeliveries((current) => ({ ...current, [endpoint.id]: payload.deliveries }));
 	}
 
 	return (
@@ -192,7 +229,7 @@ export function Webhooks() {
 			description="Deliver identity lifecycle events to your other applications."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			{revealedSecret ? (
 				<Alert>
@@ -206,14 +243,22 @@ export function Webhooks() {
 						<code className="mt-2 block w-full break-all rounded-md border bg-muted/50 px-2.5 py-1.5 font-mono text-xs">
 							{revealedSecret.secret}
 						</code>
-						<Button
-							variant="outline"
-							size="sm"
-							className="mt-2"
-							onClick={() => setRevealedSecret(null)}
-						>
-							Done
-						</Button>
+						<div className="mt-2 flex flex-wrap gap-2">
+							<Button variant="outline" size="sm" onClick={copyRevealedSecret}>
+								{secretCopied ? <Check className="size-4" /> : <Copy className="size-4" />}
+								{secretCopied ? "Copied" : "Copy secret"}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									setRevealedSecret(null);
+									setSecretCopied(false);
+								}}
+							>
+								Done
+							</Button>
+						</div>
 					</AlertDescription>
 				</Alert>
 			) : null}
@@ -270,13 +315,24 @@ export function Webhooks() {
 					footer={
 						<SettingsCardFooter
 							hint={
-								loaded
-									? `${endpoints.length} endpoint${endpoints.length === 1 ? "" : "s"}.`
-									: "Loading endpoints..."
+								loaded ? (
+									`${endpoints.length} endpoint${endpoints.length === 1 ? "" : "s"}.`
+								) : (
+									<Skeleton className="h-3 w-32" />
+								)
 							}
 						>
-							<Button variant="outline" size="sm" onClick={loadEndpoints} disabled={busy}>
-								<RefreshCw className={cn("size-4", busy && "animate-spin")} />
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={loadEndpoints}
+								disabled={busy || loadingEndpoints}
+							>
+								{busy || loadingEndpoints ? (
+									<Skeleton className="size-4 rounded-full" />
+								) : (
+									<RefreshCw className="size-4" />
+								)}
 								Refresh
 							</Button>
 						</SettingsCardFooter>
@@ -337,10 +393,11 @@ export function Webhooks() {
 												<Button
 													variant="destructive"
 													size="sm"
-													onClick={() => deleteEndpoint(endpoint)}
+													onClick={() => setDeleteTarget(endpoint)}
 													disabled={busy}
 												>
 													<Trash2 className="size-4" />
+													<span className="sr-only">Delete endpoint</span>
 												</Button>
 											</div>
 										</div>
@@ -392,6 +449,34 @@ export function Webhooks() {
 					</div>
 				</SettingsCard>
 			</section>
+			<Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete webhook endpoint?</DialogTitle>
+						<DialogDescription>
+							This will permanently stop deliveries to{" "}
+							<span className="font-medium text-foreground">{deleteTarget?.url}</span>.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button type="button" variant="outline">
+								Cancel
+							</Button>
+						</DialogClose>
+						<Button
+							type="button"
+							variant="destructive"
+							disabled={busy || !deleteTarget}
+							onClick={() => {
+								if (deleteTarget) void deleteEndpoint(deleteTarget);
+							}}
+						>
+							Delete endpoint
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</DashboardShell>
 	);
 }

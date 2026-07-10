@@ -103,18 +103,36 @@ export function FieldPasswordInput({
 				type={visible ? "text" : "password"}
 				aria-describedby={describedBy}
 				aria-invalid={invalid || undefined}
-				className={cn("pr-9", className)}
+				className={cn("pr-10", className)}
 				{...props}
 			/>
 			<button
 				type="button"
-				tabIndex={-1}
 				onClick={() => setVisible((current) => !current)}
 				aria-label={visible ? "Hide password" : "Show password"}
 				aria-pressed={visible}
-				className="absolute inset-y-0 right-0 grid w-9 place-items-center text-muted-foreground transition-colors hover:text-foreground"
+				className="absolute top-1/2 right-0 grid size-10 -translate-y-1/2 place-items-center text-muted-foreground transition-[color,scale] duration-150 ease-out hover:text-foreground active:scale-[0.96] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
 			>
-				{visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+				<span className="relative grid size-4 place-items-center">
+					<span
+						aria-hidden="true"
+						className={cn(
+							"absolute inset-0 grid place-items-center transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+							visible ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]",
+						)}
+					>
+						<EyeOff className="size-4" />
+					</span>
+					<span
+						aria-hidden="true"
+						className={cn(
+							"absolute inset-0 grid place-items-center transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]",
+							visible ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0",
+						)}
+					>
+						<Eye className="size-4" />
+					</span>
+				</span>
 			</button>
 		</div>
 	);
@@ -152,7 +170,7 @@ export function CheckboxField({
 }) {
 	const id = useId();
 	return (
-		<div className="flex items-start gap-2.5">
+		<div className="flex min-h-10 items-start gap-2.5">
 			<Checkbox
 				id={id}
 				checked={checked}

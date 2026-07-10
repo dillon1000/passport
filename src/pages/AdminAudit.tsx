@@ -4,7 +4,8 @@
  * Keep event formatting local to this page so new audit actions can be added
  * without changing storage.
  */
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -14,9 +15,9 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { formatRequestLocation, type RequestLocation } from "@/lib/request-location";
 import { useRequireSession } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 const SECTIONS: Section[] = [{ id: "events", label: "Events" }];
 
@@ -61,34 +62,23 @@ function eventLocationSummary(event: AuditEvent) {
 
 export function AdminAudit() {
 	const { data: session } = useRequireSession();
-	const [events, setEvents] = useState<AuditEvent[]>([]);
-	const [loaded, setLoaded] = useState(false);
-	const [busy, setBusy] = useState(false);
 	const [status, setStatus] = useState<Status | null>(null);
-
-	async function loadEvents() {
-		setBusy(true);
-		setStatus(null);
-		const response = await fetch("/api/admin/audit-events?limit=50");
-		setBusy(false);
-		setLoaded(true);
-		if (!response.ok) {
-			const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-			setEvents([]);
-			setStatus({ tone: "error", message: payload?.error ?? "Could not load audit events." });
-			return;
-		}
-		const payload = (await response.json()) as AuditPayload;
-		setEvents(payload.events);
-	}
-
-	useEffect(() => {
-		if (!session?.user) return;
-		queueMicrotask(() => {
-			void loadEvents();
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [session?.user?.id]);
+	const eventsQuery = useQuery({
+		queryKey: queryKeys.adminAudit(),
+		queryFn: async () => {
+			const payload = await fetchAPIJSON<AuditPayload>("/api/admin/audit-events?limit=50");
+			return payload.events;
+		},
+		enabled: Boolean(session?.user),
+	});
+	const events = eventsQuery.data ?? [];
+	const loaded = eventsQuery.isFetched;
+	const busy = eventsQuery.isFetching;
+	const queryStatus =
+		status ??
+		(eventsQuery.error instanceof Error
+			? { tone: "error" as const, message: eventsQuery.error.message }
+			: null);
 
 	return (
 		<DashboardShell
@@ -97,7 +87,7 @@ export function AdminAudit() {
 			description="Review privileged user and OAuth client mutations."
 			sections={SECTIONS}
 		>
-			<StatusBanner status={status} />
+			<StatusBanner status={queryStatus} />
 
 			<section id="events" className="scroll-mt-32">
 				<SettingsCard
@@ -106,13 +96,23 @@ export function AdminAudit() {
 					footer={
 						<SettingsCardFooter
 							hint={
-								loaded
-									? `${events.length} event${events.length === 1 ? "" : "s"} shown.`
-									: "Loading events..."
+								loaded ? (
+									`${events.length} event${events.length === 1 ? "" : "s"} shown.`
+								) : (
+									<Skeleton className="h-3 w-24" />
+								)
 							}
 						>
-							<Button variant="outline" size="sm" onClick={loadEvents} disabled={busy}>
-								<RefreshCw className={cn("size-4", busy && "animate-spin")} />
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									setStatus(null);
+									void eventsQuery.refetch();
+								}}
+								disabled={busy}
+							>
+								{busy ? <Skeleton className="size-4 rounded-full" /> : <RefreshCw className="size-4" />}
 								Refresh
 							</Button>
 						</SettingsCardFooter>

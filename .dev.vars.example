@@ -39,6 +39,20 @@ CAPTCHA_MIN_SCORE=
 OAUTH_PROXY_PRODUCTION_URL=
 OAUTH_PROXY_SECRET=
 
+# Optional Stripe billing. The webhook URL is /api/auth/stripe/webhook and must
+# subscribe to checkout.session.completed plus customer.subscription lifecycle events.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_API_VERSION=2026-05-27.dahlia
+STRIPE_CREATE_CUSTOMER_ON_SIGN_UP=true
+STRIPE_BILLING_REQUIRE_EMAIL_VERIFICATION=true
+STRIPE_BILLING_PLANS=[{"name":"pro","label":"Pro","description":"Production auth and billing features.","priceId":"price_replace_monthly","annualDiscountPriceId":"price_replace_yearly","limits":{"applications":10,"organizations":3},"entitlements":["oauth","billing"],"freeTrialDays":14},{"name":"team","label":"Team","description":"Organization billing with seat sync.","priceId":"price_replace_team_monthly","annualDiscountPriceId":"price_replace_team_yearly","seatPriceId":"price_replace_team_seat","limits":{"applications":50,"organizations":10,"members":100},"entitlements":["oauth","billing","organizations","seats"]}]
+STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES=true
+STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED=false
+STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED=false
+STRIPE_CHECKOUT_BILLING_ADDRESS_COLLECTION=auto
+STRIPE_CHECKOUT_CUSTOM_TEXT_SUBMIT_MESSAGE=
+
 # Optional Agent Auth discovery metadata overrides.
 AGENT_AUTH_PROVIDER_NAME=Passport
 AGENT_AUTH_PROVIDER_DESCRIPTION=Passport identity, OAuth, and account security APIs for AI agents.
@@ -55,7 +69,25 @@ PRIMARY_FOREGROUND_COLOR=
 RING_COLOR=
 
 # JSON array of first-party OAuth clients seeded into the provider config.
-OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"scopes":["openid","profile","email","phone","profile:picture","profile:username","organizations","organizations:ids","organizations:roles","teams","teams:ids","permissions","account:security","connections"],"skipConsent":true}]
+OAUTH_CLIENTS=[{"id":"example-client","secret":"example-client-secret","name":"Example Client","redirectUris":["http://localhost:5174/callback"],"postLogoutRedirectUris":["http://localhost:5174/"],"scopes":["openid","profile","email","phone","profile:picture","profile:username","organizations","organizations:ids","organizations:roles","teams","teams:ids","permissions","account:security","connections","billing:status","billing:subscriptions","billing:purchases","billing:entitlements","billing:limits"],"skipConsent":true}]
+
+# JSON array of protected API audiences and the OAuth scopes each API accepts.
+OAUTH_RESOURCES=[{"identifier":"https://api.example.com","name":"Example API","scopes":["permissions"]}]
+
+# Global Better Auth rate limiting backed by AUTH_SECONDARY_STORAGE.
+AUTH_RATE_LIMIT_ENABLED=true
+AUTH_RATE_LIMIT_WINDOW_SECONDS=60
+AUTH_RATE_LIMIT_MAX=120
+
+# Tighter limits for credential, OTP, phone, magic-link, and password-recovery endpoints.
+AUTH_SENSITIVE_RATE_LIMIT_WINDOW_SECONDS=60
+AUTH_SENSITIVE_RATE_LIMIT_MAX=10
+
+# Identity-keyed credential lockout after repeated failed sign-ins.
+ACCOUNT_LOCKOUT_ENABLED=true
+ACCOUNT_LOCKOUT_THRESHOLD=10
+ACCOUNT_LOCKOUT_WINDOW_SECONDS=900
+ACCOUNT_LOCKOUT_COOLDOWN_SECONDS=900
 
 # GitHub OAuth app credentials for social sign-in.
 GITHUB_CLIENT_ID=

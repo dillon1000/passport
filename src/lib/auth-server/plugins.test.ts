@@ -15,9 +15,17 @@ type MultiSessionPlugin = AuthPlugin & {
 	};
 	endpoints: Record<string, unknown>;
 };
+type StripePlugin = AuthPlugin & {
+	id: "stripe";
+	endpoints: Record<string, unknown>;
+};
 
 function isMultiSessionPlugin(plugin: AuthPlugin): plugin is MultiSessionPlugin {
 	return plugin.id === "multi-session";
+}
+
+function isStripePlugin(plugin: AuthPlugin): plugin is StripePlugin {
+	return plugin.id === "stripe";
 }
 
 describe("buildAuthPlugins", () => {
@@ -35,5 +43,40 @@ describe("buildAuthPlugins", () => {
 				"revokeDeviceSession",
 			]),
 		);
+	});
+
+	it("enables the Better Auth Stripe plugin when Stripe billing env is configured", () => {
+		const plugins = buildAuthPlugins(
+			createCliAuthEnv({
+				STRIPE_SECRET_KEY: "sk_test_123",
+				STRIPE_WEBHOOK_SECRET: "whsec_123",
+				STRIPE_BILLING_PLANS: JSON.stringify([
+					{
+						name: "pro",
+						priceId: "price_pro_month",
+					},
+				]),
+			}),
+			{} as AuthDatabase,
+		);
+		const plugin = plugins.find(isStripePlugin);
+
+		expect(plugin).toBeDefined();
+		expect(Object.keys(plugin?.endpoints ?? {})).toEqual(
+			expect.arrayContaining([
+				"stripeWebhook",
+				"upgradeSubscription",
+				"cancelSubscription",
+				"restoreSubscription",
+				"listActiveSubscriptions",
+				"createBillingPortal",
+			]),
+		);
+	});
+
+	it("does not enable Stripe when secrets are absent", () => {
+		const plugins = buildAuthPlugins(createCliAuthEnv(), {} as AuthDatabase);
+
+		expect(plugins.some((plugin) => plugin.id === "stripe")).toBe(false);
 	});
 });

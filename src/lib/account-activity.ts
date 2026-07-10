@@ -26,10 +26,12 @@ export const ACCOUNT_ACTIVITY_TYPES = {
 	PASSKEY_REMOVED: "passkey_removed",
 	PHONE_ADDED: "phone_added",
 	PHONE_REMOVED: "phone_removed",
+	ACCOUNT_LOCKED: "account_locked",
 	TWO_FACTOR_SETUP_STARTED: "two_factor_setup_started",
 	TWO_FACTOR_ENABLED: "two_factor_enabled",
 	TWO_FACTOR_DISABLED: "two_factor_disabled",
 	BACKUP_CODES_REGENERATED: "backup_codes_regenerated",
+	CONNECTED_APP_ACTION: "connected_app_action",
 } as const;
 
 export type AccountActivityType =
@@ -51,10 +53,12 @@ export const ACCOUNT_ACTIVITY_LABELS: Record<AccountActivityType, string> = {
 	passkey_removed: "Passkey removed",
 	phone_added: "Phone number added",
 	phone_removed: "Phone number removed",
+	account_locked: "Account temporarily locked",
 	two_factor_setup_started: "Two-factor authentication setup started",
 	two_factor_enabled: "Two-factor authentication enabled",
 	two_factor_disabled: "Two-factor authentication disabled",
 	backup_codes_regenerated: "Two-factor backup codes regenerated",
+	connected_app_action: "Connected app action",
 };
 
 /**
@@ -102,4 +106,22 @@ export type AccountActivitySummary = {
 	ipAddress?: string | null;
 	location?: RequestLocation | null;
 	userAgent?: string | null;
+	metadata?: Record<string, string | number | boolean | null> | null;
 };
+
+/** Parses only primitive metadata values that are safe to show in the activity UI. */
+export function parseAccountActivityMetadata(value: string | null | undefined) {
+	if (!value) return null;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+		return Object.fromEntries(
+			Object.entries(parsed).filter((entry): entry is [string, string | number | boolean | null] => {
+				const item = entry[1];
+				return item === null || ["string", "number", "boolean"].includes(typeof item);
+			}),
+		);
+	} catch {
+		return null;
+	}
+}

@@ -8,6 +8,7 @@ export const AUTH_ERROR_PATH = "/auth/error";
 
 const DEFAULT_AUTH_ERROR_CODE = "UNKNOWN";
 const DEFAULT_AUTH_ERROR_DESCRIPTION = "The authentication request could not be completed.";
+const MAX_AUTH_ERROR_DESCRIPTION_LENGTH = 240;
 
 function normalizedErrorCode(value: string | null) {
 	const trimmed = value?.trim();
@@ -15,11 +16,16 @@ function normalizedErrorCode(value: string | null) {
 	return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : DEFAULT_AUTH_ERROR_CODE;
 }
 
-export function authErrorDetails(searchParams: URLSearchParams) {
-	const description = searchParams.get("error_description")?.trim();
+function normalizedErrorDescription(value: string | null) {
+	const normalized = value?.replace(/\s+/g, " ").trim();
+	if (!normalized) return DEFAULT_AUTH_ERROR_DESCRIPTION;
+	if (normalized.length <= MAX_AUTH_ERROR_DESCRIPTION_LENGTH) return normalized;
+	return `${normalized.slice(0, MAX_AUTH_ERROR_DESCRIPTION_LENGTH).trimEnd()}...`;
+}
 
+export function authErrorDetails(searchParams: URLSearchParams) {
 	return {
 		code: normalizedErrorCode(searchParams.get("error")),
-		description: description || DEFAULT_AUTH_ERROR_DESCRIPTION,
+		description: normalizedErrorDescription(searchParams.get("error_description")),
 	};
 }

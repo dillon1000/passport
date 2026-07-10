@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router";
 
+import { About } from "@/pages/About";
 import { AdminAudit } from "@/pages/AdminAudit";
 import { Account } from "@/pages/Account";
 import { AdminUsers } from "@/pages/AdminUsers";
@@ -7,7 +8,11 @@ import { Applications } from "@/pages/Applications";
 import { AgentApprove } from "@/pages/AgentApprove";
 import { Agents } from "@/pages/Agents";
 import { AuthError } from "@/pages/AuthError";
+import { Billing } from "@/pages/billing/Billing";
+import { BillingAction } from "@/pages/billing/Action";
+import { Product } from "@/pages/billing/Product";
 import { Consent } from "@/pages/Consent";
+import { NotFound } from "@/pages/NotFound";
 import { OrganizationInvitation } from "@/pages/OrganizationInvitation";
 import { Organizations } from "@/pages/Organizations";
 import { Security } from "@/pages/Security";
@@ -27,8 +32,24 @@ export const appRoutes = [
 		element: <SignIn />,
 	},
 	{
+		path: "/about",
+		element: <About />,
+	},
+	{
 		path: "/account",
 		element: <Account />,
+	},
+	{
+		path: "/billing/product/:productId",
+		element: <Product />,
+	},
+	{
+		path: "/billing/action/:intentId",
+		element: <BillingAction />,
+	},
+	{
+		path: "/billing/*",
+		element: <Billing />,
 	},
 	{
 		path: "/security",
@@ -88,6 +109,6 @@ export const appRoutes = [
 	},
 	{
 		path: "*",
-		element: <SignIn />,
+		element: <NotFound />,
 	},
 ] satisfies RouteObject[];

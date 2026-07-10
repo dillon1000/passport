@@ -16,16 +16,19 @@ export function AuthShell({
 	breadcrumb,
 	actions,
 	nav,
+	subnav,
 }: {
 	children: ReactNode;
-	/** Content well width. `sm` for forms, `md` for denser forms, `lg`/`xl` for the dashboard. */
-	width?: "sm" | "md" | "lg" | "xl";
+	/** Content well width. `sm` for forms, `md` for denser forms, `lg`/`xl`/`2xl` for the dashboard. */
+	width?: "sm" | "md" | "lg" | "xl" | "2xl";
 	/** Trailing nav segment, e.g. the current page name. */
 	breadcrumb?: ReactNode;
 	/** Right-aligned controls rendered before the theme toggle. */
 	actions?: ReactNode;
 	/** Secondary page-tab strip rendered as a second header row. */
 	nav?: ReactNode;
+	/** Page-scoped tab strip rendered as a third header row, below `nav`. */
+	subnav?: ReactNode;
 }) {
 	const brand = useBrand();
 
@@ -48,8 +51,13 @@ export function AuthShell({
 					<div className="ml-auto flex items-center gap-1">{actions}</div>
 				</div>
 				{nav ? (
-					<div className="border-b">
+					<div className={cn(!subnav && "border-b")}>
 						<div className="mx-auto w-full max-w-5xl px-3 sm:px-5">{nav}</div>
+					</div>
+				) : null}
+				{subnav ? (
+					<div className="border-b bg-muted/30">
+						<div className="mx-auto w-full max-w-5xl px-4 sm:px-6">{subnav}</div>
 					</div>
 				) : null}
 			</header>
@@ -61,6 +69,7 @@ export function AuthShell({
 				<div
 					className={cn(
 						"w-full",
+						width === "2xl" && "max-w-5xl",
 						width === "xl" && "max-w-4xl",
 						width === "lg" && "max-w-2xl",
 						width === "md" && "max-w-lg",

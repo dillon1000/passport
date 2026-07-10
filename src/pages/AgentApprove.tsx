@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
 import { Bot, ShieldCheck, X } from "lucide-react";
 
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -12,6 +13,7 @@ import {
 	type AgentApprovalAction,
 	type PendingAgentApproval,
 } from "@/lib/agent-auth";
+import { queryKeys } from "@/lib/query-client";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -29,26 +31,17 @@ export function AgentApprove() {
 	const [userCode, setUserCode] = useState(searchParams.get("user_code") ?? "");
 	const [capabilities, setCapabilities] = useState(searchParams.get("capabilities") ?? "");
 	const [reason, setReason] = useState("");
-	const [pendingApprovals, setPendingApprovals] = useState<PendingAgentApproval[]>([]);
-	const [pendingLoaded, setPendingLoaded] = useState(false);
 	const [busy, setBusy] = useState<AgentApprovalAction | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
-
-	useEffect(() => {
-		let cancelled = false;
-		async function loadPending() {
+	const pendingApprovalsQuery = useQuery({
+		queryKey: queryKeys.agentApprovals(),
+		queryFn: async () => {
 			const result = await loadPendingAgentApprovals();
-			if (cancelled) return;
-			if (result.data?.requests) setPendingApprovals(result.data.requests);
-			setPendingLoaded(true);
-		}
-		void loadPending().catch(() => {
-			if (!cancelled) setPendingLoaded(true);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
+			return result.data?.requests ?? [];
+		},
+	});
+	const pendingApprovals: PendingAgentApproval[] = pendingApprovalsQuery.data ?? [];
+	const pendingLoaded = pendingApprovalsQuery.isFetched;
 
 	function applyPendingApproval(approval: PendingAgentApproval) {
 		setApprovalId(approval.approval_id);
@@ -125,7 +118,7 @@ export function AgentApprove() {
 												key={approval.approval_id}
 												type="button"
 												onClick={() => applyPendingApproval(approval)}
-												className="w-full rounded-lg border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
+												className="w-full rounded-lg border bg-background px-3 py-2 text-left shadow-sm shadow-black/[0.04] transition-[scale,background-color,box-shadow] duration-150 ease-out hover:bg-muted hover:shadow-black/[0.06] active:scale-[0.96]"
 											>
 												<div className="flex flex-wrap items-center gap-2 text-sm font-medium">
 													<span>{approval.agent_name ?? approval.agent_id ?? "Agent request"}</span>

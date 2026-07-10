@@ -17,7 +17,9 @@ export function shouldCompletePasswordSignIn(result: unknown) {
 }
 
 function safeRelativeURL(value: string | null | undefined) {
-	if (!value?.startsWith("/") || value.startsWith("//")) return undefined;
+	if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
+		return undefined;
+	}
 	return value;
 }
 
