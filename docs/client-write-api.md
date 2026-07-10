@@ -3,7 +3,7 @@
 Passport's delegated resource API lets a confidential OAuth client act for the
 signed-in user without receiving a Passport browser-session cookie. It is
 intended for backend and backend-for-frontend (BFF) applications. Direct browser
-and mobile calls are not supported in v1, and the API does not publish CORS
+and mobile calls are not supported, and the API does not publish CORS
 headers.
 
 The resource identifier is the Passport origin followed by `/api/v1`:
