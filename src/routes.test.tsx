@@ -27,6 +27,7 @@ describe("appRoutes", () => {
 			"/admin/webhooks",
 			"/two-factor",
 			"/consent",
+			"/select-account",
 			"/auth/error",
 			"*",
 		]);

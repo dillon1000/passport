@@ -16,6 +16,7 @@ import { NotFound } from "@/pages/NotFound";
 import { OrganizationInvitation } from "@/pages/OrganizationInvitation";
 import { Organizations } from "@/pages/Organizations";
 import { Security } from "@/pages/Security";
+import { SelectAccount } from "@/pages/SelectAccount";
 import { Sessions } from "@/pages/Sessions";
 import { Settings } from "@/pages/Settings";
 import { SignIn } from "@/pages/SignIn";
@@ -102,6 +103,10 @@ export const appRoutes = [
 	{
 		path: "/consent",
 		element: <Consent />,
+	},
+	{
+		path: "/select-account",
+		element: <SelectAccount />,
 	},
 	{
 		path: "/auth/error",

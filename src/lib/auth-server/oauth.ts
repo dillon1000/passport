@@ -182,6 +182,12 @@ export function oauthProviderPlugin(env: AuthEnv, db: AuthDatabase) {
 
 	return oauthProvider({
 		loginPage: "/sign-in",
+		selectAccount: {
+			page: "/select-account",
+			// OAuth requests always need an explicit account subject, even when
+			// the client has already received consent or can skip consent.
+			shouldRedirect: () => true,
+		},
 		consentPage: "/consent",
 		disabledPaths: ["/token"],
 		grantTypes: [...OAUTH_GRANT_TYPES],
