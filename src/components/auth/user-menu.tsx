@@ -11,14 +11,7 @@ import { Link } from "react-router";
 
 import { authClient } from "@/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu } from "@cloudflare/kumo";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { useAccountSwitch } from "@/lib/account-switch";
 import { useFlairMode, type FlairMode } from "@/lib/flair";
@@ -426,7 +419,7 @@ export function UserMenu({
 
 	return (
 		<DropdownMenu open={open} onOpenChange={setOpen}>
-			<DropdownMenuTrigger asChild>
+			<DropdownMenu.Trigger render={
 				<button
 					type="button"
 					aria-label="Account menu"
@@ -439,8 +432,8 @@ export function UserMenu({
 					</Avatar>
 					<ChevronDown className="size-3.5 text-muted-foreground" />
 				</button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-60">
+			} />
+			<DropdownMenu.Content align="end" className="w-60">
 				<div className="flex items-center gap-2.5 px-1.5 py-1.5">
 					<Avatar className="size-8 rounded-full">
 						<AvatarImage src={image ?? undefined} />
@@ -451,22 +444,21 @@ export function UserMenu({
 						<div className="truncate text-xs text-muted-foreground">{email}</div>
 					</div>
 				</div>
-				<DropdownMenuSeparator />
-				<DropdownMenuLabel>Switch account</DropdownMenuLabel>
-				<DropdownMenuItem disabled>
+				<DropdownMenu.Separator />
+				<DropdownMenu.Label>Switch account</DropdownMenu.Label>
+				<DropdownMenu.Item disabled>
 					<Avatar size="sm">
 						<AvatarImage src={image ?? undefined} />
 						<AvatarFallback>{initials}</AvatarFallback>
 					</Avatar>
 					<span className="min-w-0 flex-1 truncate">{email}</span>
 					<span className="text-xs text-muted-foreground">Current</span>
-				</DropdownMenuItem>
+				</DropdownMenu.Item>
 				{otherAccounts.map((account) => (
-					<DropdownMenuItem
+					<DropdownMenu.Item
 						key={account.session.token}
 						disabled={switching}
-						onSelect={(event) => {
-							event.preventDefault();
+						onClick={() => {
 							void switchAccount(account);
 						}}
 					>
@@ -475,33 +467,27 @@ export function UserMenu({
 							<AvatarFallback>{initialsOf(account.user.name)}</AvatarFallback>
 						</Avatar>
 						<span className="min-w-0 flex-1 truncate">{account.user.email}</span>
-					</DropdownMenuItem>
+					</DropdownMenu.Item>
 				))}
-				<DropdownMenuItem asChild>
-					<a href={resolveAddAccountURL(callbackURL)}>
+				<DropdownMenu.LinkItem href={resolveAddAccountURL(callbackURL)}>
 						<Plus />
 						Add account
-					</a>
-				</DropdownMenuItem>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem asChild>
-					<Link to="/account">
+				</DropdownMenu.LinkItem>
+				<DropdownMenu.Separator />
+				<DropdownMenu.LinkItem render={<Link to="/account" />}>
 						<UserRound />
 						Account
-					</Link>
-				</DropdownMenuItem>
-				<DropdownMenuItem asChild>
-					<Link to="/settings">
+				</DropdownMenu.LinkItem>
+				<DropdownMenu.LinkItem render={<Link to="/settings" />}>
 						<Settings />
 						Settings
-					</Link>
-				</DropdownMenuItem>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem variant="destructive" onClick={onSignOut}>
+				</DropdownMenu.LinkItem>
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item variant="danger" onClick={onSignOut}>
 					<LogOut />
 					Sign out
-				</DropdownMenuItem>
-			</DropdownMenuContent>
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
 		</DropdownMenu>
 	);
 }
