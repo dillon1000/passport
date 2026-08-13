@@ -20,6 +20,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
+import { useAccountSwitch } from "@/lib/account-switch";
 import { useFlairMode, type FlairMode } from "@/lib/flair";
 import { type RequestLocation } from "@/lib/request-location";
 import { initialsOf } from "@/lib/session";
@@ -400,6 +401,8 @@ export function UserMenu({
 	const [open, setOpen] = useState(false);
 	const [accounts, setAccounts] = useState<DeviceAccount[]>([]);
 	const [switching, setSwitching] = useState(false);
+	const beginAccountSwitch = useAccountSwitch((state) => state.begin);
+	const clearAccountSwitch = useAccountSwitch((state) => state.clear);
 	const otherAccounts = accounts.filter((account) => account.user.id !== session?.user.id);
 	const callbackURL = window.location.pathname + window.location.search;
 
@@ -409,11 +412,13 @@ export function UserMenu({
 	}, [open]);
 
 	/** Makes a browser account active, then reloads the current route under that session. */
-	async function switchAccount(sessionToken: string) {
+	async function switchAccount(account: DeviceAccount) {
 		setSwitching(true);
-		const result = await authClient.multiSession.setActive({ sessionToken });
+		beginAccountSwitch(account.user);
+		const result = await authClient.multiSession.setActive({ sessionToken: account.session.token });
 		if (result.error) {
 			setSwitching(false);
+			clearAccountSwitch();
 			return;
 		}
 		window.location.assign(callbackURL);
@@ -462,7 +467,7 @@ export function UserMenu({
 						disabled={switching}
 						onSelect={(event) => {
 							event.preventDefault();
-							void switchAccount(account.session.token);
+							void switchAccount(account);
 						}}
 					>
 						<Avatar size="sm">

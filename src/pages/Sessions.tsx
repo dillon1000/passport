@@ -44,6 +44,7 @@ import {
 	type DeviceType,
 } from "@/lib/sessions";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
+import { useAccountSwitch } from "@/lib/account-switch";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -136,6 +137,8 @@ export function Sessions() {
 	const [status, setStatus] = useState<Status | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+	const beginAccountSwitch = useAccountSwitch((state) => state.begin);
+	const clearAccountSwitch = useAccountSwitch((state) => state.clear);
 	const user = session?.user;
 	const currentToken = session?.session.token;
 	const sessionsQuery = useQuery({
@@ -171,9 +174,10 @@ export function Sessions() {
 		void sessionsQuery.refetch();
 	}
 
-	async function setActiveDeviceSession(sessionToken: string) {
+	async function setActiveDeviceSession(sessionToken: string, account: DeviceSessionUser) {
 		setStatus(null);
 		setBusy(true);
+		beginAccountSwitch(account);
 		const result = await authClient.multiSession.setActive({ sessionToken });
 		setBusy(false);
 		if (result.error) {
@@ -181,6 +185,7 @@ export function Sessions() {
 				tone: "error",
 				message: result.error.message ?? "Could not switch accounts.",
 			});
+			clearAccountSwitch();
 			return;
 		}
 		window.location.assign(window.location.pathname + window.location.search);
@@ -325,7 +330,7 @@ export function Sessions() {
 										deviceSession={item}
 										currentUserId={user?.id}
 										busy={busy}
-										onSetActive={() => setActiveDeviceSession(item.session.token)}
+										onSetActive={() => setActiveDeviceSession(item.session.token, item.user)}
 										onRevoke={() => revokeDeviceSession(item.session.token)}
 									/>
 								))}

@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { oauthConsentRedirect } from "@/lib/oauth-consent";
 import { initialsOf } from "@/lib/session";
+import { useAccountSwitch } from "@/lib/account-switch";
 
 type DeviceAccount = {
 	session: {
@@ -60,6 +61,8 @@ export function SelectAccount() {
 	const { data: session, isPending: sessionPending } = authClient.useSession();
 	const [status, setStatus] = useState<Status | null>(null);
 	const [loading, setLoading] = useState(false);
+	const beginAccountSwitch = useAccountSwitch((state) => state.begin);
+	const clearAccountSwitch = useAccountSwitch((state) => state.clear);
 	const authorizationURL = window.location.pathname + window.location.search;
 	const accountsQuery = useQuery({
 		queryKey: ["oauth-device-accounts", session?.user.id],
@@ -70,13 +73,15 @@ export function SelectAccount() {
 		(account) => account.user.id !== session?.user.id,
 	);
 
-	async function chooseAccount(sessionToken: string) {
+	async function chooseAccount(sessionToken: string, account: DeviceAccount["user"]) {
 		setStatus(null);
 		setLoading(true);
+		beginAccountSwitch(account);
 		if (sessionToken !== session?.session.token) {
 			const result = await authClient.multiSession.setActive({ sessionToken });
 			if (result.error) {
 				setLoading(false);
+				clearAccountSwitch();
 				setStatus({ tone: "error", message: result.error.message ?? "Could not switch accounts." });
 				return;
 			}
@@ -88,6 +93,7 @@ export function SelectAccount() {
 			window.location.assign(redirect);
 		} catch (error) {
 			setLoading(false);
+			clearAccountSwitch();
 			setStatus({
 				tone: "error",
 				message: error instanceof Error ? error.message : "Could not continue OAuth authorization.",
@@ -123,7 +129,7 @@ export function SelectAccount() {
 								account={session.user}
 								current
 								disabled={loading}
-								onChoose={() => void chooseAccount(session.session.token)}
+								onChoose={() => void chooseAccount(session.session.token, session.user)}
 							/>
 						) : (
 							<Skeleton className="h-16 w-full" />
@@ -134,7 +140,7 @@ export function SelectAccount() {
 								key={account.session.token}
 								account={account.user}
 								disabled={loading}
-								onChoose={() => void chooseAccount(account.session.token)}
+								onChoose={() => void chooseAccount(account.session.token, account.user)}
 							/>
 						))}
 					</div>

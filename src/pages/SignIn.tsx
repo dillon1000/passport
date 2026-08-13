@@ -20,7 +20,6 @@ import { Wordmark } from "@/components/auth/wordmark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/auth-client";
 import {
 	resolveAuthCallbackURL,
@@ -39,6 +38,7 @@ import {
 	isPasswordConfirmationReady,
 } from "@/lib/password-confirmation";
 import { initialsOf } from "@/lib/session";
+import { useAccountSwitch } from "@/lib/account-switch";
 import { withViewTransition } from "@/lib/view-transition";
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
@@ -137,9 +137,10 @@ export function SignIn() {
 		return null;
 	});
 	const [loading, setLoading] = useState(false);
-	const [switchingAccount, setSwitchingAccount] = useState<DeviceAccount["user"] | null>(null);
 	const captchaConfig = useCaptchaConfig();
 	const { data: session } = authClient.useSession();
+	const beginAccountSwitch = useAccountSwitch((state) => state.begin);
+	const clearAccountSwitch = useAccountSwitch((state) => state.clear);
 	const lastUsedSignInMethod = authClient.getLastUsedLoginMethod();
 
 	const callbackURL = resolveAuthCallbackURL(searchParams);
@@ -188,13 +189,13 @@ export function SignIn() {
 	async function continueSession(sessionToken: string, account: DeviceAccount["user"]) {
 		setStatus(null);
 		setLoading(true);
-		setSwitchingAccount(account);
+		beginAccountSwitch(account);
 
 		if (sessionToken !== session?.session.token) {
 			const result = await authClient.multiSession.setActive({ sessionToken });
 			if (result.error) {
 				setLoading(false);
-				setSwitchingAccount(null);
+				clearAccountSwitch();
 				setStatus({ tone: "error", message: result.error.message ?? "Could not switch accounts." });
 				return;
 			}
@@ -452,10 +453,6 @@ export function SignIn() {
 	const formSubmitHandler =
 		mode === "recovery" ? requestPasswordReset : mode === "reset" ? submitNewPassword : submitPassword;
 	const showAlternateSignIn = mode !== "reset";
-
-	if (switchingAccount) {
-		return <AccountSwitchInterstitial account={switchingAccount} />;
-	}
 
 	return (
 		<AuthShell>
@@ -743,32 +740,6 @@ function ExistingSessionChoice({
 				<a href={resolveAddAccountURL(callbackURL)}>Sign in to another account</a>
 			</Button>
 		</div>
-	);
-}
-
-/** Holds the page during an account activation so the switch has clear feedback. */
-function AccountSwitchInterstitial({ account }: { account: DeviceAccount["user"] }) {
-	return (
-		<AuthShell>
-			<div className="flex flex-col items-center gap-6">
-				<Wordmark className="h-7" />
-				<Card className="w-full">
-					<CardContent className="flex flex-col items-center gap-4 py-10 text-center">
-						<Avatar size="lg">
-							<AvatarImage src={account.image ?? undefined} />
-							<AvatarFallback>{initialsOf(account.name)}</AvatarFallback>
-						</Avatar>
-						<div className="space-y-1">
-							<p className="flex items-center justify-center gap-2 text-sm font-medium">
-								<Skeleton className="size-4 rounded-full" />
-								Switching accounts
-							</p>
-							<p className="text-sm text-muted-foreground">Continuing as {account.email}</p>
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-		</AuthShell>
 	);
 }
 
