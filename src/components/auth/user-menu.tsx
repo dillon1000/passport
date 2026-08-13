@@ -6,7 +6,7 @@ import {
 	useState,
 	type CSSProperties,
 } from "react";
-import { ChevronDown, LogOut, Settings, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Plus, Settings, UserRound } from "lucide-react";
 import { Link } from "react-router";
 
 import { authClient } from "@/auth-client";
@@ -15,11 +15,14 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { useFlairMode, type FlairMode } from "@/lib/flair";
 import { type RequestLocation } from "@/lib/request-location";
+import { initialsOf } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 /**
@@ -362,6 +365,23 @@ function ProfileFlair({ name, email }: { name: string; email: string }) {
 	);
 }
 
+/** A unique same-browser account that can become the active Better Auth session. */
+type DeviceAccount = {
+	session: { token: string };
+	user: { id: string; name: string; email: string; image?: string | null };
+};
+
+async function loadDeviceAccounts(): Promise<DeviceAccount[]> {
+	const result = await authClient.multiSession.listDeviceSessions();
+	if (result.error) return [];
+
+	const accounts = new Map<string, DeviceAccount>();
+	for (const account of (result.data ?? []) as DeviceAccount[]) {
+		if (!accounts.has(account.user.id)) accounts.set(account.user.id, account);
+	}
+	return [...accounts.values()];
+}
+
 /** Right-aligned account menu in the top bar — avatar trigger with a popover. */
 export function UserMenu({
 	name,
@@ -376,8 +396,31 @@ export function UserMenu({
 	initials: string;
 	onSignOut: () => void;
 }) {
+	const { data: session } = authClient.useSession();
+	const [open, setOpen] = useState(false);
+	const [accounts, setAccounts] = useState<DeviceAccount[]>([]);
+	const [switching, setSwitching] = useState(false);
+	const otherAccounts = accounts.filter((account) => account.user.id !== session?.user.id);
+	const callbackURL = window.location.pathname + window.location.search;
+
+	useEffect(() => {
+		if (!open) return;
+		void loadDeviceAccounts().then(setAccounts);
+	}, [open]);
+
+	/** Makes a browser account active, then reloads the current route under that session. */
+	async function switchAccount(sessionToken: string) {
+		setSwitching(true);
+		const result = await authClient.multiSession.setActive({ sessionToken });
+		if (result.error) {
+			setSwitching(false);
+			return;
+		}
+		window.location.assign(callbackURL);
+	}
+
 	return (
-		<DropdownMenu>
+		<DropdownMenu open={open} onOpenChange={setOpen}>
 			<DropdownMenuTrigger asChild>
 				<button
 					type="button"
@@ -403,6 +446,38 @@ export function UserMenu({
 						<div className="truncate text-xs text-muted-foreground">{email}</div>
 					</div>
 				</div>
+				<DropdownMenuSeparator />
+				<DropdownMenuLabel>Switch account</DropdownMenuLabel>
+				<DropdownMenuItem disabled>
+					<Avatar size="sm">
+						<AvatarImage src={image ?? undefined} />
+						<AvatarFallback>{initials}</AvatarFallback>
+					</Avatar>
+					<span className="min-w-0 flex-1 truncate">{email}</span>
+					<span className="text-xs text-muted-foreground">Current</span>
+				</DropdownMenuItem>
+				{otherAccounts.map((account) => (
+					<DropdownMenuItem
+						key={account.session.token}
+						disabled={switching}
+						onSelect={(event) => {
+							event.preventDefault();
+							void switchAccount(account.session.token);
+						}}
+					>
+						<Avatar size="sm">
+							<AvatarImage src={account.user.image ?? undefined} />
+							<AvatarFallback>{initialsOf(account.user.name)}</AvatarFallback>
+						</Avatar>
+						<span className="min-w-0 flex-1 truncate">{account.user.email}</span>
+					</DropdownMenuItem>
+				))}
+				<DropdownMenuItem asChild>
+					<a href={resolveAddAccountURL(callbackURL)}>
+						<Plus />
+						Add account
+					</a>
+				</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem asChild>
 					<Link to="/account">
