@@ -4,7 +4,9 @@
  * backdrop, and ARIA behavior.
  */
 import * as React from "react";
+import { X } from "lucide-react";
 import { Dialog as KumoDialog, cn } from "@cloudflare/kumo";
+import { Button } from "./button";
 
 function Dialog(props: React.ComponentProps<typeof KumoDialog.Root>) {
 	return <KumoDialog.Root {...props} />;
@@ -16,14 +18,19 @@ function DialogTrigger(props: React.ComponentProps<typeof KumoDialog.Trigger>) {
 
 function DialogClose({ asChild = false, children, ...props }: React.ComponentProps<typeof KumoDialog.Close> & { asChild?: boolean }) {
 	if (asChild && React.isValidElement(children)) {
-		return <KumoDialog.Close {...props} render={(closeProps) => React.cloneElement(children, closeProps)} />;
+		return <KumoDialog.Close {...props} render={children} />;
 	}
 
 	return <KumoDialog.Close {...props}>{children}</KumoDialog.Close>;
 }
 
-function DialogContent({ className, children, showCloseButton: _showCloseButton, ...props }: React.ComponentProps<typeof KumoDialog> & { showCloseButton?: boolean }) {
-	return <KumoDialog className={cn("p-5", className)} {...props}>{children}</KumoDialog>;
+function DialogContent({ className, children, showCloseButton = true, ...props }: React.ComponentProps<typeof KumoDialog> & { showCloseButton?: boolean }) {
+	return <KumoDialog className={cn("p-5", className)} {...props}>
+		{children}
+		{showCloseButton ? (
+			<KumoDialog.Close render={<Button variant="ghost" size="icon-sm" className="absolute top-3 right-3" aria-label="Close dialog"><X className="size-4" /></Button>} />
+		) : null}
+	</KumoDialog>;
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
@@ -32,7 +39,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function DialogFooter({ className, showCloseButton = false, children, ...props }: React.ComponentProps<"div"> & { showCloseButton?: boolean }) {
 	return (
-		<div className={cn("mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props}>
+		<div className={cn("-mx-5 -mb-5 mt-5 flex flex-col-reverse gap-2 border-t bg-muted/50 px-5 py-4 sm:flex-row sm:justify-end", className)} {...props}>
 			{children}
 			{showCloseButton ? <DialogClose>Close</DialogClose> : null}
 		</div>

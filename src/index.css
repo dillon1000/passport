@@ -96,6 +96,24 @@
 	--sidebar-accent-foreground: oklch(0.205 0 0);
 	--sidebar-border: oklch(0.922 0 0);
 	--sidebar-ring: oklch(0.708 0 0);
+	/* Kumo components read these semantic tokens. Mapping them here keeps the
+	   library's accessible primitives inside Passport's neutral theme. */
+	--color-kumo-canvas: var(--background);
+	--color-kumo-elevated: var(--muted);
+	--color-kumo-recessed: var(--muted);
+	--color-kumo-base: var(--card);
+	--color-kumo-control: var(--popover);
+	--color-kumo-tint: var(--accent);
+	--color-kumo-overlay: var(--accent);
+	--color-kumo-line: var(--border);
+	--color-kumo-hairline: var(--border);
+	--color-kumo-brand: var(--primary);
+	--color-kumo-brand-hover: color-mix(in oklch, var(--primary) 88%, black);
+	--color-kumo-focus: var(--ring);
+	--color-kumo-danger: var(--destructive);
+	--text-color-kumo-default: var(--foreground);
+	--text-color-kumo-subtle: var(--muted-foreground);
+	--text-color-kumo-inverse: var(--primary-foreground);
 }
 
 * {
