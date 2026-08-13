@@ -2,9 +2,10 @@
    slot-level primitive treatments. Rebrand by overriding semantic CSS
    variables such as --brand, --primary, and --muted instead of hardcoding
    component colors. */
+@source "../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+@import "@cloudflare/kumo/styles";
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));

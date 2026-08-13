@@ -6,6 +6,7 @@
     "ignoreDeprecations": "6.0",
     "jsx": "react-jsx",
     "paths": {
+		"@/components/ui/*": ["./src/components/kumo/primitives/*"],
       "@/*": [
         "./src/*"
       ]
