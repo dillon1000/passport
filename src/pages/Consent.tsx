@@ -8,18 +8,23 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ComponentType } from "react";
 import {
 	AtSign,
+	ArrowRight,
 	Building2,
 	Check,
 	Clock,
 	CreditCard,
+	ExternalLink,
 	Fingerprint,
 	Gauge,
+	Globe2,
 	Image,
 	ListChecks,
 	Link2,
 	Mail,
 	Phone,
 	Receipt,
+	Repeat2,
+	ScrollText,
 	ShieldCheck,
 	UserRound,
 	UsersRound,
@@ -57,6 +62,7 @@ type ConsentClientMetadata = {
 	tos?: string | null;
 	policy?: string | null;
 	disabled?: boolean;
+	createdAt?: string | null;
 };
 
 /** A same-browser account session that can become the OAuth authorization subject. */
@@ -135,10 +141,12 @@ export function Consent() {
 	const clientLabel = clientMetadata?.name ?? (clientMetadataLoaded ? "Unknown Application" : "Loading application");
 	const clientInitials = initialsOf(clientMetadata?.name ?? clientId);
 	const clientLinks = [
-		...(clientMetadata?.uri ? [{ label: "Website", href: clientMetadata.uri }] : []),
-		...(clientMetadata?.tos ? [{ label: "Terms", href: clientMetadata.tos }] : []),
-		...(clientMetadata?.policy ? [{ label: "Privacy", href: clientMetadata.policy }] : []),
+		...(clientMetadata?.uri ? [{ label: "Website", href: clientMetadata.uri, icon: Globe2 }] : []),
+		...(clientMetadata?.tos ? [{ label: "Terms", href: clientMetadata.tos, icon: ScrollText }] : []),
+		...(clientMetadata?.policy ? [{ label: "Privacy", href: clientMetadata.policy, icon: ShieldCheck }] : []),
 	];
+	const accountSelectionURL = `/select-account?${params.toString()}`;
+	const clientAge = applicationAge(clientMetadata?.createdAt);
 	const approvalBlocked = loading !== null || !clientMetadataLoaded || !clientMetadata || clientMetadata.disabled === true;
 
 	// Consent requires an authenticated visitor. Send signed-out users to
@@ -210,7 +218,6 @@ export function Consent() {
 						<Handshake
 							clientMetadata={clientMetadata}
 							clientInitials={clientInitials}
-							active
 						/>
 						<div className="space-y-1">
 							<p className="text-sm font-medium">Redirecting…</p>
@@ -239,21 +246,25 @@ export function Consent() {
 								<span className="font-medium text-foreground">{clientLabel}</span> wants to access your{" "}
 								{brand.name} account.
 							</p>
-							<p className="font-mono text-xs text-muted-foreground">{clientId}</p>
+							{clientAge ? <p className="text-xs text-muted-foreground">Registered {clientAge}</p> : null}
 							{clientLinks.length ? (
 								<div className="flex flex-wrap justify-center gap-2 pt-1">
-									{clientLinks.map((link) => (
-										<a
+									{clientLinks.map((link) => {
+										const Icon = link.icon;
+										return (
+											<a
 											key={link.label}
 											href={link.href}
 											target="_blank"
 											rel="noreferrer"
 											className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
 										>
-											<Link2 className="size-3" />
+												<Icon className="size-3" />
 											{link.label}
-										</a>
-									))}
+											<ExternalLink className="size-3" />
+											</a>
+										);
+									})}
 								</div>
 							) : null}
 						</div>
@@ -286,6 +297,12 @@ export function Consent() {
 									<span className="text-muted-foreground">Signed in as </span>
 									<span className="font-medium">{user.email}</span>
 								</div>
+								<Button asChild size="sm" variant="outline">
+									<a href={accountSelectionURL}>
+										<Repeat2 className="size-3.5" />
+										Switch account
+									</a>
+								</Button>
 							</div>
 						) : null}
 
@@ -301,22 +318,22 @@ export function Consent() {
 									return (
 										<li
 											key={scope}
-											className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40"
+										className="flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40"
 										>
 											<span className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background text-muted-foreground">
 												<Icon className="size-4" />
 											</span>
 											{twoColumn ? (
-												<span className="min-w-0 flex-1">
-													<span className="block truncate text-sm">{consentText}</span>
-													<span className="block truncate font-mono text-[0.6875rem] text-muted-foreground">
+											<span className="min-w-0 flex-1">
+												<span className="block text-sm leading-snug">{consentText}</span>
+												<span className="mt-0.5 block break-all font-mono text-[0.6875rem] text-muted-foreground">
 														{scope}
 													</span>
 												</span>
 											) : (
 												<>
-													<span className="flex-1 text-sm">{consentText}</span>
-													<span className="font-mono text-[0.6875rem] text-muted-foreground">{scope}</span>
+											<span className="min-w-0 flex-1 text-sm leading-snug">{consentText}</span>
+											<span className="max-w-28 break-all text-right font-mono text-[0.6875rem] text-muted-foreground">{scope}</span>
 												</>
 											)}
 										</li>
@@ -343,10 +360,10 @@ export function Consent() {
 									)}
 								</Button>
 						</div>
-						<p className="flex items-center gap-1.5 text-center text-xs text-muted-foreground">
-							<ShieldCheck className="size-3.5" />
-							You can revoke this access anytime from Applications. {clientLabel} can send information about you back to {brand.name} that may be used to enrich your profile, or to personalize your experience. {clientLabel} will not be able to access your password.
-						</p>
+						<div className="space-y-1 text-center text-xs leading-relaxed text-muted-foreground">
+							<p>You can revoke this access at any time from Applications.</p>
+							<p>{clientLabel} cannot access your password.</p>
+						</div>
 					</CardFooter>
 				</Card>
 			</div>
@@ -354,25 +371,34 @@ export function Consent() {
 	);
 }
 
-/** Brand → client mark pair joined by an animated connector. `active` speeds the
- *  travelling pulse for the redirecting hand-off. */
+/** Returns a concise, stable age label for a client registration timestamp. */
+function applicationAge(createdAt: string | null | undefined) {
+	if (!createdAt) return undefined;
+	const timestamp = new Date(createdAt).getTime();
+	if (Number.isNaN(timestamp)) return undefined;
+	const days = Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000));
+	if (days < 1) return "today";
+	if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+	const months = Math.floor(days / 30);
+	if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+	const years = Math.floor(days / 365);
+	return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
+/** Brand and client marks use a quiet direction marker instead of a travelling pulse. */
 function Handshake({
 	clientMetadata,
 	clientInitials,
-	active,
 }: {
 	clientMetadata: ConsentClientMetadata | null;
 	clientInitials: string;
-	active?: boolean;
 }) {
 	return (
 		<div className="flex items-center justify-center gap-3">
 			<Wordmark className="consent-mark h-9" />
-			<div
-				className="consent-connector"
-				data-active={active ? "true" : undefined}
-				aria-hidden="true"
-			/>
+			<span className="grid size-7 place-items-center rounded-full border bg-muted/40 text-muted-foreground" aria-hidden="true">
+				<ArrowRight className="size-3.5" />
+			</span>
 			{clientMetadata?.icon ? (
 				<img
 					src={clientMetadata.icon}

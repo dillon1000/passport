@@ -20,6 +20,8 @@ export type ConsentClientMetadata = {
 	policy?: string | null;
 	public?: boolean;
 	disabled?: boolean;
+	/** Registration time is display-only and lets consent show an application's age. */
+	createdAt?: Date | null;
 	source: ConsentClientMetadataSource;
 };
 
@@ -35,6 +37,7 @@ export type RegisteredClientForConsent = {
 	policy?: string | null;
 	public?: boolean | null;
 	disabled?: boolean | null;
+	createdAt?: Date | null;
 };
 
 function optionalArray(value: string[] | null | undefined) {
@@ -60,6 +63,7 @@ export function consentMetadataFromRegisteredClient(
 		policy: client.policy,
 		public: optionalBoolean(client.public),
 		disabled: optionalBoolean(client.disabled),
+		createdAt: client.createdAt,
 		source: "database",
 	};
 }

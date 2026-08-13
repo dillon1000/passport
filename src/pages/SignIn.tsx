@@ -5,7 +5,7 @@
  * Safe changes are mode copy, visible recovery options, and callback handling.
  */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Fingerprint, Mail } from "lucide-react";
+import { Fingerprint, LogIn, Mail } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -13,17 +13,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
-import {
-	SOCIAL_PROVIDERS,
-	type SocialProviderId,
-} from "@/components/auth/social-provider-config";
+import { type SocialProviderId } from "@/components/auth/social-provider-config";
 import { SocialButtons } from "@/components/auth/social-buttons";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Wordmark } from "@/components/auth/wordmark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/auth-client";
 import {
 	resolveAuthCallbackURL,
@@ -102,14 +99,6 @@ function credentialLooksLikeEmail(value: string) {
 	return value.includes("@");
 }
 
-/** Converts Better Auth's cookie value into the label displayed on the sign-in page. */
-function lastUsedSignInMethodLabel(method: string | null) {
-	if (method === "email") return "Password";
-	if (method === "magic-link") return "Magic link";
-	if (method === "passkey") return "Passkey";
-	return SOCIAL_PROVIDERS.find((provider) => provider.id === method)?.label;
-}
-
 export function SignIn() {
 	const searchParams = new URLSearchParams(window.location.search);
 	const resetToken = searchParams.get("token");
@@ -148,6 +137,7 @@ export function SignIn() {
 		return null;
 	});
 	const [loading, setLoading] = useState(false);
+	const [switchingAccount, setSwitchingAccount] = useState<DeviceAccount["user"] | null>(null);
 	const captchaConfig = useCaptchaConfig();
 	const { data: session } = authClient.useSession();
 	const lastUsedSignInMethod = authClient.getLastUsedLoginMethod();
@@ -195,20 +185,22 @@ export function SignIn() {
 	}
 
 	/** Activates the selected local session, then resumes the original destination. */
-	async function continueSession(sessionToken: string) {
+	async function continueSession(sessionToken: string, account: DeviceAccount["user"]) {
 		setStatus(null);
 		setLoading(true);
+		setSwitchingAccount(account);
 
 		if (sessionToken !== session?.session.token) {
 			const result = await authClient.multiSession.setActive({ sessionToken });
 			if (result.error) {
 				setLoading(false);
+				setSwitchingAccount(null);
 				setStatus({ tone: "error", message: result.error.message ?? "Could not switch accounts." });
 				return;
 			}
 		}
 
-		window.location.assign(callbackURL);
+		requestAnimationFrame(() => window.location.assign(callbackURL));
 	}
 
 	function resetCaptcha() {
@@ -461,6 +453,10 @@ export function SignIn() {
 		mode === "recovery" ? requestPasswordReset : mode === "reset" ? submitNewPassword : submitPassword;
 	const showAlternateSignIn = mode !== "reset";
 
+	if (switchingAccount) {
+		return <AccountSwitchInterstitial account={switchingAccount} />;
+	}
+
 	return (
 		<AuthShell>
 			<div className="flex flex-col items-center gap-6">
@@ -474,17 +470,13 @@ export function SignIn() {
 				<Card className="w-full">
 					<CardContent className="space-y-4">
 						<StatusBanner status={status} />
-						{mode === "signin" ? (
-							<LastUsedSignInMethod method={lastUsedSignInMethod} />
-						) : null}
-
 						{canChooseExistingAccount && session ? (
 							<ExistingSessionChoice
 								account={session.user}
 								otherAccounts={otherAccounts}
 								callbackURL={callbackURL}
 								disabled={loading}
-								onChoose={continueSession}
+									onChoose={continueSession}
 								currentSessionToken={session.session.token}
 							/>
 						) : (
@@ -596,8 +588,7 @@ export function SignIn() {
 											) : (
 												<>
 													<Field label="Password">
-														<FieldInput
-															type="password"
+														<FieldPasswordInput
 															autoComplete="current-password"
 															placeholder="••••••••"
 															value={password}
@@ -633,10 +624,9 @@ export function SignIn() {
 								disabled={authActionsDisabled || !signupPasswordReady}
 								aria-keyshortcuts="Meta+Enter Control+Enter"
 							>
+								<LogIn className="size-4" />
 								{copy.action}
-								<Kbd className="ml-auto border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground/70">
-									⌘↵
-								</Kbd>
+								{lastUsedSignInMethod === "email" ? <LastUsedBadge /> : null}
 							</Button>
 						</form>
 
@@ -652,24 +642,32 @@ export function SignIn() {
 									<Button
 										variant="outline"
 										type="button"
+										className="relative"
 										onClick={signInWithPasskey}
 										disabled={authActionsDisabled}
 									>
 										<Fingerprint className="size-4" />
 										Passkey
+										{lastUsedSignInMethod === "passkey" ? <LastUsedBadge /> : null}
 									</Button>
 									<Button
 										variant="outline"
 										type="button"
+										className="relative"
 										onClick={sendMagicLink}
 										disabled={authActionsDisabled}
 									>
 										<Mail className="size-4" />
 										Magic link
+										{lastUsedSignInMethod === "magic-link" ? <LastUsedBadge /> : null}
 									</Button>
 								</div>
 
-								<SocialButtons onSelect={social} disabled={authActionsDisabled} />
+									<SocialButtons
+										onSelect={social}
+										disabled={authActionsDisabled}
+										lastUsedMethod={lastUsedSignInMethod}
+									/>
 							</>
 								) : null}
 							</>
@@ -694,17 +692,9 @@ export function SignIn() {
 	);
 }
 
-/** Shows the recent sign-in method from Better Auth's browser-readable cookie. */
-function LastUsedSignInMethod({ method }: { method: string | null }) {
-	const label = lastUsedSignInMethodLabel(method);
-	if (!label) return null;
-
-	return (
-		<div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-			<span>Last signed in with</span>
-			<Badge variant="secondary">{label}</Badge>
-		</div>
-	);
+/** Marks the control that matches Better Auth's recent sign-in-method cookie. */
+function LastUsedBadge() {
+	return <Badge className="absolute -top-2 -right-2" variant="secondary">Last used</Badge>;
 }
 
 /**
@@ -723,7 +713,7 @@ function ExistingSessionChoice({
 	otherAccounts: DeviceAccount[];
 	callbackURL: string;
 	disabled: boolean;
-	onChoose: (sessionToken: string) => void;
+	onChoose: (sessionToken: string, account: DeviceAccount["user"]) => void;
 	currentSessionToken: string;
 }) {
 	return (
@@ -737,14 +727,14 @@ function ExistingSessionChoice({
 				<SessionChoice
 					account={account}
 					disabled={disabled}
-					onChoose={() => onChoose(currentSessionToken)}
+					onChoose={() => onChoose(currentSessionToken, account)}
 				/>
 				{otherAccounts.map((otherAccount) => (
 					<SessionChoice
 						key={otherAccount.session.token}
 						account={otherAccount.user}
 						disabled={disabled}
-						onChoose={() => onChoose(otherAccount.session.token)}
+						onChoose={() => onChoose(otherAccount.session.token, otherAccount.user)}
 					/>
 				))}
 			</div>
@@ -753,6 +743,32 @@ function ExistingSessionChoice({
 				<a href={resolveAddAccountURL(callbackURL)}>Sign in to another account</a>
 			</Button>
 		</div>
+	);
+}
+
+/** Holds the page during an account activation so the switch has clear feedback. */
+function AccountSwitchInterstitial({ account }: { account: DeviceAccount["user"] }) {
+	return (
+		<AuthShell>
+			<div className="flex flex-col items-center gap-6">
+				<Wordmark className="h-7" />
+				<Card className="w-full">
+					<CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+						<Avatar size="lg">
+							<AvatarImage src={account.image ?? undefined} />
+							<AvatarFallback>{initialsOf(account.name)}</AvatarFallback>
+						</Avatar>
+						<div className="space-y-1">
+							<p className="flex items-center justify-center gap-2 text-sm font-medium">
+								<Skeleton className="size-4 rounded-full" />
+								Switching accounts
+							</p>
+							<p className="text-sm text-muted-foreground">Continuing as {account.email}</p>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+		</AuthShell>
 	);
 }
 

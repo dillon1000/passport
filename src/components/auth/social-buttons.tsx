@@ -5,14 +5,18 @@
  */
 import { PublicIcon } from "@/components/auth/public-icon";
 import { SOCIAL_PROVIDERS, type SocialProviderId } from "@/components/auth/social-provider-config";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export function SocialButtons({
 	onSelect,
 	disabled,
+	lastUsedMethod,
 }: {
 	onSelect: (provider: SocialProviderId) => void;
 	disabled?: boolean;
+	/** Better Auth's cookie value; its matching provider gets the visible marker. */
+	lastUsedMethod?: string | null;
 }) {
 	return (
 		<div className="grid grid-cols-3 gap-2">
@@ -21,11 +25,17 @@ export function SocialButtons({
 					key={id}
 					variant="outline"
 					type="button"
+					className="relative"
 					disabled={disabled}
 					onClick={() => onSelect(id)}
 				>
 					<PublicIcon src={icon} className="size-4" />
 					{label}
+					{lastUsedMethod === id ? (
+						<Badge className="absolute -top-2 -right-2" variant="secondary">
+							Last used
+						</Badge>
+					) : null}
 				</Button>
 			))}
 		</div>
