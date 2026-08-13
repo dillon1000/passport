@@ -5,8 +5,12 @@
 import * as React from "react";
 import { Empty as KumoEmpty, cn } from "@cloudflare/kumo";
 
-function Empty({ className, ...props }: React.ComponentProps<typeof KumoEmpty>) {
-	return <KumoEmpty className={cn("rounded-lg border border-border bg-muted/20", className)} {...props} />;
+function Empty({ className, icon, ...props }: React.ComponentProps<typeof KumoEmpty>) {
+	return <KumoEmpty
+		icon={icon ? <div className="grid size-11 place-items-center rounded-full border bg-muted/50 text-muted-foreground">{icon}</div> : undefined}
+		className={cn("!gap-3 !rounded-lg !border-0 !bg-transparent !px-4 !py-12 text-center [&>h2]:!text-sm [&>h2]:!font-medium [&>p]:!max-w-sm [&>p]:!text-sm", className)}
+		{...props}
+	/>;
 }
 
 export { Empty };
