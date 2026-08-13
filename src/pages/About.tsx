@@ -235,7 +235,7 @@ function PolicySheet({
 }) {
 	return (
 		<Sheet open={policy !== null} onOpenChange={onOpenChange}>
-			<SheetContent className="max-w-xl">
+			<SheetContent className="[--sheet-width:36rem]">
 				<SheetHeader>
 					<SheetTitle>{policy?.title}</SheetTitle>
 					<SheetDescription>Updated {legalUpdatedAt}</SheetDescription>

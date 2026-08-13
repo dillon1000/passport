@@ -9,7 +9,7 @@ import { ClipboardText as KumoClipboardText, cn } from "@cloudflare/kumo";
 function ClipboardText({ className, ...props }: React.ComponentProps<typeof KumoClipboardText>) {
 	return <KumoClipboardText
 		className={cn(
-			"min-w-0 flex-1 rounded-lg border border-input bg-muted/40 px-3 py-2 text-xs text-foreground [&_button]:!size-7 [&_button]:!rounded-md [&_button_svg]:!size-4",
+			"!h-9 min-w-0 flex-1 !rounded-lg !border !border-input !bg-muted/40 !p-0 !text-xs !text-foreground !shadow-none [&>span]:!px-3 [&_button]:!size-8 [&_button]:!min-w-8 [&_button]:!rounded-l-none [&_button]:!rounded-r-[calc(var(--radius)-2px)] [&_button]:!border-l [&_button]:!border-input [&_button]:!px-0 [&_button]:!shadow-none [&_button_svg]:!size-4",
 			className,
 		)}
 		{...props}

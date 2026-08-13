@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Wordmark } from "@/components/auth/wordmark";
+import { PageHeader } from "@/components/kumo/page-header/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useBrand } from "@/lib/brand-runtime";
 import { cn } from "@/lib/utils";
@@ -35,21 +36,22 @@ export function AuthShell({
 	return (
 		<div className="flex min-h-svh flex-col">
 			<header className="sticky top-0 z-10 bg-background/75 backdrop-blur-md [view-transition-name:site-header]">
-				<div
-					className={cn(
-						"mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6",
-						!nav && "border-b",
-					)}
-				>
-					<Wordmark className="h-6" />
-					{breadcrumb ? (
-						<>
-							<Slash />
-							<span className="text-sm font-medium">{breadcrumb}</span>
-						</>
-					) : null}
-					<div className="ml-auto flex items-center gap-1">{actions}</div>
-				</div>
+				<PageHeader
+					spacing="compact"
+					className="!gap-0"
+					breadcrumbs={
+						<div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
+							<Wordmark className="h-6" />
+							{breadcrumb ? (
+								<>
+									<Slash />
+									<span className="text-sm font-medium">{breadcrumb}</span>
+								</>
+							) : null}
+							<div className="ml-auto flex items-center gap-1">{actions}</div>
+						</div>
+					}
+				/>
 				{nav ? (
 					<div className={cn(!subnav && "border-b")}>
 						<div className="mx-auto w-full max-w-5xl px-3 sm:px-5">{nav}</div>
