@@ -30,10 +30,12 @@ import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Wordmark } from "@/components/auth/wordmark";
 import { StatusBanner, type Status } from "@/components/auth/status";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrand } from "@/lib/brand-runtime";
+import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
 import {
@@ -58,6 +60,27 @@ type ConsentClientMetadata = {
 	policy?: string | null;
 	disabled?: boolean;
 };
+
+/** A same-browser account session that can become the OAuth authorization subject. */
+type DeviceAccount = {
+	session: {
+		token: string;
+	};
+	user: {
+		id: string;
+		name: string;
+		email: string;
+		image?: string | null;
+	};
+};
+
+async function fetchDeviceAccounts(): Promise<DeviceAccount[]> {
+	const result = await authClient.multiSession.listDeviceSessions();
+	if (result.error) {
+		throw new Error(result.error.message ?? "Could not load signed-in accounts.");
+	}
+	return (result.data ?? []) as DeviceAccount[];
+}
 
 /** Icons stay local to the React surface while scope copy comes from the shared registry. */
 const SCOPE_ICONS: Record<SupportedOAuthScope, ComponentType<{ className?: string }>> = {
@@ -112,6 +135,7 @@ export function Consent() {
 	const [status, setStatus] = useState<Status | null>(null);
 	const [loading, setLoading] = useState<"accept" | "deny" | null>(null);
 	const [redirecting, setRedirecting] = useState(false);
+	const [accountSelected, setAccountSelected] = useState(false);
 	const hasClientId = Boolean(clientId && clientId !== "Unknown client");
 	const clientMetadataQuery = useQuery({
 		queryKey: queryKeys.consentClientMetadata(clientId),
@@ -139,6 +163,13 @@ export function Consent() {
 		...(clientMetadata?.policy ? [{ label: "Privacy", href: clientMetadata.policy }] : []),
 	];
 	const approvalBlocked = loading !== null || !clientMetadataLoaded || !clientMetadata || clientMetadata.disabled === true;
+	const accountsQuery = useQuery({
+		queryKey: ["oauth-device-accounts", user?.id],
+		queryFn: fetchDeviceAccounts,
+		enabled: Boolean(user),
+	});
+	const otherAccounts = (accountsQuery.data ?? []).filter((account) => account.user.id !== user?.id);
+	const authorizationURL = window.location.pathname + window.location.search;
 
 	// Consent requires an authenticated visitor. Send signed-out users to
 	// sign-in, preserving the full signed OAuth query so they return to this
@@ -190,6 +221,25 @@ export function Consent() {
 		});
 	}
 
+	/**
+	 * Activates an existing browser account, then restarts the signed consent
+	 * request so Better Auth authorizes the application for that account only.
+	 */
+	async function chooseAccount(sessionToken: string) {
+		if (sessionToken === session?.session.token) {
+			setAccountSelected(true);
+			return;
+		}
+
+		setStatus(null);
+		const result = await authClient.multiSession.setActive({ sessionToken });
+		if (result.error) {
+			setStatus({ tone: "error", message: result.error.message ?? "Could not switch accounts." });
+			return;
+		}
+		window.location.assign(authorizationURL);
+	}
+
 	// Hold the skeleton until the session resolves (and through the redirect
 	// hand-off for signed-out visitors) so the consent card never flashes to
 	// someone who is about to be sent to sign-in.
@@ -218,6 +268,50 @@ export function Consent() {
 								<span className="font-medium text-foreground">{clientLabel}</span>.
 							</p>
 						</div>
+					</CardContent>
+				</Card>
+			</AuthShell>
+		);
+	}
+
+	if (!accountSelected) {
+		return (
+			<AuthShell width="sm">
+				<Card className="w-full">
+					<CardContent className="space-y-5">
+						<div className="space-y-1.5 text-center">
+							<Wordmark className="mx-auto h-7" />
+							<h1 className="text-lg font-semibold tracking-tight">Choose an account</h1>
+							<p className="text-sm text-muted-foreground">
+								Choose the Passport account that {clientLabel} can use.
+							</p>
+						</div>
+
+						<StatusBanner status={status} />
+
+						<div className="space-y-2">
+							{user ? (
+								<AccountChoice
+									account={user}
+									current
+									disabled={loading !== null}
+									onChoose={() => void chooseAccount(session?.session.token ?? "")}
+								/>
+							) : null}
+							{accountsQuery.isPending ? <Skeleton className="h-16 w-full" /> : null}
+							{otherAccounts.map((account) => (
+								<AccountChoice
+									key={account.session.token}
+									account={account.user}
+									disabled={loading !== null}
+									onChoose={() => void chooseAccount(account.session.token)}
+								/>
+							))}
+						</div>
+
+						<Button asChild className="w-full" variant="outline">
+							<a href={resolveAddAccountURL(authorizationURL)}>Add an account</a>
+						</Button>
 					</CardContent>
 				</Card>
 			</AuthShell>
@@ -350,6 +444,38 @@ export function Consent() {
 				</Card>
 			</div>
 		</AuthShell>
+	);
+}
+
+/** Renders one account action while the OAuth request has no selected subject. */
+function AccountChoice({
+	account,
+	current = false,
+	disabled,
+	onChoose,
+}: {
+	account: { name: string; email: string; image?: string | null };
+	current?: boolean;
+	disabled: boolean;
+	onChoose: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+			disabled={disabled}
+			onClick={onChoose}
+		>
+			<Avatar>
+				<AvatarImage src={account.image ?? undefined} />
+				<AvatarFallback>{initialsOf(account.name)}</AvatarFallback>
+			</Avatar>
+			<span className="min-w-0 flex-1">
+				<span className="block truncate text-sm font-medium">{account.name}</span>
+				<span className="block truncate text-xs text-muted-foreground">{account.email}</span>
+			</span>
+			{current ? <span className="text-xs text-muted-foreground">Current</span> : null}
+		</button>
 	);
 }
 

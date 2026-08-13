@@ -121,4 +121,12 @@ describe("resolveAddAccountURL", () => {
 			"/sign-in?flow=add-account&callbackURL=%2Fsessions",
 		);
 	});
+
+	it("preserves the complete OAuth consent request when adding an account", () => {
+		const callbackURL = "/consent?client_id=oauth-client&scope=openid+email&sig=signed";
+
+		expect(resolveAddAccountURL(callbackURL)).toBe(
+			"/sign-in?flow=add-account&callbackURL=%2Fconsent%3Fclient_id%3Doauth-client%26scope%3Dopenid%2Bemail%26sig%3Dsigned",
+		);
+	});
 });
