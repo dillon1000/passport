@@ -471,6 +471,13 @@ input {
 	--sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Base UI portals must sit above the sticky dashboard header. Kumo owns the
+   portal lifecycle; Passport owns the application-wide stacking contract. */
+[data-base-ui-portal] {
+	position: relative;
+	z-index: 100;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
