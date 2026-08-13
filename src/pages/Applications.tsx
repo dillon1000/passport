@@ -35,6 +35,7 @@ import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { SummaryRow } from "@/components/auth/summary-row";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
+import { Empty as KumoEmpty } from "@/components/kumo/primitives/empty";
 import {
 	Dialog,
 	DialogClose,
@@ -1791,15 +1792,5 @@ function RowSkeletons() {
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
-	return (
-		<div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
-			<div className="grid size-11 place-items-center rounded-full border bg-muted/50 text-muted-foreground">
-				<AppWindow className="size-5" />
-			</div>
-			<div className="space-y-1">
-				<p className="text-sm font-medium">{title}</p>
-				<p className="mx-auto max-w-sm text-sm text-muted-foreground">{body}</p>
-			</div>
-		</div>
-	);
+	return <KumoEmpty icon={<AppWindow className="size-5" />} title={title} description={body} size="sm" />;
 }

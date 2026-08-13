@@ -345,7 +345,7 @@ export function Consent() {
 					</CardContent>
 
 					<CardFooter className="flex-col gap-3 border-t bg-muted/40 px-6 py-4">
-						<div className="grid w-full grid-cols-2 gap-2">
+						<div className="flex w-full justify-end gap-2">
 							<Button variant="outline" onClick={() => decide(false)} disabled={loading !== null}>
 								<X className="size-4" />
 								Deny

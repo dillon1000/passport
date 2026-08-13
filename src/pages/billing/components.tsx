@@ -50,6 +50,7 @@ import { Select, Tooltip } from "@cloudflare/kumo";
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
+import { Empty as KumoEmpty } from "@/components/kumo/primitives/empty";
 import { Checkbox } from "@/components/kumo/primitives/checkbox";
 import {
 	Dialog,
@@ -1796,15 +1797,5 @@ export function EmptyState({
 	title: string;
 	body: string;
 }) {
-	return (
-		<div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
-			<div className="grid size-11 place-items-center rounded-full border bg-muted/50 text-muted-foreground">
-				<Icon className="size-5" />
-			</div>
-			<div className="space-y-1">
-				<p className="text-sm font-medium">{title}</p>
-				<p className="mx-auto max-w-sm text-sm text-muted-foreground">{body}</p>
-			</div>
-		</div>
-	);
+	return <KumoEmpty icon={<Icon className="size-5" />} title={title} description={body} size="sm" />;
 }
