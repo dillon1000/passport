@@ -243,9 +243,8 @@ time,
 	}
 }
 
-/* OAuth consent handshake. The two marks settle in with a soft pop, then a lit
-   pulse travels the connector to suggest the brand → client link forming. The
-   `data-active` variant speeds the pulse for the redirecting hand-off. */
+/* OAuth consent handshake. The two marks settle first; the direction marker
+   then makes one small movement toward the client, without a looping pulse. */
 @keyframes consent-mark-in {
 	from {
 		opacity: 0;
@@ -265,64 +264,31 @@ time,
 	animation-delay: 0.1s;
 }
 
-@keyframes consent-pulse {
+@keyframes consent-direction-in {
 	0% {
-		left: 0%;
 		opacity: 0;
-		transform: translate(-50%, -50%) scale(0.5);
+		transform: translateX(-5px) scale(0.85);
 	}
-	18% {
+	65% {
 		opacity: 1;
-		transform: translate(-50%, -50%) scale(1);
-	}
-	82% {
-		opacity: 1;
-		transform: translate(-50%, -50%) scale(1);
+		transform: translateX(2px) scale(1.04);
 	}
 	100% {
-		left: 100%;
-		opacity: 0;
-		transform: translate(-50%, -50%) scale(0.5);
+		opacity: 1;
+		transform: translateX(0) scale(1);
 	}
 }
 
-.consent-connector {
-	position: relative;
-	height: 2px;
-	width: 2.75rem;
-}
-
-.consent-connector::before {
-	position: absolute;
-	inset: 0;
-	border-radius: 9999px;
-	background: var(--border);
-	content: "";
-}
-
-.consent-connector::after {
-	position: absolute;
-	top: 50%;
-	left: 0;
-	height: 7px;
-	width: 7px;
-	border-radius: 9999px;
-	background: var(--brand);
-	box-shadow: 0 0 0 1px color-mix(in oklch, var(--background) 80%, transparent);
-	content: "";
-	animation: consent-pulse 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-}
-
-.consent-connector[data-active="true"]::after {
-	animation-duration: 0.85s;
+.consent-direction {
+	animation: consent-direction-in 0.42s 0.18s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.consent-connector::after {
+	.consent-mark,
+	.consent-direction {
 		animation: none;
-		left: 50%;
 		opacity: 1;
-		transform: translate(-50%, -50%);
+		transform: none;
 	}
 }
 

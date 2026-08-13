@@ -396,7 +396,7 @@ function Handshake({
 	return (
 		<div className="flex items-center justify-center gap-3">
 			<Wordmark className="consent-mark h-9" />
-			<span className="grid size-7 place-items-center rounded-full border bg-muted/40 text-muted-foreground" aria-hidden="true">
+			<span className="consent-direction grid size-7 place-items-center rounded-full border bg-muted/40 text-muted-foreground" aria-hidden="true">
 				<ArrowRight className="size-3.5" />
 			</span>
 			{clientMetadata?.icon ? (
