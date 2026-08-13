@@ -638,8 +638,9 @@ export function SignIn() {
 								<div className="grid grid-cols-2 gap-2">
 									<Button
 										variant="outline"
+										size="lg"
 										type="button"
-										className="relative"
+										className="relative w-full"
 										onClick={signInWithPasskey}
 										disabled={authActionsDisabled}
 									>
@@ -649,8 +650,9 @@ export function SignIn() {
 									</Button>
 									<Button
 										variant="outline"
+										size="lg"
 										type="button"
-										className="relative"
+										className="relative w-full"
 										onClick={sendMagicLink}
 										disabled={authActionsDisabled}
 									>
@@ -691,7 +693,7 @@ export function SignIn() {
 
 /** Marks the control that matches Better Auth's recent sign-in-method cookie. */
 function LastUsedBadge() {
-	return <Badge className="absolute -top-2 -right-2" variant="secondary">Last used</Badge>;
+	return <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap" variant="secondary">Last used</Badge>;
 }
 
 /**
