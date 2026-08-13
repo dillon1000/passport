@@ -31,7 +31,7 @@ describe("uploadImageAsset", () => {
 		const file = new File(["image"], "avatar.png", { type: "image/png" });
 
 		await expect(uploadProfileImageAsset(file)).resolves.toBe(
-			"/api/profile-images/profile-images/user/avatar.png",
+			"http://localhost/api/profile-images/profile-images/user/avatar.png",
 		);
 		expect(uploadedBody).toBeInstanceOf(FormData);
 		expect((uploadedBody as FormData).get("image")).toBe(file);

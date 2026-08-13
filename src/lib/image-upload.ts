@@ -41,7 +41,10 @@ async function uploadImageFile(
 	if (!image) {
 		throw new Error("Image upload did not return a URL.");
 	}
-	return image;
+	// The Worker can return a same-origin path. OAuth client metadata is consumed
+	// outside this page, so store the fully qualified Passport URL instead.
+	const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+	return new URL(image, origin).toString();
 }
 
 export async function uploadImageAsset(file: File, purpose: ImageUploadPurpose) {

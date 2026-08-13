@@ -1,7 +1,7 @@
 {
 	"name": "passport",
 	"private": true,
-	"version": "0.0.87",
+	"version": "0.0.88",
 	"description": "Standalone identity provider for Cloudflare Workers.",
 	"author": "Dillon Ring <dillon@dillonring.com>",
 	"license": "MIT",

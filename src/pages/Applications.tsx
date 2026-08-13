@@ -12,6 +12,7 @@ import {
 	Check,
 	CheckCircle2,
 	ChevronDown,
+	CircleHelp,
 	Copy,
 	FileJson,
 	Globe,
@@ -20,10 +21,12 @@ import {
 	RefreshCw,
 	RotateCcw,
 	Save,
+	Trash2,
 } from "lucide-react";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { CheckboxField, Field, FieldInput, FieldTextarea } from "@/components/auth/field";
+import { ScopeBuilder } from "@/components/auth/scope-builder";
 import { type Section } from "@/components/auth/section-nav";
 import { Segmented, type SegmentedOption } from "@/components/auth/segmented";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
@@ -52,10 +55,11 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { hasAdminRole } from "@/lib/admin-access";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { uploadImageAsset } from "@/lib/image-upload";
-import { defaultClientScopeString, supportedScopeString } from "@/lib/oauth-scopes";
+import { DEFAULT_CLIENT_REGISTRATION_SCOPES } from "@/lib/oauth-scopes";
 import { fetchAPIJSON, queryKeys, readAPIJSON } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -68,8 +72,6 @@ const SECTIONS: Section[] = [
 
 // Keep page requests aligned with the Worker default so refreshes and appends use the same slice size.
 const PAGE_LIMIT = 25;
-const DEFAULT_CLIENT_SCOPE_STRING = defaultClientScopeString();
-const SUPPORTED_SCOPE_HINT = `Supported: ${supportedScopeString()}`;
 type ClientType = "browser" | "m2m";
 const CLIENT_TYPE_OPTIONS: SegmentedOption<ClientType>[] = [
 	{ value: "browser", label: "Browser app", icon: AppWindow },
@@ -112,7 +114,7 @@ type ClientDraft = {
 	name: string;
 	redirectUris: string;
 	postLogoutRedirectUris: string;
-	scopes: string;
+	scopes: string[];
 	allowedAudiences: string;
 	uri: string;
 	icon: string;
@@ -210,13 +212,6 @@ function lines(value: string) {
 		.filter(Boolean);
 }
 
-function scopeList(value: string) {
-	return value
-		.split(/[,\s]+/)
-		.map((scope) => scope.trim())
-		.filter(Boolean);
-}
-
 function clientTypeFromGrantTypes(grantTypes?: readonly string[]): ClientType {
 	return grantTypes?.includes("client_credentials") ? "m2m" : "browser";
 }
@@ -233,7 +228,7 @@ function clientDraft(client?: OAuthClientSummary): ClientDraft {
 		name: client?.name ?? "",
 		redirectUris: client?.redirectUris.join("\n") ?? "",
 		postLogoutRedirectUris: client?.postLogoutRedirectUris?.join("\n") ?? "",
-		scopes: client?.scopes?.join(" ") ?? DEFAULT_CLIENT_SCOPE_STRING,
+		scopes: client?.scopes ?? [...DEFAULT_CLIENT_REGISTRATION_SCOPES],
 		allowedAudiences: client?.allowedAudiences?.join("\n") ?? "",
 		uri: client?.uri ?? "",
 		icon: client?.icon ?? "",
@@ -428,7 +423,7 @@ export function Applications() {
 				redirectUris: newClient.clientType === "m2m" ? [] : lines(newClient.redirectUris),
 				postLogoutRedirectUris:
 					newClient.clientType === "m2m" ? [] : lines(newClient.postLogoutRedirectUris),
-				scopes: scopeList(newClient.scopes),
+				scopes: newClient.scopes,
 				grantTypes: grantTypesForClientType(newClient.clientType),
 				allowedAudiences:
 					newClient.clientType === "m2m" ? lines(newClient.allowedAudiences) : undefined,
@@ -472,7 +467,7 @@ export function Applications() {
 				redirectUris: draft.clientType === "m2m" ? [] : lines(draft.redirectUris),
 				postLogoutRedirectUris:
 					draft.clientType === "m2m" ? [] : lines(draft.postLogoutRedirectUris),
-				scopes: scopeList(draft.scopes),
+				scopes: draft.scopes,
 				grantTypes: grantTypesForClientType(draft.clientType),
 				allowedAudiences:
 					draft.clientType === "m2m" ? lines(draft.allowedAudiences) : undefined,
@@ -537,7 +532,7 @@ export function Applications() {
 		setClientDrafts((current) => ({
 			...current,
 			[clientId]: {
-				...(current[clientId] ?? clientDraft()),
+				...(current[clientId] ?? clientDraft(clients.find((client) => client.clientId === clientId))),
 				...patch,
 			},
 		}));
@@ -767,14 +762,11 @@ export function Applications() {
 															)
 														}
 													/>
-													<Field label="Scopes" hint={SUPPORTED_SCOPE_HINT}>
-														<FieldInput
-															value={draft.scopes}
-															onChange={(event) =>
-																setDraft(client.clientId, { scopes: event.target.value })
-															}
-														/>
-													</Field>
+													<ScopeBuilder
+														value={draft.scopes}
+														onValueChange={(scopes) => setDraft(client.clientId, { scopes })}
+														onCopyError={(message) => setStatus({ tone: "error", message })}
+													/>
 													{draft.clientType === "m2m" ? (
 														<Field label="Allowed audiences" hint="One protected API resource per line.">
 															<FieldTextarea
@@ -788,24 +780,23 @@ export function Applications() {
 														</Field>
 													) : (
 														<div className="grid gap-4 sm:grid-cols-2">
-															<Field label="Redirect URIs" hint="One per line.">
-																<FieldTextarea
-																	value={draft.redirectUris}
-																	onChange={(event) =>
-																		setDraft(client.clientId, { redirectUris: event.target.value })
-																	}
-																/>
-															</Field>
-															<Field label="Post-logout URIs" hint="One per line.">
-																<FieldTextarea
-																	value={draft.postLogoutRedirectUris}
-																	onChange={(event) =>
-																		setDraft(client.clientId, {
-																			postLogoutRedirectUris: event.target.value,
-																		})
-																	}
-																/>
-															</Field>
+														<URLListBuilder
+															label="Redirect URIs"
+															hint="Allowed return locations after sign-in."
+															placeholder="https://app.example.com/callback"
+															value={draft.redirectUris}
+															onChange={(redirectUris) => setDraft(client.clientId, { redirectUris })}
+															required
+														/>
+														<URLListBuilder
+															label="Post-logout URIs"
+															hint="Allowed return locations after logout."
+															placeholder="https://app.example.com/"
+															value={draft.postLogoutRedirectUris}
+															onChange={(postLogoutRedirectUris) =>
+																setDraft(client.clientId, { postLogoutRedirectUris })
+															}
+														/>
 														</div>
 													)}
 													<div className="grid gap-4 sm:grid-cols-2">
@@ -853,7 +844,7 @@ export function Applications() {
 																}
 															/>
 															<CheckboxField
-																label="OIDC logout"
+															label={<OIDCLogoutLabel enabled={false} />}
 																checked={draft.enableEndSession}
 																onCheckedChange={(value) =>
 																	setDraft(client.clientId, { enableEndSession: value })
@@ -1015,18 +1006,16 @@ export function Applications() {
 													)
 												}
 											/>
-											<Field label="Scopes" hint={SUPPORTED_SCOPE_HINT}>
-												<FieldInput
-													value={newClient.scopes}
-													onChange={(event) =>
-														setNewClient((current) => ({
-															...current,
-															scopes: event.target.value,
-														}))
-													}
-													placeholder={DEFAULT_CLIENT_SCOPE_STRING}
-												/>
-											</Field>
+											<ScopeBuilder
+												value={newClient.scopes}
+												onValueChange={(scopes) =>
+													setNewClient((current) => ({
+														...current,
+														scopes,
+													}))
+												}
+												onCopyError={(message) => setStatus({ tone: "error", message })}
+											/>
 											{newClient.clientType === "m2m" ? (
 												<Field label="Allowed audiences" hint="One protected API resource per line.">
 													<FieldTextarea
@@ -1043,31 +1032,25 @@ export function Applications() {
 												</Field>
 											) : (
 												<div className="grid gap-4 sm:grid-cols-2">
-													<Field label="Redirect URIs" hint="One per line.">
-														<FieldTextarea
-															value={newClient.redirectUris}
-															onChange={(event) =>
-																setNewClient((current) => ({
-																	...current,
-																	redirectUris: event.target.value,
-																}))
-															}
-															placeholder="https://app.example.com/callback"
-															required
-														/>
-													</Field>
-													<Field label="Post-logout URIs" hint="One per line.">
-														<FieldTextarea
-															value={newClient.postLogoutRedirectUris}
-															onChange={(event) =>
-																setNewClient((current) => ({
-																	...current,
-																	postLogoutRedirectUris: event.target.value,
-																}))
-															}
-															placeholder="https://app.example.com/"
-														/>
-													</Field>
+													<URLListBuilder
+														label="Redirect URIs"
+														hint="Allowed return locations after sign-in."
+														placeholder="https://app.example.com/callback"
+														value={newClient.redirectUris}
+														onChange={(redirectUris) =>
+															setNewClient((current) => ({ ...current, redirectUris }))
+														}
+														required
+													/>
+													<URLListBuilder
+														label="Post-logout URIs"
+														hint="Allowed return locations after logout."
+														placeholder="https://app.example.com/"
+														value={newClient.postLogoutRedirectUris}
+														onChange={(postLogoutRedirectUris) =>
+															setNewClient((current) => ({ ...current, postLogoutRedirectUris }))
+														}
+													/>
 												</div>
 											)}
 											<div className="flex flex-col gap-3 pt-1">
@@ -1087,7 +1070,7 @@ export function Applications() {
 													}
 												/>
 												<CheckboxField
-													label="Enable OIDC logout"
+													label={<OIDCLogoutLabel enabled />}
 													checked={newClient.enableEndSession}
 													onCheckedChange={(value) =>
 														setNewClient((current) => ({
@@ -1559,6 +1542,109 @@ export function ManagedOAuthClientRow({
 				{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
 			</Button>
 		</div>
+	);
+}
+
+/** Editable redirect URI list. The stored newline format remains unchanged for API compatibility. */
+function URLListBuilder({
+	label,
+	hint,
+	placeholder,
+	value,
+	onChange,
+	required = false,
+}: {
+	label: ReactNode;
+	hint: string;
+	placeholder: string;
+	value: string;
+	onChange: (value: string) => void;
+	required?: boolean;
+}) {
+	const [candidate, setCandidate] = useState("");
+	const [error, setError] = useState<string | undefined>();
+	const urls = lines(value);
+
+	function addURL() {
+		const next = candidate.trim();
+		try {
+			if (!next) return;
+			new URL(next);
+		} catch {
+			setError("Enter a full URL, including https://.");
+			return;
+		}
+		if (!urls.includes(next)) onChange([...urls, next].join("\n"));
+		setCandidate("");
+		setError(undefined);
+	}
+
+	return (
+		<Field label={label} hint={hint} error={error}>
+			<div className="space-y-2">
+				<div className="flex gap-2">
+					<FieldInput
+						type="url"
+						value={candidate}
+						onChange={(event) => {
+							setCandidate(event.target.value);
+							setError(undefined);
+						}}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.preventDefault();
+								addURL();
+							}
+						}}
+						placeholder={placeholder}
+						required={required && urls.length === 0}
+					/>
+					<Button type="button" variant="outline" onClick={addURL}>Add</Button>
+				</div>
+				{urls.length ? (
+					<ul className="overflow-hidden rounded-lg border">
+						{urls.map((url) => (
+							<li key={url} className="flex items-center gap-2 border-t px-2.5 py-2 first:border-t-0">
+								<span className="min-w-0 flex-1 break-all font-mono text-xs text-muted-foreground">{url}</span>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-xs"
+									aria-label={`Remove ${url}`}
+									onClick={() => onChange(urls.filter((item) => item !== url).join("\n"))}
+								>
+									<Trash2 className="size-3.5" />
+								</Button>
+							</li>
+						))}
+					</ul>
+				) : null}
+			</div>
+		</Field>
+	);
+}
+
+/** Explains an OIDC option without adding persistent copy to the compact form. */
+function OIDCLogoutLabel({ enabled }: { enabled: boolean }) {
+	return (
+		<span className="inline-flex items-center gap-1">
+			{enabled ? "Enable OIDC logout" : "OIDC logout"}
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="What is OIDC logout?"
+						onClick={(event) => event.preventDefault()}
+						className="text-muted-foreground hover:text-foreground focus-visible:outline-none"
+					>
+						<CircleHelp className="size-3.5" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent>
+					Allows this app to start the standard OpenID Connect logout flow after a user signs out.
+				</TooltipContent>
+			</Tooltip>
+		</span>
 	);
 }
 
