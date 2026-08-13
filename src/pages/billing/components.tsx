@@ -48,9 +48,9 @@ import {
 import { Select, Tooltip } from "@cloudflare/kumo";
 
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
+import { Checkbox } from "@/components/kumo/primitives/checkbox";
 import {
 	Dialog,
 	DialogClose,
@@ -59,7 +59,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/kumo/primitives/dialog";
 import {
 	Sheet,
 	SheetBody,
@@ -67,7 +67,7 @@ import {
 	SheetDescription,
 	SheetHeader,
 	SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/kumo/primitives/sheet";
 import type { BillingPlanCatalogEntry } from "@/lib/billing";
 import { buildPricingMatrix, formatPriceInfo, type PriceInfo } from "@/lib/billing-groups";
 import { cn } from "@/lib/utils";

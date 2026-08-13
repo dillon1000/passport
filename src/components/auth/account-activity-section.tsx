@@ -10,9 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 import { History, RefreshCw } from "lucide-react";
 
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import {
 	accountActivityLabel,
 	type AccountActivitySummary,

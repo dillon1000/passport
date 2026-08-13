@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/components/ui/dialog", () => {
+vi.mock("@/components/kumo/primitives/dialog", () => {
 	const DialogPart = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
 	return {
 		Dialog: DialogPart,

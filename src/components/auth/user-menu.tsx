@@ -10,7 +10,7 @@ import { ChevronDown, LogOut, Plus, Settings, UserRound } from "lucide-react";
 import { Link } from "react-router";
 
 import { authClient } from "@/auth-client";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
 import { DropdownMenu } from "@cloudflare/kumo";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { useAccountSwitch } from "@/lib/account-switch";

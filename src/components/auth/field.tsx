@@ -1,10 +1,10 @@
 import { createContext, use, useId, useState, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/kumo/primitives/checkbox";
+import { Input } from "@/components/kumo/primitives/input";
+import { Label } from "@/components/kumo/primitives/label";
+import { Textarea } from "@/components/kumo/primitives/textarea";
 import { cn } from "@/lib/utils";
 
 interface FieldContextValue {
@@ -72,7 +72,7 @@ export function Field({
 	);
 }
 
-/** shadcn Input pre-wired to the surrounding Field's id and ARIA state. */
+/** Kumo Input pre-wired to the surrounding Field's id and ARIA state. */
 export function FieldInput(props: React.ComponentProps<typeof Input>) {
 	const { id, describedBy, invalid } = useField();
 	return (
@@ -138,7 +138,7 @@ export function FieldPasswordInput({
 	);
 }
 
-/** shadcn Textarea pre-wired to the surrounding Field's id and ARIA state. */
+/** Kumo Textarea pre-wired to the surrounding Field's id and ARIA state. */
 export function FieldTextarea(props: React.ComponentProps<typeof Textarea>) {
 	const { id, describedBy, invalid } = useField();
 	return (
@@ -153,7 +153,7 @@ export function FieldTextarea(props: React.ComponentProps<typeof Textarea>) {
 
 /**
  * Standalone labelled checkbox row. Not part of a <Field>; owns its own id and
- * pairs a shadcn Checkbox with a clickable label and optional hint.
+ * pairs a Kumo Checkbox with a clickable label and optional hint.
  */
 export function CheckboxField({
 	checked,

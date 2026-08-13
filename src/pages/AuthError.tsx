@@ -4,11 +4,11 @@
  * failure details, and gives users a clear way back into the sign-in flow.
  */
 import { ArrowLeft, TriangleAlert } from "lucide-react";
+import { Banner } from "@cloudflare/kumo";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/kumo/primitives/button";
+import { Card, CardContent, CardFooter } from "@/components/kumo/primitives/card";
 import { authErrorDetails } from "@/lib/auth-error";
 import { useBrand } from "@/lib/brand-runtime";
 
@@ -34,11 +34,7 @@ export function AuthError() {
 						</div>
 					</div>
 
-					<Alert variant="destructive">
-						<TriangleAlert className="size-4" aria-hidden="true" />
-						<AlertTitle>Authentication service returned {details.code}</AlertTitle>
-						<AlertDescription>{details.description}</AlertDescription>
-					</Alert>
+					<Banner variant="error" size="sm" icon={<TriangleAlert className="size-4" aria-hidden="true" />} title={`Authentication service returned ${details.code}`} description={details.description} />
 
 					<div className="rounded-lg border bg-muted/30 px-3 py-2.5">
 						<dl className="grid gap-1 text-xs">

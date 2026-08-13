@@ -14,7 +14,7 @@ import {
 	type PendingAgentApproval,
 } from "@/lib/agent-auth";
 import { queryKeys } from "@/lib/query-client";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Card,
 	CardContent,
@@ -22,7 +22,7 @@ import {
 	CardFooter,
 	CardHeader,
 	CardTitle,
-} from "@/components/ui/card";
+} from "@/components/kumo/primitives/card";
 
 export function AgentApprove() {
 	const searchParams = new URLSearchParams(window.location.search);

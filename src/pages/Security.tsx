@@ -40,7 +40,7 @@ import {
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { SummaryRow } from "@/components/auth/summary-row";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogContent,
@@ -48,7 +48,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/kumo/primitives/dialog";
 import {
 	Sheet,
 	SheetBody,
@@ -58,8 +58,8 @@ import {
 	SheetFooter,
 	SheetHeader,
 	SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/sheet";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { authClient } from "@/auth-client";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {

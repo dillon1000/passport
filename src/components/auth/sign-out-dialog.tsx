@@ -6,7 +6,7 @@
 import { useState } from "react";
 import { LogOut } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogContent,
@@ -14,7 +14,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/kumo/primitives/dialog";
 import { signOut } from "@/lib/session";
 
 export function SignOutDialog({

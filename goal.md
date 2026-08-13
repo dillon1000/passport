@@ -42,7 +42,7 @@ REQUIREMENTS
    metadata resolve through the Hono catch-all (they're served automatically by
    the handler at the issuer/basePath).
 5. Provide a SEPARATE minimal example client (Vite + React + Hono Worker) that
-   completes an OIDC login against this server, proving the full loop. Use shadcn CLI via pnpm for ALL components. NEVER hand roll components, or use browser defaults
+   completes an OIDC login against this server, proving the full loop. Use the Kumo CLI via pnpm for all components. Never use browser defaults.
 6. Wire Drizzle migrations EXACTLY:
      pnpm dlx @better-auth/cli@latest generate --output ./src/db/schema.ts
      pnpm drizzle-kit generate

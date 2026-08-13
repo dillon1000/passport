@@ -17,11 +17,11 @@ import {
 	UsersRound,
 } from "lucide-react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/kumo/primitives/alert";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/kumo/primitives/card";
+import { Separator } from "@/components/kumo/primitives/separator";
 
 import "./App.css";
 

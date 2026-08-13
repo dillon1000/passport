@@ -9,15 +9,15 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Check, Copy, Plus, RefreshCw, Send, Trash2, Webhook } from "lucide-react";
+import { Banner } from "@cloudflare/kumo";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { CheckboxField, Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogClose,
@@ -26,8 +26,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/dialog";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import {
 	WEBHOOK_EVENT_TYPE_VALUES,
 	webhookEventLabel,
@@ -232,9 +232,7 @@ export function Webhooks() {
 			<StatusBanner status={queryStatus} />
 
 			{revealedSecret ? (
-				<Alert>
-					<AlertTitle>Copy this signing secret now</AlertTitle>
-					<AlertDescription>
+				<Banner variant="alert" title="Copy this signing secret now" description={<>
 						<span>
 							This is the only time the secret for{" "}
 							<span className="font-medium">{revealedSecret.url}</span> is shown. Use it to
@@ -259,8 +257,7 @@ export function Webhooks() {
 								Done
 							</Button>
 						</div>
-					</AlertDescription>
-				</Alert>
+					</>} />
 			) : null}
 
 			<section id="create" className="scroll-mt-32">

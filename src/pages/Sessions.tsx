@@ -24,7 +24,7 @@ import { PublicIcon, type PublicIconSource } from "@/components/auth/public-icon
 import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogClose,
@@ -33,8 +33,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/dialog";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { formatRequestLocation, type RequestLocation } from "@/lib/request-location";
 import { queryKeys } from "@/lib/query-client";
 import {

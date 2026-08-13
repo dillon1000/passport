@@ -9,8 +9,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+} from "@/components/kumo/primitives/dialog";
+import { Button } from "@/components/kumo/primitives/button";
 
 export type StatusTone = "error" | "success";
 

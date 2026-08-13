@@ -5,7 +5,7 @@
 import { ShieldCheck, ScrollText } from "lucide-react";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/kumo/primitives/card";
 import {
 	legalUpdatedAt,
 	privacyPolicySections,

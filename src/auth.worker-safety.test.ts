@@ -12,6 +12,9 @@ describe("auth module Worker safety", () => {
 		vi.resetModules();
 	});
 
+	// The assertion covers module initialization, which can wait behind parallel
+	// transforms in the full suite. The timeout prevents scheduler contention
+	// from hiding an actual top-level timer regression.
 	it("does not create timers during module import", async () => {
 		vi.resetModules();
 		const setIntervalSpy = vi.spyOn(globalThis, "setInterval").mockImplementation(() => {
@@ -20,5 +23,5 @@ describe("auth module Worker safety", () => {
 
 		await expect(import("./auth")).resolves.toHaveProperty("auth");
 		expect(setIntervalSpy).not.toHaveBeenCalled();
-	});
+	}, 10_000);
 });

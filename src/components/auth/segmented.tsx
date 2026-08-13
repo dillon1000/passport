@@ -9,7 +9,7 @@ export interface SegmentedOption<T extends string> {
 }
 
 /**
- * Flat underline-style selector. A quieter alternative to the boxed shadcn
+ * Flat underline-style selector. A quieter alternative to boxed tabs.
  * Tabs: options sit on a single hairline, the active one carries a brand
  * underline and full-strength text. Used for picking between a small set of
  * peer choices (e.g. 2FA verification methods).
