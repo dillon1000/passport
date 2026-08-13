@@ -345,12 +345,12 @@ export function Consent() {
 					</CardContent>
 
 					<CardFooter className="flex-col gap-3 border-t bg-muted/40 px-6 py-4">
-						<div className="flex w-full justify-end gap-2">
-							<Button variant="outline" onClick={() => decide(false)} disabled={loading !== null}>
+						<div className="flex w-full justify-center gap-2">
+							<Button size="lg" variant="outline" onClick={() => decide(false)} disabled={loading !== null}>
 								<X className="size-4" />
 								Deny
 							</Button>
-								<Button autoFocus onClick={() => decide(true)} disabled={approvalBlocked}>
+								<Button size="lg" autoFocus onClick={() => decide(true)} disabled={approvalBlocked}>
 									{loading === "accept" ? (
 										<Loader size="sm" className="text-primary-foreground" />
 									) : (

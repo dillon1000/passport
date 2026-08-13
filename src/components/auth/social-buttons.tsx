@@ -24,15 +24,16 @@ export function SocialButtons({
 				<Button
 					key={id}
 					variant="outline"
+					size="lg"
 					type="button"
-					className="relative"
+					className="relative w-full"
 					disabled={disabled}
 					onClick={() => onSelect(id)}
 				>
 					<PublicIcon src={icon} className="size-4" />
 					{label}
 					{lastUsedMethod === id ? (
-						<Badge className="absolute -top-2 -right-2" variant="secondary">
+						<Badge className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap" variant="secondary">
 							Last used
 						</Badge>
 					) : null}
