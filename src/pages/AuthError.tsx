@@ -3,7 +3,7 @@
  * `onAPIError.errorURL`; the page reads the query string, shows the sanitized
  * failure details, and gives users a clear way back into the sign-in flow.
  */
-import { ArrowLeft, TriangleAlert } from "lucide-react";
+import { ArrowLeft, TriangleAlert } from "@/lib/icons";
 import { Banner } from "@cloudflare/kumo";
 
 import { AuthShell } from "@/components/auth/auth-shell";

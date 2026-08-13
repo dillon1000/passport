@@ -16,7 +16,7 @@ import {
 	ScrollText,
 	ShieldCheck,
 	UserPlus,
-} from "lucide-react";
+} from "@/lib/icons";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/kumo/primitives/button";

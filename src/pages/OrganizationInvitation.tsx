@@ -5,7 +5,7 @@
  * invalid states stay in this compact auth-shell flow.
  */
 import { useState } from "react";
-import { ArrowRight, Building2, Check, X } from "lucide-react";
+import { ArrowRight, Building2, Check, X } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";

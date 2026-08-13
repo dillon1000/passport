@@ -4,7 +4,7 @@
  * backdrop, and ARIA behavior.
  */
 import * as React from "react";
-import { X } from "lucide-react";
+import { X } from "@/lib/icons";
 import { Dialog as KumoDialog, cn } from "@cloudflare/kumo";
 import { Button } from "./button";
 

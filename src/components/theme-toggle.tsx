@@ -1,4 +1,4 @@
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "@/lib/icons";
 
 import { Button } from "@/components/kumo/primitives/button";
 import { useTheme } from "@/lib/theme";

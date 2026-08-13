@@ -4,7 +4,7 @@
  * mobile sheets enter from the bottom. The width variable keeps caller sizing.
  */
 import * as React from "react";
-import { X } from "lucide-react";
+import { X } from "@/lib/icons";
 import { Dialog as KumoDialog, cn } from "@cloudflare/kumo";
 import { Drawer } from "@cloudflare/kumo/primitives/drawer";
 import { Button } from "./button";

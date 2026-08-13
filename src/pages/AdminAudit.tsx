@@ -6,7 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { RefreshCw, ShieldCheck } from "lucide-react";
+import { RefreshCw, ShieldCheck } from "@/lib/icons";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { type Section } from "@/components/auth/section-nav";

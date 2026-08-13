@@ -5,17 +5,17 @@
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
-	Building2,
-	CheckCircle2,
+	Building as Building2,
+	CheckCircle as CheckCircle2,
 	CreditCard,
-	ExternalLink,
-	KeyRound,
+	OpenNewWindow as ExternalLink,
+	Key as KeyRound,
 	LogOut,
-	RefreshCw,
+	Refresh as RefreshCw,
 	ShieldCheck,
 	Upload,
-	UsersRound,
-} from "lucide-react";
+	Group as UsersRound,
+} from "iconoir-react";
 
 import { Alert, AlertDescription } from "@/components/kumo/primitives/alert";
 import { Badge } from "@/components/kumo/primitives/badge";

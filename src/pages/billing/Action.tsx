@@ -5,7 +5,7 @@
  * the replay-safe Stripe or client return URL supplied by the Worker.
  */
 import { useEffect, useState } from "react";
-import { ArrowRight, CreditCard, ShieldCheck } from "lucide-react";
+import { ArrowRight, CreditCard, ShieldCheck } from "@/lib/icons";
 import { useParams } from "react-router";
 
 import { BillingShell } from "@/components/auth/billing-shell";

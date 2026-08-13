@@ -13,7 +13,7 @@ import {
 	Scale,
 	ShieldCheck,
 	XCircle,
-} from "lucide-react";
+} from "@/lib/icons";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { CheckboxField } from "@/components/auth/field";

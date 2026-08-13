@@ -44,7 +44,7 @@ import {
 	UserRound,
 	X,
 	XCircle,
-} from "lucide-react";
+} from "@/lib/icons";
 import { Select, Tooltip } from "@cloudflare/kumo";
 
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";

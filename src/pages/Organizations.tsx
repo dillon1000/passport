@@ -17,7 +17,7 @@ import {
 	Upload,
 	UserMinus,
 	UserPlus,
-} from "lucide-react";
+} from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";

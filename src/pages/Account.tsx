@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
-import { MailPlus, Save, Upload } from "lucide-react";
+import { MailPlus, Save, Upload } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";

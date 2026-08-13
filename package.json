@@ -1,7 +1,7 @@
 {
 	"name": "passport",
 	"private": true,
-	"version": "0.0.121",
+	"version": "0.0.122",
 	"description": "Standalone identity provider for Cloudflare Workers.",
 	"author": "Dillon Ring <dillon@dillonring.com>",
 	"license": "MIT",
@@ -49,7 +49,7 @@
 		"drizzle-orm": "^0.45.2",
 		"fflate": "^0.8.3",
 		"hono": "^4.12.25",
-		"lucide-react": "^1.18.0",
+		"iconoir-react": "^7.12.1",
 		"nanoid": "^5.1.15",
 		"postgres": "^3.4.9",
 		"react": "^19.2.7",

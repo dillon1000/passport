@@ -8,7 +8,7 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Check, Copy, Plus, RefreshCw, Send, Trash2, Webhook } from "lucide-react";
+import { Check, Copy, Plus, RefreshCw, Send, Trash2, Webhook } from "@/lib/icons";
 import { Banner } from "@cloudflare/kumo";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
