@@ -45,6 +45,7 @@ import {
 	X,
 	XCircle,
 } from "lucide-react";
+import { Select } from "@cloudflare/kumo";
 
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { Badge } from "@/components/ui/badge";
@@ -59,13 +60,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
 import {
 	Sheet,
 	SheetBody,
@@ -980,28 +974,11 @@ export function PlanWorkspaceDrawer({
 										label="App"
 										hint="Sourced from your OAuth clients. Renaming a client won't rewrite saved plans."
 									>
-										<Select
-											value={draft.group || NO_GROUP_VALUE}
-											onValueChange={(value) =>
-												set({ group: value === NO_GROUP_VALUE ? "" : value })
-											}
-										>
-											<SelectTrigger>
-												<SelectValue placeholder="Select an app" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value={NO_GROUP_VALUE}>No app (Other)</SelectItem>
-												{oauthClients.map((client) => (
-													<SelectItem key={client.clientId} value={client.name}>
-														{client.name}
-													</SelectItem>
-												))}
-												{draft.group &&
-												!oauthClients.some((client) => client.name === draft.group) ? (
-													<SelectItem value={draft.group}>{draft.group}</SelectItem>
-												) : null}
-											</SelectContent>
-										</Select>
+										<Select value={draft.group || NO_GROUP_VALUE} placeholder="Select an app" onValueChange={(value) => set({ group: value === NO_GROUP_VALUE ? "" : value ?? "" })} items={[
+											{ value: NO_GROUP_VALUE, label: "No app (Other)" },
+											...oauthClients.map((client) => ({ value: client.name, label: client.name })),
+											...(draft.group && !oauthClients.some((client) => client.name === draft.group) ? [{ value: draft.group, label: draft.group }] : []),
+										]} />
 									</Field>
 
 									<Field label="Description">
@@ -1014,20 +991,7 @@ export function PlanWorkspaceDrawer({
 
 									<div className="grid gap-4 sm:grid-cols-2">
 										<Field label="Billing type">
-											<Select
-												value={draft.type}
-												onValueChange={(value) =>
-													set({ type: value === "one_time" ? "one_time" : "subscription" })
-												}
-											>
-												<SelectTrigger>
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="subscription">Subscription</SelectItem>
-													<SelectItem value="one_time">One-time payment</SelectItem>
-												</SelectContent>
-											</Select>
+											<Select value={draft.type} onValueChange={(value) => set({ type: value === "one_time" ? "one_time" : "subscription" })} items={{ subscription: "Subscription", one_time: "One-time payment" }} />
 										</Field>
 										<label className="flex cursor-pointer items-start gap-2.5 self-end rounded-lg border px-3 py-2.5">
 											<Checkbox
