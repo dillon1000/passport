@@ -25,10 +25,10 @@ function DialogClose({ asChild = false, children, ...props }: React.ComponentPro
 }
 
 function DialogContent({ className, children, showCloseButton = true, ...props }: React.ComponentProps<typeof KumoDialog> & { showCloseButton?: boolean }) {
-	return <KumoDialog className={cn("p-5", className)} {...props}>
+	return <KumoDialog className={cn("!z-[100] p-5", className)} {...props}>
 		{children}
 		{showCloseButton ? (
-			<KumoDialog.Close render={<Button variant="ghost" size="icon-sm" className="absolute top-3 right-3" aria-label="Close dialog"><X className="size-4" /></Button>} />
+			<KumoDialog.Close render={<Button variant="ghost" size="icon-sm" className="absolute top-3 right-3 !z-[1]" aria-label="Close dialog"><X className="size-4" /></Button>} />
 		) : null}
 	</KumoDialog>;
 }

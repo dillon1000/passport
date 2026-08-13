@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
-import { Check, Copy, MailPlus, Save, Upload } from "lucide-react";
+import { MailPlus, Save, Upload } from "lucide-react";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -10,8 +10,8 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
+import { ClipboardText } from "@/components/kumo/primitives/clipboard-text";
 import { normalizeEmailChangeValue } from "@/lib/account";
-import { copyTextToClipboard } from "@/lib/clipboard";
 import { uploadProfileImageAsset } from "@/lib/image-upload";
 import { initialsOf, useRequireSession } from "@/lib/session";
 
@@ -34,7 +34,6 @@ type AccountUser = {
 
 export function Account() {
 	const { data: session } = useRequireSession();
-	const [copied, setCopied] = useState(false);
 	const searchParams = new URLSearchParams(window.location.search);
 	const [status, setStatus] = useState<Status | null>(() => {
 		if (searchParams.get("emailChanged") === "1") {
@@ -53,18 +52,6 @@ export function Account() {
 	const [imageURL, setImageURL] = useState<string | null>(null);
 	const [imageFile, setImageFile] = useState<File | null>(null);
 	const user = session?.user as AccountUser | undefined;
-
-	async function copyId(id: string) {
-		const result = await copyTextToClipboard(id);
-		if (!result.ok) {
-			setCopied(false);
-			setStatus({ tone: "error", message: result.message });
-			return;
-		}
-		setStatus(null);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 1500);
-	}
 
 	async function updateProfile(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -268,19 +255,11 @@ export function Account() {
 					description="The stable subject identifier issued in tokens."
 					footer={<SettingsCardFooter hint="Used by clients to reference your account." />}
 				>
-					<div className="flex items-center gap-2">
-						<code className="min-w-0 flex-1 truncate rounded-md border bg-muted/50 px-2.5 py-1.5 font-mono text-[0.8125rem]">
-							{user.id}
-						</code>
-						<Button
-							variant="outline"
-							size="icon"
-							onClick={() => copyId(user.id)}
-							aria-label="Copy user ID"
-						>
-							{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-						</Button>
-					</div>
+					<ClipboardText
+						text={user.id}
+						size="sm"
+						tooltip={{ text: "Copy user ID", copiedText: "User ID copied", side: "top" }}
+					/>
 					</SettingsCard>
 				</section>
 				</>

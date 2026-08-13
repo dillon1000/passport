@@ -435,7 +435,7 @@ export function UserMenu({
 			} />
 			<DropdownMenu.Content
 				align="end"
-				className="z-50 !w-60 !min-w-60 !rounded-lg !border !border-border !bg-popover !p-1 !text-popover-foreground !shadow-md !ring-0"
+				className="!z-[100] !w-60 !min-w-60 !rounded-lg !border !border-border !bg-popover !p-1 !text-popover-foreground !shadow-md !ring-0 [&_svg]:!size-4"
 			>
 				<div className="flex items-center gap-2.5 px-1.5 py-1.5">
 					<Avatar className="size-8 rounded-full">

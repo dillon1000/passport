@@ -59,7 +59,7 @@ const Button = React.forwardRef<HTMLButtonElement, PassportButtonProps>(
 			"data-size": size,
 			className: cn(
 				buttonVariants({ variant: variantMap[variant], size: sizeMap[size] }),
-				"relative border-0 font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+				"relative inline-flex items-center justify-center border-0 font-medium leading-none outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-border disabled:!bg-muted disabled:!text-muted-foreground disabled:!shadow-none disabled:opacity-65 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				variantClasses[variant],
 				sizeClasses[size],
 				className,
