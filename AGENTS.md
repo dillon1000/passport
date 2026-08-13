@@ -25,6 +25,8 @@ When chatting, planning, or conversing, do not be afraid to suggest seemingly in
 ### Developing
 We should avoid feature creep
 
+For copy actions inside selectors and builders, copy the currently selected values unless the User explicitly requests every available value.
+
 When a required artifact fails at scale, do not drop or skip it to keep the pipeline moving. Build a scalable implementation for that artifact, even if it requires a different language or an external sort/on-disk workflow.
 
 When a page has multiple similarly named sections, place requested UI actions in the specific section the User names or corrects. Do not infer the first matching domain concept from the page title alone.
@@ -93,7 +95,7 @@ Before finishing any implementation, ask yourself:
 Prefer the simplest complete solution for the repo-specific project context and implementation goal, while preserving durability for enterprise-grade operation. Avoid extra abstractions, features, or context unless they are required to satisfy the goal, prevent a clear failure mode, or keep the system maintainable. When additional engineering is necessary, explain why. However, you should add dependencies when they are available and well known for the task.
 
 ### Multi-Agent And Sub-Agent Coordination
-You should create sub agents when exploring the codebase or doing tasks where parallelization is possible.
+Do not create sub-agents unless the User explicitly requests sub-agent delegation.
 
 ### Your Tools
 Only use browser, playwright, or computer use tools when specifically asked.
