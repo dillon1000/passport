@@ -1,159 +1,48 @@
-import * as React from "react"
-import { Dialog as SheetPrimitive } from "radix-ui"
-import { XIcon } from "lucide-react"
-
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
-}
-
-function SheetTrigger({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
-}
-
-function SheetClose({
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Close>) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
-}
-
-function SheetOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
-  return (
-    <SheetPrimitive.Overlay
-      data-slot="sheet-overlay"
-      className={cn("fixed inset-0 z-50 bg-black/40", className)}
-      {...props}
-    />
-  )
-}
-
 /**
- * Right-anchored slide-over drawer in the modern floating style: a rounded panel
- * inset from the viewport edges, lifted on a soft shadow, that slides in on the
- * iOS easing curve. Houses a header, a scrollable body, and an optional footer.
+ * Passport's right-side drawer composition backed by Kumo Dialog. Kumo owns
+ * the modal lifecycle while the content class intentionally places the panel
+ * at the viewport edge for the dashboard's drawer workflow.
  */
-function SheetContent({
-  className,
-  children,
-  showCloseButton = true,
-  pushed = false,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & {
-  showCloseButton?: boolean
-  /**
-   * When a second sheet stacks on top of this one, set `pushed` to slide this
-   * panel back and scale it down so it reads as the layer beneath.
-   */
-  pushed?: boolean
-}) {
-  return (
-    <SheetPrimitive.Portal data-slot="sheet-portal">
-      <SheetOverlay />
-      <SheetPrimitive.Content
-        data-slot="sheet-content"
-        data-pushed={pushed ? "true" : undefined}
-        className={cn(
-          "fixed inset-y-2 right-2 z-50 flex w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-lg shadow-black/10 ring-1 ring-black/5 outline-none sm:inset-y-3 sm:right-3 dark:ring-white/5",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <SheetPrimitive.Close data-slot="sheet-close" asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-3.5 right-3.5 text-muted-foreground hover:text-foreground"
-            >
-              <XIcon />
-              <span className="sr-only">Close</span>
-            </Button>
-          </SheetPrimitive.Close>
-        )}
-      </SheetPrimitive.Content>
-    </SheetPrimitive.Portal>
-  )
+import * as React from "react";
+import { Dialog as KumoDialog, cn } from "@cloudflare/kumo";
+
+function Sheet(props: React.ComponentProps<typeof KumoDialog.Root>) {
+	return <KumoDialog.Root {...props} />;
+}
+
+function SheetTrigger(props: React.ComponentProps<typeof KumoDialog.Trigger>) {
+	return <KumoDialog.Trigger {...props} />;
+}
+
+function SheetClose({ asChild = false, children, ...props }: React.ComponentProps<typeof KumoDialog.Close> & { asChild?: boolean }) {
+	if (asChild && React.isValidElement(children)) {
+		return <KumoDialog.Close {...props} render={(closeProps) => React.cloneElement(children, closeProps)} />;
+	}
+	return <KumoDialog.Close {...props}>{children}</KumoDialog.Close>;
+}
+
+function SheetContent({ className, children, pushed: _pushed, showCloseButton: _showCloseButton, ...props }: React.ComponentProps<typeof KumoDialog> & { pushed?: boolean; showCloseButton?: boolean }) {
+	return <KumoDialog size="lg" className={cn("!fixed !inset-y-2 !right-2 !left-auto !h-[calc(100dvh-1rem)] !w-[calc(100vw-1rem)] !max-w-md !translate-x-0 !translate-y-0 !overflow-hidden !p-0 sm:!inset-y-3 sm:!right-3 sm:!h-[calc(100dvh-1.5rem)]", className)} {...props}>{children}</KumoDialog>;
 }
 
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sheet-header"
-      className={cn(
-        "flex flex-col gap-1.5 border-b px-5 py-4 pr-12",
-        className
-      )}
-      {...props}
-    />
-  )
+	return <div className={cn("flex flex-col gap-1.5 border-b px-5 py-4", className)} {...props} />;
 }
 
 function SheetBody({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sheet-body"
-      className={cn("flex-1 overflow-y-auto px-5 py-5", className)}
-      {...props}
-    />
-  )
+	return <div className={cn("flex-1 overflow-y-auto px-5 py-5", className)} {...props} />;
 }
 
 function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sheet-footer"
-      className={cn(
-        "flex flex-col-reverse gap-2 border-t bg-muted/40 px-5 py-3.5 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    />
-  )
+	return <div className={cn("flex flex-col-reverse gap-2 border-t px-5 py-3.5 sm:flex-row sm:justify-end", className)} {...props} />;
 }
 
-function SheetTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Title>) {
-  return (
-    <SheetPrimitive.Title
-      data-slot="sheet-title"
-      className={cn("font-heading text-base leading-none font-medium text-balance", className)}
-      {...props}
-    />
-  )
+function SheetTitle({ className, ...props }: React.ComponentProps<typeof KumoDialog.Title>) {
+	return <KumoDialog.Title className={cn("text-base font-medium", className)} {...props} />;
 }
 
-function SheetDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Description>) {
-  return (
-    <SheetPrimitive.Description
-      data-slot="sheet-description"
-      className={cn("text-sm leading-relaxed text-pretty text-muted-foreground", className)}
-      {...props}
-    />
-  )
+function SheetDescription({ className, ...props }: React.ComponentProps<typeof KumoDialog.Description>) {
+	return <KumoDialog.Description className={cn("text-sm text-kumo-subtle", className)} {...props} />;
 }
 
-export {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetBody,
-  SheetOverlay,
-  SheetTitle,
-  SheetTrigger,
-}
+export { Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger };
