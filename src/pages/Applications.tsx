@@ -55,7 +55,7 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip } from "@cloudflare/kumo";
 import { hasAdminRole } from "@/lib/admin-access";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { uploadImageAsset } from "@/lib/image-upload";
@@ -1629,8 +1629,7 @@ function OIDCLogoutLabel({ enabled }: { enabled: boolean }) {
 	return (
 		<span className="inline-flex items-center gap-1">
 			{enabled ? "Enable OIDC logout" : "OIDC logout"}
-			<Tooltip>
-				<TooltipTrigger asChild>
+			<Tooltip content="Allows this app to start the standard OpenID Connect logout flow after a user signs out." render={
 					<button
 						type="button"
 						aria-label="What is OIDC logout?"
@@ -1639,11 +1638,7 @@ function OIDCLogoutLabel({ enabled }: { enabled: boolean }) {
 					>
 						<CircleHelp className="size-3.5" />
 					</button>
-				</TooltipTrigger>
-				<TooltipContent>
-					Allows this app to start the standard OpenID Connect logout flow after a user signs out.
-				</TooltipContent>
-			</Tooltip>
+				} />
 		</span>
 	);
 }
