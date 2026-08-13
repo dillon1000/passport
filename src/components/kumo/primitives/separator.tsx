@@ -1,26 +1,9 @@
-import * as React from "react"
-import { Separator as SeparatorPrimitive } from "radix-ui"
+/** Kumo separator with Passport's existing orientation convenience prop. */
+import * as React from "react";
+import { Separator as KumoSeparator } from "@cloudflare/kumo/primitives/separator";
 
-import { cn } from "@/lib/utils"
-
-function Separator({
-  className,
-  orientation = "horizontal",
-  decorative = true,
-  ...props
-}: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
-  return (
-    <SeparatorPrimitive.Root
-      data-slot="separator"
-      decorative={decorative}
-      orientation={orientation}
-      className={cn(
-        "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch",
-        className
-      )}
-      {...props}
-    />
-  )
+function Separator(props: React.ComponentProps<typeof KumoSeparator>) {
+	return <KumoSeparator {...props} />;
 }
 
-export { Separator }
+export { Separator };
