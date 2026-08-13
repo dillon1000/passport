@@ -16,6 +16,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
+import { Empty as KumoEmpty } from "@/components/kumo/primitives/empty";
 import {
 	Dialog,
 	DialogClose,
@@ -698,12 +699,5 @@ function RowSkeletons() {
 }
 
 function EmptyState({ icon, title }: { icon: ReactNode; title: string }) {
-	return (
-		<div className="flex flex-col items-center gap-3 rounded-lg border px-4 py-12 text-center">
-			<div className="grid size-11 place-items-center rounded-full border bg-muted/50 text-muted-foreground">
-				{icon}
-			</div>
-			<p className="text-sm font-medium">{title}</p>
-		</div>
-	);
+	return <KumoEmpty icon={icon} title={title} size="sm" />;
 }
