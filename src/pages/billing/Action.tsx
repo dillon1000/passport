@@ -14,6 +14,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { useRequireSession } from "@/lib/session";
 
 type BillingActionDetails = {
@@ -178,7 +179,7 @@ export function BillingAction() {
 							onClick={() => void execute()}
 							disabled={busy || expired || (completed && !details.resultUrl)}
 						>
-							{busy ? <Skeleton className="size-4 rounded-full" /> : <ArrowRight className="size-4" />}
+							{busy ? <Loader size="sm" /> : <ArrowRight className="size-4" />}
 							{completed && details.resultUrl ? "Continue" : copy.button}
 						</Button>
 						{expired ? (

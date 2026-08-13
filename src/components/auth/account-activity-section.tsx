@@ -13,6 +13,7 @@ import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-car
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import {
 	accountActivityLabel,
 	type AccountActivitySummary,
@@ -74,7 +75,7 @@ export function AccountActivitySection({ userId }: { userId: string | undefined 
 						}
 					>
 						<Button variant="outline" size="sm" onClick={() => activityQuery.refetch()} disabled={busy}>
-							{busy ? <Skeleton className="size-4 rounded-full" /> : <RefreshCw className="size-4" />}
+							{busy ? <Loader size="sm" /> : <RefreshCw className="size-4" />}
 							Refresh
 						</Button>
 					</SettingsCardFooter>

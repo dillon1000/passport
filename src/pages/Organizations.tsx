@@ -48,6 +48,7 @@ import {
 	SheetTitle,
 } from "@/components/kumo/primitives/sheet";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { uploadImageAsset } from "@/lib/image-upload";
 import {
 	ORGANIZATION_ROLES,
@@ -718,7 +719,7 @@ export function Organizations() {
 									disabled={loadingOrganizations}
 								>
 									{loadingOrganizations ? (
-										<Skeleton className="size-4 rounded-full" />
+										<Loader size="sm" />
 									) : (
 										<RefreshCw className="size-4" />
 									)}

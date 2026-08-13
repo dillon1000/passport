@@ -28,6 +28,7 @@ import {
 	DialogTitle,
 } from "@/components/kumo/primitives/dialog";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import {
 	WEBHOOK_EVENT_TYPE_VALUES,
 	webhookEventLabel,
@@ -326,7 +327,7 @@ export function Webhooks() {
 								disabled={busy || loadingEndpoints}
 							>
 								{busy || loadingEndpoints ? (
-									<Skeleton className="size-4 rounded-full" />
+									<Loader size="sm" />
 								) : (
 									<RefreshCw className="size-4" />
 								)}

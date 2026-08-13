@@ -55,6 +55,7 @@ import {
 	SheetTitle,
 } from "@/components/kumo/primitives/sheet";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { Tooltip } from "@cloudflare/kumo";
 import { hasAdminRole } from "@/lib/admin-access";
 import { copyTextToClipboard } from "@/lib/clipboard";
@@ -622,7 +623,7 @@ export function Applications() {
 									disabled={applicationsQuery.isFetching}
 								>
 									{applicationsRefreshing ? (
-										<Skeleton className="size-4 rounded-full" />
+										<Loader size="sm" />
 									) : (
 										<RefreshCw className="size-4" />
 									)}
@@ -661,7 +662,7 @@ export function Applications() {
 									disabled={applicationsQuery.isFetchingNextPage}
 								>
 									{applicationsQuery.isFetchingNextPage ? (
-										<Skeleton className="size-4 rounded-full" />
+										<Loader size="sm" />
 									) : (
 										<ChevronDown className="size-4" />
 									)}
@@ -912,7 +913,7 @@ export function Applications() {
 										disabled={clientsAppending}
 									>
 										{clientsAppending ? (
-											<Skeleton className="size-4 rounded-full" />
+											<Loader size="sm" />
 										) : (
 											<ChevronDown className="size-4" />
 										)}
@@ -1281,7 +1282,7 @@ export function Applications() {
 										disabled={busy === "oauth-proxy"}
 									>
 										{busy === "oauth-proxy" ? (
-											<Skeleton className="size-4 rounded-full" />
+											<Loader size="sm" />
 										) : (
 											<RefreshCw className="size-4" />
 										)}

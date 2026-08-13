@@ -38,6 +38,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Button } from "@/components/kumo/primitives/button";
 import { Card, CardContent, CardFooter } from "@/components/kumo/primitives/card";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { useBrand } from "@/lib/brand-runtime";
 import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { cn } from "@/lib/utils";
@@ -351,7 +352,7 @@ export function Consent() {
 							</Button>
 								<Button autoFocus onClick={() => decide(true)} disabled={approvalBlocked}>
 									{loading === "accept" ? (
-										<Skeleton className="h-4 w-16 bg-primary-foreground/30" />
+										<Loader size="sm" className="text-primary-foreground" />
 									) : (
 										<>
 											<Check className="size-4" />

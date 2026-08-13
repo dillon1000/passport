@@ -26,6 +26,7 @@ import {
 	DialogTitle,
 } from "@/components/kumo/primitives/dialog";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import {
 	banExpiresInSeconds,
 	canMutateUser,
@@ -341,7 +342,7 @@ export function AdminUsers() {
 								onClick={() => void loadUsers(offset, activeSearch)}
 								disabled={loadingUsers}
 							>
-								{loadingUsers ? <Skeleton className="size-4 rounded-full" /> : <RefreshCw className="size-4" />}
+								{loadingUsers ? <Loader size="sm" /> : <RefreshCw className="size-4" />}
 								Refresh
 							</Button>
 						</SettingsCardFooter>

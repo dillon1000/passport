@@ -30,6 +30,7 @@ import {
 	DialogTitle,
 } from "@/components/kumo/primitives/dialog";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 
 import {
 	CustomerSelector,
@@ -142,7 +143,7 @@ export function Billing() {
 										disabled={busy === "refresh"}
 									>
 										{busy === "refresh" ? (
-											<Skeleton className="size-4 rounded-full" />
+											<Loader size="sm" />
 										) : (
 											<RefreshCw className="size-4" />
 										)}
