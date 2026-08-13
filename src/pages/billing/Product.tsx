@@ -13,9 +13,9 @@ import { ArrowLeft, CalendarClock, CheckCircle2, EyeOff, Lock, ShoppingCart } fr
 import { BillingShell } from "@/components/auth/billing-shell";
 import { SettingsCard } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { formatPriceInfo } from "@/lib/billing-groups";
 import { queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";

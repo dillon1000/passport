@@ -8,8 +8,8 @@ import { CheckboxField, Field, FieldInput } from "@/components/auth/field";
 import { OTPInput } from "@/components/auth/otp-input";
 import { Segmented, type SegmentedOption } from "@/components/auth/segmented";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/kumo/primitives/button";
+import { Card, CardContent } from "@/components/kumo/primitives/card";
 import { resolveAuthCallbackURL } from "@/lib/auth-flow";
 import { normalizeTwoFactorVerificationCode } from "@/lib/two-factor";
 

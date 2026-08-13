@@ -10,7 +10,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), cloudflare()],
   resolve: {
     alias: {
-		"@/components/ui": path.resolve(__dirname, "./src/components/kumo/primitives"),
       "@": path.resolve(__dirname, "./src"),
     },
   },

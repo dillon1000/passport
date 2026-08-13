@@ -5,8 +5,8 @@
  */
 import { PublicIcon } from "@/components/auth/public-icon";
 import { SOCIAL_PROVIDERS, type SocialProviderId } from "@/components/auth/social-provider-config";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
 
 export function SocialButtons({
 	onSelect,

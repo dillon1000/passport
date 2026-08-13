@@ -19,9 +19,9 @@ import {
 } from "lucide-react";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/kumo/primitives/button";
+import { Card, CardContent } from "@/components/kumo/primitives/card";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import {
 	Sheet,
 	SheetBody,
@@ -29,7 +29,7 @@ import {
 	SheetDescription,
 	SheetHeader,
 	SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/kumo/primitives/sheet";
 import { authClient } from "@/auth-client";
 import { useBrand } from "@/lib/brand-runtime";
 import {

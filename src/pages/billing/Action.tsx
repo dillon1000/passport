@@ -11,9 +11,9 @@ import { useParams } from "react-router";
 import { BillingShell } from "@/components/auth/billing-shell";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { useRequireSession } from "@/lib/session";
 
 type BillingActionDetails = {

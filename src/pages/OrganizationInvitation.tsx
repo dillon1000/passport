@@ -11,7 +11,7 @@ import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Wordmark } from "@/components/auth/wordmark";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Card,
 	CardContent,
@@ -19,8 +19,8 @@ import {
 	CardFooter,
 	CardHeader,
 	CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/card";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 
 type InvitationAction = "accept" | "reject";
 

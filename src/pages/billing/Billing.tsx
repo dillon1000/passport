@@ -19,7 +19,7 @@ import { BillingNav } from "@/components/auth/billing-nav";
 import { BillingShell } from "@/components/auth/billing-shell";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner } from "@/components/auth/status";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogClose,
@@ -28,8 +28,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/dialog";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 
 import {
 	CustomerSelector,

@@ -3,7 +3,6 @@
 		"baseUrl": ".",
 		"ignoreDeprecations": "6.0",
 		"paths": {
-			"@/components/ui/*": ["./src/components/kumo/primitives/*"],
 			"@/*": [
 				"./src/*"
 			]

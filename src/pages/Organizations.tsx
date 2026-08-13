@@ -26,8 +26,8 @@ import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot } from "@/components/auth/status-dot";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogClose,
@@ -36,7 +36,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/kumo/primitives/dialog";
 import {
 	Sheet,
 	SheetBody,
@@ -46,8 +46,8 @@ import {
 	SheetFooter,
 	SheetHeader,
 	SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/sheet";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { uploadImageAsset } from "@/lib/image-upload";
 import {
 	ORGANIZATION_ROLES,

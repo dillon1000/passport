@@ -9,17 +9,17 @@ import { Fingerprint, LogIn, Mail } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
+import { Badge } from "@/components/kumo/primitives/badge";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
 import { type SocialProviderId } from "@/components/auth/social-provider-config";
 import { SocialButtons } from "@/components/auth/social-buttons";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Wordmark } from "@/components/auth/wordmark";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/kumo/primitives/button";
+import { Card, CardContent } from "@/components/kumo/primitives/card";
+import { Separator } from "@/components/kumo/primitives/separator";
 import { authClient } from "@/auth-client";
 import {
 	resolveAuthCallbackURL,

@@ -33,8 +33,8 @@ import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-car
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { StatusDot, type DotTone } from "@/components/auth/status-dot";
 import { SummaryRow } from "@/components/auth/summary-row";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogClose,
@@ -43,7 +43,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/kumo/primitives/dialog";
 import {
 	Sheet,
 	SheetBody,
@@ -53,8 +53,8 @@ import {
 	SheetFooter,
 	SheetHeader,
 	SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/sheet";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { Tooltip } from "@cloudflare/kumo";
 import { hasAdminRole } from "@/lib/admin-access";
 import { copyTextToClipboard } from "@/lib/clipboard";

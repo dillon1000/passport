@@ -231,8 +231,8 @@ weight matched to the text. The brand mark is a rounded-square monogram tile.
 
 ## Components
 
-Built on shadcn/ui (`radix-nova` style), customized — defaults are not shipped
-as-is. Composition is favored over boolean props (compound `Field` /
+Built on Kumo UI, customized for Passport's neutral whitelabel design.
+Composition is favored over boolean props (compound `Field` /
 `SettingsCard` / `DashboardShell`).
 
 - **button** — primary action: `{colors.primary}` fill, `shadow-sm`, subtle
@@ -273,7 +273,7 @@ as-is. Composition is favored over boolean props (compound `Field` /
 **Don't**
 
 - Don't add background patterns, grids, gradients, or decorative imagery.
-- Don't ship raw shadcn defaults (e.g. the chunky default segmented Tabs).
+- Don't ship raw component-library defaults (e.g. chunky segmented tabs).
 - Don't introduce a second typeface or fake font weights.
 - Don't use heavy shadows or glows for elevation — border first, soft shadow
   second.

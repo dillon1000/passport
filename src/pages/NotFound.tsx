@@ -7,8 +7,8 @@
 import { ArrowLeft, SearchX } from "lucide-react";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/kumo/primitives/button";
+import { Card, CardContent, CardFooter } from "@/components/kumo/primitives/card";
 import { useBrand } from "@/lib/brand-runtime";
 
 export function NotFound() {

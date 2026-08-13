@@ -1,6 +1,6 @@
 /** App-level blocking transition shown while Better Auth changes the active account. */
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { useAccountSwitch } from "@/lib/account-switch";
 import { initialsOf } from "@/lib/session";
 

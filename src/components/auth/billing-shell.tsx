@@ -4,7 +4,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { DashboardNav } from "@/components/auth/dashboard-nav";
 import { SignOutDialog } from "@/components/auth/sign-out-dialog";
 import { UserMenu } from "@/components/auth/user-menu";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { initialsOf } from "@/lib/session";
 
 interface DashboardUser {

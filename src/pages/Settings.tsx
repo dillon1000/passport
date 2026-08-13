@@ -20,9 +20,9 @@ import { CheckboxField } from "@/components/auth/field";
 import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/kumo/primitives/button";
+import { Label } from "@/components/kumo/primitives/label";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { FLAIR_STATIC_OPTIONS, useFlairMode, type FlairMode } from "@/lib/flair";
 import {
 	Sheet,
@@ -30,7 +30,7 @@ import {
 	SheetContent,
 	SheetHeader,
 	SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/kumo/primitives/sheet";
 import type { DataExportRequestSummary } from "@/lib/data-export";
 import {
 	legalUpdatedAt,

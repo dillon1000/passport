@@ -14,8 +14,8 @@ import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { StatusBanner, type Status } from "@/components/auth/status";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/kumo/primitives/badge";
+import { Button } from "@/components/kumo/primitives/button";
 import {
 	Dialog,
 	DialogClose,
@@ -24,8 +24,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/kumo/primitives/dialog";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import {
 	banExpiresInSeconds,
 	canMutateUser,

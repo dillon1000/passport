@@ -7,9 +7,9 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/kumo/primitives/checkbox";
+import { Button } from "@/components/kumo/primitives/button";
+import { Label } from "@/components/kumo/primitives/label";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
 	OAUTH_SCOPE_DEFINITIONS,

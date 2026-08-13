@@ -5,7 +5,7 @@ import { DashboardNav } from "@/components/auth/dashboard-nav";
 import { SectionNav, type Section } from "@/components/auth/section-nav";
 import { SignOutDialog } from "@/components/auth/sign-out-dialog";
 import { UserMenu } from "@/components/auth/user-menu";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { initialsOf } from "@/lib/session";
 
 interface DashboardUser {

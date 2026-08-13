@@ -1,6 +1,6 @@
 import { Moon, Sun } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/kumo/primitives/button";
 import { useTheme } from "@/lib/theme";
 
 /** Light/dark switch. Icon reflects the theme you'll switch *to*. */
