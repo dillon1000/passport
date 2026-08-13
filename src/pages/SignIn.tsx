@@ -6,8 +6,10 @@
  */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Fingerprint, Mail } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
 import { type SocialProviderId } from "@/components/auth/social-provider-config";
@@ -21,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { authClient } from "@/auth-client";
 import {
 	resolveAuthCallbackURL,
+	resolveAddAccountURL,
 	resolvePasswordResetRedirectURL,
 	shouldCompletePasswordSignIn,
 } from "@/lib/auth-flow";
@@ -34,6 +37,7 @@ import {
 	getPasswordConfirmationError,
 	isPasswordConfirmationReady,
 } from "@/lib/password-confirmation";
+import { initialsOf } from "@/lib/session";
 import { withViewTransition } from "@/lib/view-transition";
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
@@ -42,6 +46,18 @@ type FieldErrorTarget = "credential" | "confirmPassword";
 interface FieldError {
 	target: FieldErrorTarget;
 	message: string;
+}
+
+/** A same-browser session that can become the active Passport account. */
+type DeviceAccount = {
+	session: { token: string };
+	user: { id: string; name: string; email: string; image?: string | null };
+};
+
+async function fetchDeviceAccounts(): Promise<DeviceAccount[]> {
+	const result = await authClient.multiSession.listDeviceSessions();
+	if (result.error) throw new Error(result.error.message ?? "Could not load signed-in accounts.");
+	return (result.data ?? []) as DeviceAccount[];
 }
 
 function copyFor(mode: Mode) {
@@ -121,9 +137,19 @@ export function SignIn() {
 	});
 	const [loading, setLoading] = useState(false);
 	const captchaConfig = useCaptchaConfig();
+	const { data: session } = authClient.useSession();
 
 	const callbackURL = resolveAuthCallbackURL(searchParams);
 	const addingAccount = searchParams.get("flow") === "add-account";
+	const canChooseExistingAccount = mode === "signin" && !addingAccount && Boolean(session?.user);
+	const accountsQuery = useQuery({
+		queryKey: ["signin-device-accounts", session?.user.id],
+		queryFn: fetchDeviceAccounts,
+		enabled: canChooseExistingAccount,
+	});
+	const otherAccounts = (accountsQuery.data ?? []).filter(
+		(account) => account.user.id !== session?.user.id,
+	);
 	const verificationCallbackURL = "/account?verified=1";
 	const copy = copyFor(mode);
 	const authActionsDisabled = loading || (mode !== "reset" && !captchaConfig.loaded);
@@ -153,6 +179,23 @@ export function SignIn() {
 
 	function toggleMode() {
 		switchMode(mode === "signin" ? "signup" : "signin");
+	}
+
+	/** Activates the selected local session, then resumes the original destination. */
+	async function continueSession(sessionToken: string) {
+		setStatus(null);
+		setLoading(true);
+
+		if (sessionToken !== session?.session.token) {
+			const result = await authClient.multiSession.setActive({ sessionToken });
+			if (result.error) {
+				setLoading(false);
+				setStatus({ tone: "error", message: result.error.message ?? "Could not switch accounts." });
+				return;
+			}
+		}
+
+		window.location.assign(callbackURL);
 	}
 
 	function resetCaptcha() {
@@ -419,7 +462,18 @@ export function SignIn() {
 					<CardContent className="space-y-4">
 						<StatusBanner status={status} />
 
-						<form
+						{canChooseExistingAccount && session ? (
+							<ExistingSessionChoice
+								account={session.user}
+								otherAccounts={otherAccounts}
+								callbackURL={callbackURL}
+								disabled={loading}
+								onChoose={continueSession}
+								currentSessionToken={session.session.token}
+							/>
+						) : (
+							<>
+								<form
 							ref={formRef}
 							className="space-y-3.5"
 							onSubmit={formSubmitHandler}
@@ -601,21 +655,103 @@ export function SignIn() {
 
 								<SocialButtons onSelect={social} disabled={authActionsDisabled} />
 							</>
-						) : null}
+								) : null}
+							</>
+						)}
 					</CardContent>
 				</Card>
 
-				<p className="text-sm text-muted-foreground">
-					{copy.toggle}{" "}
-					<button
-						type="button"
-						className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
-						onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
-					>
-						{copy.switchTo}
-					</button>
-				</p>
+				{!canChooseExistingAccount ? (
+					<p className="text-sm text-muted-foreground">
+						{copy.toggle}{" "}
+						<button
+							type="button"
+							className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
+							onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
+						>
+							{copy.switchTo}
+						</button>
+					</p>
+				) : null}
 			</div>
 		</AuthShell>
+	);
+}
+
+/**
+ * Offers an already authenticated visitor two explicit paths: use a local
+ * session now or enter credentials for another account in the add-account flow.
+ */
+function ExistingSessionChoice({
+	account,
+	otherAccounts,
+	callbackURL,
+	disabled,
+	onChoose,
+	currentSessionToken,
+}: {
+	account: DeviceAccount["user"];
+	otherAccounts: DeviceAccount[];
+	callbackURL: string;
+	disabled: boolean;
+	onChoose: (sessionToken: string) => void;
+	currentSessionToken: string;
+}) {
+	return (
+		<div className="space-y-4">
+			<div className="space-y-1 text-center">
+				<p className="text-sm font-medium">You’re already signed in</p>
+				<p className="text-sm text-muted-foreground">Choose how you want to continue.</p>
+			</div>
+
+			<div className="space-y-2">
+				<SessionChoice
+					account={account}
+					disabled={disabled}
+					onChoose={() => onChoose(currentSessionToken)}
+				/>
+				{otherAccounts.map((otherAccount) => (
+					<SessionChoice
+						key={otherAccount.session.token}
+						account={otherAccount.user}
+						disabled={disabled}
+						onChoose={() => onChoose(otherAccount.session.token)}
+					/>
+				))}
+			</div>
+
+			<Button asChild className="w-full" variant="outline">
+				<a href={resolveAddAccountURL(callbackURL)}>Sign in to another account</a>
+			</Button>
+		</div>
+	);
+}
+
+/** Renders one local account that can resume the sign-in destination. */
+function SessionChoice({
+	account,
+	disabled,
+	onChoose,
+}: {
+	account: DeviceAccount["user"];
+	disabled: boolean;
+	onChoose: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+			disabled={disabled}
+			onClick={onChoose}
+		>
+			<Avatar>
+				<AvatarImage src={account.image ?? undefined} />
+				<AvatarFallback>{initialsOf(account.name)}</AvatarFallback>
+			</Avatar>
+			<span className="min-w-0 flex-1">
+				<span className="block truncate text-sm font-medium">Continue as {account.name}</span>
+				<span className="block truncate text-xs text-muted-foreground">{account.email}</span>
+			</span>
+		</button>
 	);
 }
