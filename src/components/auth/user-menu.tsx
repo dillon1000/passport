@@ -433,7 +433,10 @@ export function UserMenu({
 					<ChevronDown className="size-3.5 text-muted-foreground" />
 				</button>
 			} />
-			<DropdownMenu.Content align="end" className="w-60">
+			<DropdownMenu.Content
+				align="end"
+				className="z-50 !w-60 !min-w-60 !rounded-lg !border !border-border !bg-popover !p-1 !text-popover-foreground !shadow-md !ring-0"
+			>
 				<div className="flex items-center gap-2.5 px-1.5 py-1.5">
 					<Avatar className="size-8 rounded-full">
 						<AvatarImage src={image ?? undefined} />
@@ -446,8 +449,10 @@ export function UserMenu({
 				</div>
 				<DropdownMenu.Separator />
 				<DropdownMenu.Group>
-					<DropdownMenu.Label>Switch account</DropdownMenu.Label>
-					<DropdownMenu.Item disabled>
+				<DropdownMenu.Label className="!px-1.5 !py-1 !text-xs !font-medium !text-muted-foreground">
+					Switch account
+				</DropdownMenu.Label>
+				<DropdownMenu.Item disabled className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm">
 						<Avatar size="sm">
 							<AvatarImage src={image ?? undefined} />
 							<AvatarFallback>{initials}</AvatarFallback>
@@ -459,6 +464,7 @@ export function UserMenu({
 						<DropdownMenu.Item
 							key={account.session.token}
 							disabled={switching}
+							className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm"
 							onClick={() => {
 								void switchAccount(account);
 							}}
@@ -471,21 +477,34 @@ export function UserMenu({
 						</DropdownMenu.Item>
 					))}
 				</DropdownMenu.Group>
-				<DropdownMenu.LinkItem href={resolveAddAccountURL(callbackURL)}>
+				<DropdownMenu.LinkItem
+					href={resolveAddAccountURL(callbackURL)}
+					className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm"
+				>
 						<Plus />
 						Add account
 				</DropdownMenu.LinkItem>
 				<DropdownMenu.Separator />
-				<DropdownMenu.LinkItem render={<Link to="/account" />}>
+				<DropdownMenu.LinkItem
+					render={<Link to="/account" />}
+					className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm"
+				>
 						<UserRound />
 						Account
 				</DropdownMenu.LinkItem>
-				<DropdownMenu.LinkItem render={<Link to="/settings" />}>
+				<DropdownMenu.LinkItem
+					render={<Link to="/settings" />}
+					className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm"
+				>
 						<Settings />
 						Settings
 				</DropdownMenu.LinkItem>
 				<DropdownMenu.Separator />
-				<DropdownMenu.Item variant="danger" onClick={onSignOut}>
+				<DropdownMenu.Item
+					variant="danger"
+					onClick={onSignOut}
+					className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm"
+				>
 					<LogOut />
 					Sign out
 				</DropdownMenu.Item>
