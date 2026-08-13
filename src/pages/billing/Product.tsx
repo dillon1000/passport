@@ -8,7 +8,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams } from "react-router";
-import { ArrowLeft, CalendarClock, CheckCircle2, EyeOff, Lock, ShoppingCart } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, EyeOff, Lock, ShoppingCart } from "@/lib/icons";
 
 import { BillingShell } from "@/components/auth/billing-shell";
 import { SettingsCard } from "@/components/auth/settings-card";

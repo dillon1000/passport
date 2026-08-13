@@ -7,7 +7,7 @@
  * large Security page does not need to thread additional state.
  */
 import { useQuery } from "@tanstack/react-query";
-import { History, RefreshCw } from "lucide-react";
+import { History, RefreshCw } from "@/lib/icons";
 
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
 import { Badge } from "@/components/kumo/primitives/badge";

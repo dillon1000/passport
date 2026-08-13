@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Bot, ShieldCheck, X } from "lucide-react";
+import { Bot, ShieldCheck, X } from "@/lib/icons";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Wordmark } from "@/components/auth/wordmark";

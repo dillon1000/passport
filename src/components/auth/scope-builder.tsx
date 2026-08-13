@@ -5,7 +5,7 @@
  * copy the current selection for OAuth client configuration.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/lib/icons";
 
 import { Checkbox } from "@/components/kumo/primitives/checkbox";
 import { Button } from "@/components/kumo/primitives/button";

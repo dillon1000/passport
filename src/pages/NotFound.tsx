@@ -4,7 +4,7 @@
  * sign-in failures. Keep links limited to stable public entry points so this
  * page works before a session exists.
  */
-import { ArrowLeft, SearchX } from "lucide-react";
+import { ArrowLeft, SearchX } from "@/lib/icons";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/kumo/primitives/button";

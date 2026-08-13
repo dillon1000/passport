@@ -22,7 +22,7 @@ import {
 	RotateCcw,
 	Save,
 	Trash2,
-} from "lucide-react";
+} from "@/lib/icons";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { CheckboxField, Field, FieldInput, FieldTextarea } from "@/components/auth/field";

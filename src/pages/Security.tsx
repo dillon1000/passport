@@ -21,7 +21,7 @@ import {
 	Smartphone,
 	Trash2,
 	Unlink,
-} from "lucide-react";
+} from "@/lib/icons";
 import QRCode from "react-qr-code";
 
 import { AccountActivitySection } from "@/components/auth/account-activity-section";

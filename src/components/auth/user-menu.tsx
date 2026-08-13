@@ -6,7 +6,7 @@ import {
 	useState,
 	type CSSProperties,
 } from "react";
-import { ChevronDown, LogOut, Plus, Settings, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Plus, Settings, UserRound } from "@/lib/icons";
 import { Link } from "react-router";
 
 import { authClient } from "@/auth-client";

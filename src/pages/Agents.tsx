@@ -7,7 +7,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Bot, Copy, KeyRound, RefreshCw, RotateCcw, ServerCog, Trash2 } from "lucide-react";
+import { Bot, Copy, KeyRound, RefreshCw, RotateCcw, ServerCog, Trash2 } from "@/lib/icons";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
 import { type Section } from "@/components/auth/section-nav";

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { KeyRound, Mail, ShieldCheck } from "lucide-react";
+import { KeyRound, Mail, ShieldCheck } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";

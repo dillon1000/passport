@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "@/lib/icons";
 import { toast } from "sonner";
 
 import {

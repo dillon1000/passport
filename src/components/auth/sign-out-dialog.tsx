@@ -4,7 +4,7 @@
  * the shared session sign-out helper only after the user confirms.
  */
 import { useState } from "react";
-import { LogOut } from "lucide-react";
+import { LogOut } from "@/lib/icons";
 
 import { Button } from "@/components/kumo/primitives/button";
 import {

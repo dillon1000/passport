@@ -29,7 +29,7 @@ import {
 	UserRound,
 	UsersRound,
 	X,
-} from "lucide-react";
+} from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";

@@ -13,7 +13,7 @@ import {
 	Plus,
 	Receipt,
 	RefreshCw,
-} from "lucide-react";
+} from "@/lib/icons";
 
 import { BillingNav } from "@/components/auth/billing-nav";
 import { BillingShell } from "@/components/auth/billing-shell";

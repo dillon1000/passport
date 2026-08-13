@@ -1,5 +1,5 @@
 import { createContext, use, useId, useState, type ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "@/lib/icons";
 
 import { Checkbox } from "@/components/kumo/primitives/checkbox";
 import { Input } from "@/components/kumo/primitives/input";

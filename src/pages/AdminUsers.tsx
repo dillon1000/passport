@@ -6,7 +6,7 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Ban, RefreshCw, Search, ShieldCheck, Unlock, UserCog } from "lucide-react";
+import { Ban, RefreshCw, Search, ShieldCheck, Unlock, UserCog } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";

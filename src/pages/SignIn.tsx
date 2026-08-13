@@ -5,7 +5,7 @@
  * Safe changes are mode copy, visible recovery options, and callback handling.
  */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Fingerprint, LogIn, Mail } from "lucide-react";
+import { Fingerprint, LogIn, Mail } from "@/lib/icons";
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";

@@ -2,7 +2,7 @@
  * Public legal-policy page. The route selects a fixed Passport policy so links
  * can be shared directly without opening the About page's temporary drawer.
  */
-import { ShieldCheck, ScrollText } from "lucide-react";
+import { ShieldCheck, ScrollText } from "@/lib/icons";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Card, CardContent } from "@/components/kumo/primitives/card";
