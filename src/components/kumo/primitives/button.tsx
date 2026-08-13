@@ -34,7 +34,12 @@ const Button = React.forwardRef<HTMLButtonElement, PassportButtonProps>(
 		void ref;
 		const kumoProps = {
 			...props,
-			className: cn(size === "icon" && "size-9 p-0", className),
+			className: cn(
+				"!text-sm",
+				size === "icon" && "size-9 p-0",
+				variant === "destructive" && "!border !border-destructive/20 !bg-destructive/10 !text-destructive hover:!bg-destructive/15",
+				className,
+			),
 			variant: variantMap[variant] as React.ComponentProps<typeof KumoButton>["variant"],
 			size: sizeMap[size] as React.ComponentProps<typeof KumoButton>["size"],
 		};

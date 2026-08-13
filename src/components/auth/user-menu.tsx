@@ -445,30 +445,32 @@ export function UserMenu({
 					</div>
 				</div>
 				<DropdownMenu.Separator />
-				<DropdownMenu.Label>Switch account</DropdownMenu.Label>
-				<DropdownMenu.Item disabled>
-					<Avatar size="sm">
-						<AvatarImage src={image ?? undefined} />
-						<AvatarFallback>{initials}</AvatarFallback>
-					</Avatar>
-					<span className="min-w-0 flex-1 truncate">{email}</span>
-					<span className="text-xs text-muted-foreground">Current</span>
-				</DropdownMenu.Item>
-				{otherAccounts.map((account) => (
-					<DropdownMenu.Item
-						key={account.session.token}
-						disabled={switching}
-						onClick={() => {
-							void switchAccount(account);
-						}}
-					>
+				<DropdownMenu.Group>
+					<DropdownMenu.Label>Switch account</DropdownMenu.Label>
+					<DropdownMenu.Item disabled>
 						<Avatar size="sm">
-							<AvatarImage src={account.user.image ?? undefined} />
-							<AvatarFallback>{initialsOf(account.user.name)}</AvatarFallback>
+							<AvatarImage src={image ?? undefined} />
+							<AvatarFallback>{initials}</AvatarFallback>
 						</Avatar>
-						<span className="min-w-0 flex-1 truncate">{account.user.email}</span>
+						<span className="min-w-0 flex-1 truncate">{email}</span>
+						<span className="text-xs text-muted-foreground">Current</span>
 					</DropdownMenu.Item>
-				))}
+					{otherAccounts.map((account) => (
+						<DropdownMenu.Item
+							key={account.session.token}
+							disabled={switching}
+							onClick={() => {
+								void switchAccount(account);
+							}}
+						>
+							<Avatar size="sm">
+								<AvatarImage src={account.user.image ?? undefined} />
+								<AvatarFallback>{initialsOf(account.user.name)}</AvatarFallback>
+							</Avatar>
+							<span className="min-w-0 flex-1 truncate">{account.user.email}</span>
+						</DropdownMenu.Item>
+					))}
+				</DropdownMenu.Group>
 				<DropdownMenu.LinkItem href={resolveAddAccountURL(callbackURL)}>
 						<Plus />
 						Add account
