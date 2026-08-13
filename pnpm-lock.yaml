@@ -98,9 +98,6 @@ importers:
       react-turnstile:
         specifier: ^1.1.5
         version: 1.1.5(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-      shadcn:
-        specifier: ^4.11.0
-        version: 4.11.0(typescript@6.0.3)
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -5670,7 +5667,7 @@ snapshots:
       '@better-fetch/fetch': 1.3.0
       '@opentelemetry/semantic-conventions': 1.41.1
       '@standard-schema/spec': 1.1.0
-      better-call: 1.3.6(zod@4.4.3)
+      better-call: 1.3.6(zod@3.25.76)
       jose: 6.2.3
       kysely: 0.29.2
       nanostores: 1.3.0
@@ -7986,7 +7983,7 @@ snapshots:
       '@better-fetch/fetch': 1.3.0
       '@noble/ciphers': 2.2.0
       '@noble/hashes': 2.2.0
-      better-call: 1.3.6(zod@4.4.3)
+      better-call: 1.3.6(zod@3.25.76)
       defu: 6.1.7
       jose: 6.2.3
       kysely: 0.29.2
@@ -8045,6 +8042,15 @@ snapshots:
       set-cookie-parser: 3.1.0
     optionalDependencies:
       zod: 4.4.3
+
+  better-call@1.3.6(zod@3.25.76):
+    dependencies:
+      '@better-auth/utils': 0.4.2
+      '@better-fetch/fetch': 1.3.1
+      rou3: 0.7.12
+      set-cookie-parser: 3.1.0
+    optionalDependencies:
+      zod: 3.25.76
 
   better-call@1.3.6(zod@4.4.3):
     dependencies:
