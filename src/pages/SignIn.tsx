@@ -10,9 +10,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
-import { type SocialProviderId } from "@/components/auth/social-provider-config";
+import {
+	SOCIAL_PROVIDERS,
+	type SocialProviderId,
+} from "@/components/auth/social-provider-config";
 import { SocialButtons } from "@/components/auth/social-buttons";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Wordmark } from "@/components/auth/wordmark";
@@ -98,6 +102,14 @@ function credentialLooksLikeEmail(value: string) {
 	return value.includes("@");
 }
 
+/** Converts Better Auth's cookie value into the label displayed on the sign-in page. */
+function lastUsedSignInMethodLabel(method: string | null) {
+	if (method === "email") return "Password";
+	if (method === "magic-link") return "Magic link";
+	if (method === "passkey") return "Passkey";
+	return SOCIAL_PROVIDERS.find((provider) => provider.id === method)?.label;
+}
+
 export function SignIn() {
 	const searchParams = new URLSearchParams(window.location.search);
 	const resetToken = searchParams.get("token");
@@ -138,6 +150,7 @@ export function SignIn() {
 	const [loading, setLoading] = useState(false);
 	const captchaConfig = useCaptchaConfig();
 	const { data: session } = authClient.useSession();
+	const lastUsedSignInMethod = authClient.getLastUsedLoginMethod();
 
 	const callbackURL = resolveAuthCallbackURL(searchParams);
 	const addingAccount = searchParams.get("flow") === "add-account";
@@ -461,6 +474,9 @@ export function SignIn() {
 				<Card className="w-full">
 					<CardContent className="space-y-4">
 						<StatusBanner status={status} />
+						{mode === "signin" ? (
+							<LastUsedSignInMethod method={lastUsedSignInMethod} />
+						) : null}
 
 						{canChooseExistingAccount && session ? (
 							<ExistingSessionChoice
@@ -675,6 +691,19 @@ export function SignIn() {
 				) : null}
 			</div>
 		</AuthShell>
+	);
+}
+
+/** Shows the recent sign-in method from Better Auth's browser-readable cookie. */
+function LastUsedSignInMethod({ method }: { method: string | null }) {
+	const label = lastUsedSignInMethodLabel(method);
+	if (!label) return null;
+
+	return (
+		<div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+			<span>Last signed in with</span>
+			<Badge variant="secondary">{label}</Badge>
+		</div>
 	);
 }
 
