@@ -478,6 +478,17 @@ input {
 	z-index: 100;
 }
 
+/* Kumo tooltips must use the same quiet popover surface as Passport controls.
+   This replaces Kumo's bright tip shadow, which is too strong in dark mode. */
+.kumo-tooltip-popup {
+	border: 1px solid var(--border);
+	border-radius: calc(var(--radius) - 2px);
+	background: var(--popover);
+	color: var(--popover-foreground);
+	box-shadow: 0 8px 20px oklch(0 0 0 / 18%);
+	outline: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -451,7 +451,7 @@ function LegalSheet({
 }) {
 	return (
 		<Sheet open={open} onOpenChange={onOpenChange}>
-			<SheetContent className="max-w-xl">
+			<SheetContent className="[--sheet-width:36rem]">
 				<SheetHeader>
 					<SheetTitle>{title}</SheetTitle>
 				</SheetHeader>

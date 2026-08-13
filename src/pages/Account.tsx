@@ -258,7 +258,7 @@ export function Account() {
 					<ClipboardText
 						text={user.id}
 						size="sm"
-						tooltip={{ text: "Copy user ID", copiedText: "User ID copied", side: "top" }}
+						labels={{ copyAction: "Copy user ID" }}
 					/>
 					</SettingsCard>
 				</section>

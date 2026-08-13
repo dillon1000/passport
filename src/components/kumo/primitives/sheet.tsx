@@ -1,15 +1,16 @@
 /**
- * Passport's right-side drawer composition backed by Kumo Dialog. Kumo owns
- * the modal lifecycle while the content class intentionally places the panel
- * at the viewport edge for the dashboard's drawer workflow.
+ * Passport's responsive drawer composition uses Kumo's Drawer root so nested
+ * sheets retain focus and stack correctly. The width CSS variable lets callers
+ * request a wider desktop sheet without overriding the responsive mobile fit.
  */
 import * as React from "react";
 import { X } from "lucide-react";
 import { Dialog as KumoDialog, cn } from "@cloudflare/kumo";
+import { Drawer } from "@cloudflare/kumo/primitives/drawer";
 import { Button } from "./button";
 
-function Sheet(props: React.ComponentProps<typeof KumoDialog.Root>) {
-	return <KumoDialog.Root {...props} />;
+function Sheet(props: React.ComponentProps<typeof Drawer.Root>) {
+	return <Drawer.Root {...props} />;
 }
 
 function SheetTrigger(props: React.ComponentProps<typeof KumoDialog.Trigger>) {
@@ -24,7 +25,7 @@ function SheetClose({ asChild = false, children, ...props }: React.ComponentProp
 }
 
 function SheetContent({ className, children, pushed = false, showCloseButton = true, ...props }: React.ComponentProps<typeof KumoDialog> & { pushed?: boolean; showCloseButton?: boolean }) {
-	return <KumoDialog data-slot="sheet-content" data-pushed={pushed || undefined} size="lg" className={cn("!fixed !z-[100] !inset-y-2 !right-2 !left-auto !flex !h-[calc(100dvh-1rem)] !w-[calc(100vw-1rem)] !max-w-[min(32rem,calc(100vw-1rem))] !translate-x-0 !translate-y-0 !flex-col !overflow-hidden !p-0 sm:!inset-y-3 sm:!right-3 sm:!h-[calc(100dvh-1.5rem)] sm:!max-w-md", className)} {...props}>
+	return <KumoDialog data-slot="sheet-content" data-pushed={pushed || undefined} size="lg" className={cn("!fixed !z-[100] !bottom-2 !left-2 !right-2 !flex !h-[min(80dvh,44rem)] !w-[calc(100vw-1rem)] !max-w-none !translate-x-0 !translate-y-0 !flex-col !overflow-hidden !p-0 !transition-[transform,opacity] !duration-200 !ease-out data-[starting-style]:!translate-y-[calc(100%+1rem)] data-[ending-style]:!translate-y-[calc(100%+1rem)] sm:!inset-y-3 sm:!left-3 sm:!right-auto sm:!h-[calc(100dvh-1.5rem)] sm:!w-[min(var(--sheet-width,32rem),calc(100vw-1.5rem))] sm:data-[starting-style]:!translate-x-[calc(-100%-1rem)] sm:data-[starting-style]:!translate-y-0 sm:data-[ending-style]:!translate-x-[calc(-100%-1rem)] sm:data-[ending-style]:!translate-y-0", className)} {...props}>
 		{children}
 		{showCloseButton ? (
 			<KumoDialog.Close render={<Button variant="ghost" size="icon-sm" className="absolute top-3 right-3 !z-[1]" aria-label="Close sheet"><X className="size-4" /></Button>} />

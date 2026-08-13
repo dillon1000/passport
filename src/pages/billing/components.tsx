@@ -885,7 +885,7 @@ export function PlanWorkspaceDrawer({
 
 	return (
 		<Sheet open={Boolean(workspace)} onOpenChange={onOpenChange}>
-			<SheetContent className="sm:max-w-[68rem]" pushed={entDrawerOpen || limitDrawerOpen}>
+			<SheetContent className="[--sheet-width:68rem]" pushed={entDrawerOpen || limitDrawerOpen}>
 				{draft ? (
 					<form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
 						<SheetHeader>
