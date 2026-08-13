@@ -26,6 +26,7 @@ import {
 	DialogTitle,
 } from "@/components/kumo/primitives/dialog";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import {
 	canReactivateAgentStatus,
 	canRevokeAgentStatus,
@@ -333,7 +334,7 @@ export function Agents() {
 									disabled={busy === "load" || loadingAgents}
 								>
 									{busy === "load" || loadingAgents ? (
-										<Skeleton className="size-4 rounded-full" />
+										<Loader size="sm" />
 									) : (
 										<RefreshCw className="size-4" />
 									)}

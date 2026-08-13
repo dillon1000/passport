@@ -1,6 +1,6 @@
 /** App-level blocking transition shown while Better Auth changes the active account. */
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
-import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { useAccountSwitch } from "@/lib/account-switch";
 import { initialsOf } from "@/lib/session";
 
@@ -22,7 +22,7 @@ export function AccountSwitchOverlay() {
 				</Avatar>
 				<div className="space-y-1">
 					<p className="flex items-center justify-center gap-2 text-sm font-medium">
-						<Skeleton className="size-4 rounded-full" />
+						<Loader size="sm" />
 						Switching accounts
 					</p>
 					<p className="text-sm text-muted-foreground">Continuing as {account.email}</p>

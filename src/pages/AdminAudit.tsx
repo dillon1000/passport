@@ -15,6 +15,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { formatRequestLocation, type RequestLocation } from "@/lib/request-location";
 import { useRequireSession } from "@/lib/session";
@@ -112,7 +113,7 @@ export function AdminAudit() {
 								}}
 								disabled={busy}
 							>
-								{busy ? <Skeleton className="size-4 rounded-full" /> : <RefreshCw className="size-4" />}
+								{busy ? <Loader size="sm" /> : <RefreshCw className="size-4" />}
 								Refresh
 							</Button>
 						</SettingsCardFooter>

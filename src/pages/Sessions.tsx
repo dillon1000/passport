@@ -35,6 +35,7 @@ import {
 	DialogTitle,
 } from "@/components/kumo/primitives/dialog";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { formatRequestLocation, type RequestLocation } from "@/lib/request-location";
 import { queryKeys } from "@/lib/query-client";
 import {
@@ -303,7 +304,7 @@ export function Sessions() {
 										disabled={busy || loadingSessions}
 									>
 										{busy || loadingSessions ? (
-											<Skeleton className="size-4 rounded-full" />
+											<Loader size="sm" />
 										) : (
 											<RefreshCw className="size-4" />
 										)}
@@ -363,7 +364,7 @@ export function Sessions() {
 									disabled={busy || loadingSessions}
 								>
 									{busy || loadingSessions ? (
-										<Skeleton className="size-4 rounded-full" />
+										<Loader size="sm" />
 									) : (
 										<RefreshCw className="size-4" />
 									)}
