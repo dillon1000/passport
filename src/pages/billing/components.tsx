@@ -45,7 +45,7 @@ import {
 	X,
 	XCircle,
 } from "lucide-react";
-import { Select } from "@cloudflare/kumo";
+import { Select, Tooltip } from "@cloudflare/kumo";
 
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +68,6 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { BillingPlanCatalogEntry } from "@/lib/billing";
 import { buildPricingMatrix, formatPriceInfo, type PriceInfo } from "@/lib/billing-groups";
 import { cn } from "@/lib/utils";
@@ -1707,14 +1706,11 @@ export function StripeLabel({ field, children }: { field: string; children: Reac
 	return (
 		<span className="inline-flex items-center gap-1.5">
 			{children}
-			<Tooltip>
-				<TooltipTrigger asChild>
+			<Tooltip content={STRIPE_HINTS[field]} render={
 					<button type="button" className="text-muted-foreground" aria-label="Where to find this in Stripe">
 						<HelpCircle className="size-3.5" />
 					</button>
-				</TooltipTrigger>
-				<TooltipContent>{STRIPE_HINTS[field]}</TooltipContent>
-			</Tooltip>
+				} />
 		</span>
 	);
 }
