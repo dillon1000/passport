@@ -4,7 +4,7 @@
  * redirects, reset-link email requests, and reset-password submissions.
  * Safe changes are mode copy, visible recovery options, and callback handling.
  */
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Fingerprint, LogIn, Mail } from "@/lib/icons";
 import { Loader } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
@@ -41,6 +41,7 @@ import {
 import { initialsOf } from "@/lib/session";
 import { useAccountSwitch } from "@/lib/account-switch";
 import { withViewTransition } from "@/lib/view-transition";
+import { isWebAssemblyAvailable } from "@/lib/webassembly";
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
 type FieldErrorTarget = "credential" | "confirmPassword";
@@ -101,6 +102,10 @@ function credentialLooksLikeEmail(value: string) {
 }
 
 export function SignIn() {
+	useEffect(() => {
+		if (!isWebAssemblyAvailable()) window.location.replace("/error/no-webassembly");
+	}, []);
+
 	const searchParams = new URLSearchParams(window.location.search);
 	const resetToken = searchParams.get("token");
 	const formRef = useRef<HTMLFormElement>(null);

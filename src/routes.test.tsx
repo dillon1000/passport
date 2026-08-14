@@ -31,6 +31,7 @@ describe("appRoutes", () => {
 			"/terms",
 			"/select-account",
 			"/auth/error",
+			"/error/no-webassembly",
 			"*",
 		]);
 	});

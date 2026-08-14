@@ -13,6 +13,7 @@ import { BillingAction } from "@/pages/billing/Action";
 import { Product } from "@/pages/billing/Product";
 import { Consent } from "@/pages/Consent";
 import { Legal } from "@/pages/Legal";
+import { NoWebAssembly } from "@/pages/NoWebAssembly";
 import { NotFound } from "@/pages/NotFound";
 import { OrganizationInvitation } from "@/pages/OrganizationInvitation";
 import { Organizations } from "@/pages/Organizations";
@@ -120,6 +121,10 @@ export const appRoutes = [
 	{
 		path: "/auth/error",
 		element: <AuthError />,
+	},
+	{
+		path: "/error/no-webassembly",
+		element: <NoWebAssembly />,
 	},
 	{
 		path: "*",
