@@ -6,6 +6,7 @@
  */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Fingerprint, LogIn, Mail } from "@/lib/icons";
+import { Loader } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -19,7 +20,6 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Wordmark } from "@/components/auth/wordmark";
 import { Button } from "@/components/kumo/primitives/button";
 import { Card, CardContent } from "@/components/kumo/primitives/card";
-import { Loader } from "@/components/kumo/primitives/loader";
 import { Separator } from "@/components/kumo/primitives/separator";
 import { authClient } from "@/auth-client";
 import {
@@ -732,9 +732,8 @@ function ExistingSessionChoice({
 					onChoose={() => onChoose(currentSessionToken, account)}
 				/>
 				{accountsLoading ? (
-					<div className="flex min-h-16 items-center gap-3 rounded-lg border bg-background px-3 py-3 text-sm text-muted-foreground" role="status">
+					<div aria-label="Loading accounts" className="flex min-h-16 items-center justify-center rounded-lg border bg-background text-muted-foreground" role="status">
 						<Loader size="sm" />
-						Loading accounts…
 					</div>
 				) : null}
 				{otherAccounts.map((otherAccount) => (

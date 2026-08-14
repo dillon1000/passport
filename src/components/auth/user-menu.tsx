@@ -11,8 +11,7 @@ import { Link } from "react-router";
 
 import { authClient } from "@/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
-import { Loader } from "@/components/kumo/primitives/loader";
-import { DropdownMenu } from "@cloudflare/kumo";
+import { DropdownMenu, Loader } from "@cloudflare/kumo";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { useAccountSwitch } from "@/lib/account-switch";
 import { useFlairMode, type FlairMode } from "@/lib/flair";
@@ -466,9 +465,8 @@ export function UserMenu({
 						<span className="text-xs text-muted-foreground">Current</span>
 					</DropdownMenu.Item>
 					{accountsLoading ? (
-						<DropdownMenu.Item disabled className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm">
+						<DropdownMenu.Item aria-label="Loading accounts" disabled className="!min-h-10 !justify-center !rounded-md !px-1.5 !py-1">
 							<Loader size="sm" />
-							<span>Loading accounts…</span>
 						</DropdownMenu.Item>
 					) : null}
 					{otherAccounts.map((account) => (
