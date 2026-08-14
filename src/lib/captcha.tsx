@@ -64,7 +64,7 @@ export function CaptchaChallenge({
 	}
 
 	return (
-		<div className="overflow-hidden rounded-lg border bg-muted/20 p-2">
+		<div className="flex justify-center">
 			<cap-widget
 				key={`${config.siteKey}-${resetKey}`}
 				ref={widgetRef}
