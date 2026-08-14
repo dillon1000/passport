@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import './index.css'
 import App from './App.tsx'
 import { BrandProvider } from './lib/brand-context.tsx'
+import { PageTransitionProvider } from './lib/page-transition.tsx'
 import { AppQueryProvider } from './lib/query-provider.tsx'
 
 createRoot(document.getElementById('root')!).render(
@@ -12,7 +13,9 @@ createRoot(document.getElementById('root')!).render(
     <AppQueryProvider>
       <BrandProvider>
         <BrowserRouter>
-          <App />
+          <PageTransitionProvider>
+            <App />
+          </PageTransitionProvider>
           <Toaster closeButton richColors position="top-right" />
         </BrowserRouter>
       </BrandProvider>

@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { useLocation } from "react-router";
 
 import { Wordmark } from "@/components/auth/wordmark";
 import { PageHeader } from "@/components/kumo/page-header/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useBrand } from "@/lib/brand-runtime";
+import { usePageDirection } from "@/lib/page-direction";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,6 +34,8 @@ export function AuthShell({
 	subnav?: ReactNode;
 }) {
 	const brand = useBrand();
+	const { pathname } = useLocation();
+	const direction = usePageDirection();
 
 	return (
 		<div className="flex min-h-svh flex-col">
@@ -69,6 +73,8 @@ export function AuthShell({
 				className="flex flex-1 flex-col items-center px-4 py-12 sm:px-6 sm:py-16"
 			>
 				<div
+					key={pathname}
+					data-page-transition={direction}
 					className={cn(
 						"w-full",
 						width === "2xl" && "max-w-5xl",

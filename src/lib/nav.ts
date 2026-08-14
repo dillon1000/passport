@@ -37,3 +37,28 @@ export const billingNav: NavItem[] = [
 export function billingNavForUser(user?: DashboardUserForNav | null) {
 	return billingNav.filter((item) => !item.adminOnly || user?.role === "admin");
 }
+
+/**
+ * Where a path sits in the tab strips, as `[page, sub-page]`. Page transitions
+ * compare two ranks to decide which way to swipe, so the content moves the same
+ * direction the eye travels along the tabs. `null` for paths outside the strips.
+ */
+export function navRank(pathname: string): [number, number] | null {
+	const page = indexOf(dashboardNav, pathname);
+	if (page === null) return null;
+	return [page, indexOf(billingNav, pathname) ?? 0];
+}
+
+/** Index of the longest nav href that owns `pathname`, so `/billing/plans` beats `/billing`. */
+function indexOf(items: NavItem[], pathname: string): number | null {
+	let match: number | null = null;
+	let matchedLength = -1;
+	items.forEach((item, index) => {
+		const owns = pathname === item.href || pathname.startsWith(`${item.href}/`);
+		if (owns && item.href.length > matchedLength) {
+			match = index;
+			matchedLength = item.href.length;
+		}
+	});
+	return match;
+}
