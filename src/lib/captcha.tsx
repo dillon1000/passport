@@ -51,7 +51,7 @@ export function CaptchaChallenge({
 			widget.removeEventListener("error", clearToken);
 			widget.removeEventListener("reset", clearToken);
 		};
-	}, [onTokenChange]);
+	}, [config.enabled, config.siteKey, onTokenChange, resetKey]);
 
 	if (!config.enabled) return null;
 
