@@ -142,7 +142,7 @@ export function Account() {
 								title="Profile"
 								description="Your name and username as connected applications see them."
 								footer={
-									<SettingsCardFooter hint="Updates use Better Auth user metadata.">
+									<SettingsCardFooter>
 										<Button size="sm" type="submit" disabled={busy === "profile"}>
 											<Save className="size-4" />
 											Save
@@ -219,7 +219,6 @@ export function Account() {
 						<form onSubmit={uploadProfileImage}>
 							<SettingsCard
 								title="Profile Picture"
-								description="Upload an image stored in the configured R2 bucket."
 								footer={
 									<SettingsCardFooter hint="PNG, JPG, GIF, or WebP up to 2 MB.">
 										<Button size="sm" type="submit" disabled={busy === "picture" || !imageFile}>
