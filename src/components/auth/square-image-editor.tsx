@@ -136,7 +136,7 @@ function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEdi
 						draggable={false}
 						onLoad={(event) => setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
 						onError={() => setError("This image could not be opened.")}
-						className="pointer-events-none absolute top-1/2 left-1/2 max-w-none -translate-1/2"
+						className="pointer-events-none absolute top-1/2 left-1/2 max-w-none"
 						style={geometry ? { height: geometry.drawHeight, transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`, width: geometry.drawWidth } : undefined}
 					/>
 				</div>
