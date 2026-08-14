@@ -13,6 +13,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
 import { Button } from "@/components/kumo/primitives/button";
 import { Card, CardContent } from "@/components/kumo/primitives/card";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { oauthConsentRedirect } from "@/lib/oauth-consent";
@@ -134,7 +135,12 @@ export function SelectAccount() {
 						) : (
 							<Skeleton className="h-16 w-full" />
 						)}
-						{accountsQuery.isPending ? <Skeleton className="h-16 w-full" /> : null}
+						{accountsQuery.isPending ? (
+							<div className="flex min-h-16 items-center gap-3 rounded-lg border bg-background px-3 py-3 text-sm text-muted-foreground" role="status">
+								<Loader size="sm" />
+								Loading accounts…
+							</div>
+						) : null}
 						{otherAccounts.map((account) => (
 							<AccountChoice
 								key={account.session.token}

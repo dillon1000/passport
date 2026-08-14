@@ -11,6 +11,7 @@ import { Link } from "react-router";
 
 import { authClient } from "@/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { DropdownMenu } from "@cloudflare/kumo";
 import { resolveAddAccountURL } from "@/lib/auth-flow";
 import { useAccountSwitch } from "@/lib/account-switch";
@@ -393,6 +394,7 @@ export function UserMenu({
 	const { data: session } = authClient.useSession();
 	const [open, setOpen] = useState(false);
 	const [accounts, setAccounts] = useState<DeviceAccount[]>([]);
+	const [accountsLoading, setAccountsLoading] = useState(false);
 	const [switching, setSwitching] = useState(false);
 	const beginAccountSwitch = useAccountSwitch((state) => state.begin);
 	const clearAccountSwitch = useAccountSwitch((state) => state.clear);
@@ -401,7 +403,10 @@ export function UserMenu({
 
 	useEffect(() => {
 		if (!open) return;
-		void loadDeviceAccounts().then(setAccounts);
+		setAccountsLoading(true);
+		void loadDeviceAccounts()
+			.then(setAccounts)
+			.finally(() => setAccountsLoading(false));
 	}, [open]);
 
 	/** Makes a browser account active, then reloads the current route under that session. */
@@ -460,6 +465,12 @@ export function UserMenu({
 						<span className="min-w-0 flex-1 truncate">{email}</span>
 						<span className="text-xs text-muted-foreground">Current</span>
 					</DropdownMenu.Item>
+					{accountsLoading ? (
+						<DropdownMenu.Item disabled className="!min-h-10 !gap-1.5 !rounded-md !px-1.5 !py-1 !text-sm">
+							<Loader size="sm" />
+							<span>Loading accounts…</span>
+						</DropdownMenu.Item>
+					) : null}
 					{otherAccounts.map((account) => (
 						<DropdownMenu.Item
 							key={account.session.token}

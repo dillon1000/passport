@@ -19,6 +19,7 @@ import { StatusBanner, type Status } from "@/components/auth/status";
 import { Wordmark } from "@/components/auth/wordmark";
 import { Button } from "@/components/kumo/primitives/button";
 import { Card, CardContent } from "@/components/kumo/primitives/card";
+import { Loader } from "@/components/kumo/primitives/loader";
 import { Separator } from "@/components/kumo/primitives/separator";
 import { authClient } from "@/auth-client";
 import {
@@ -471,6 +472,7 @@ export function SignIn() {
 							<ExistingSessionChoice
 								account={session.user}
 								otherAccounts={otherAccounts}
+								accountsLoading={accountsQuery.isPending}
 								callbackURL={callbackURL}
 								disabled={loading}
 									onChoose={continueSession}
@@ -702,6 +704,7 @@ function LastUsedBadge() {
 function ExistingSessionChoice({
 	account,
 	otherAccounts,
+	accountsLoading,
 	callbackURL,
 	disabled,
 	onChoose,
@@ -709,6 +712,7 @@ function ExistingSessionChoice({
 }: {
 	account: DeviceAccount["user"];
 	otherAccounts: DeviceAccount[];
+	accountsLoading: boolean;
 	callbackURL: string;
 	disabled: boolean;
 	onChoose: (sessionToken: string, account: DeviceAccount["user"]) => void;
@@ -727,6 +731,12 @@ function ExistingSessionChoice({
 					disabled={disabled}
 					onChoose={() => onChoose(currentSessionToken, account)}
 				/>
+				{accountsLoading ? (
+					<div className="flex min-h-16 items-center gap-3 rounded-lg border bg-background px-3 py-3 text-sm text-muted-foreground" role="status">
+						<Loader size="sm" />
+						Loading accounts…
+					</div>
+				) : null}
 				{otherAccounts.map((otherAccount) => (
 					<SessionChoice
 						key={otherAccount.session.token}
