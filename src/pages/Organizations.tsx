@@ -4,7 +4,7 @@
  * organizations and team records.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
 	Building2,
 	Check,
@@ -14,13 +14,13 @@ import {
 	RefreshCw,
 	Send,
 	Trash2,
-	Upload,
 	UserMinus,
 	UserPlus,
 } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";
+import { FilePicker } from "@/components/auth/file-picker";
 import { CheckboxField, Field, FieldInput } from "@/components/auth/field";
 import { type Section } from "@/components/auth/section-nav";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
@@ -580,15 +580,11 @@ export function Organizations() {
 	}
 
 	async function uploadDraftLogo(
-		event: ChangeEvent<HTMLInputElement>,
+		file: File,
 		purpose: "organization-logo" | "team-logo",
 		onUploaded: (logo: string) => void,
 		busyKey: string,
 	) {
-		const file = event.target.files?.[0];
-		event.target.value = "";
-		if (!file) return;
-
 		setBusy(busyKey);
 		setStatus(null);
 		try {
@@ -605,11 +601,8 @@ export function Organizations() {
 		}
 	}
 
-	async function updateOrganizationLogo(event: ChangeEvent<HTMLInputElement>) {
+	async function updateOrganizationLogo(file: File) {
 		if (!activeOrganization) return;
-		const file = event.target.files?.[0];
-		event.target.value = "";
-		if (!file) return;
 
 		setBusy("organization-logo");
 		setStatus(null);
@@ -639,11 +632,8 @@ export function Organizations() {
 		}
 	}
 
-	async function updateTeamLogo(event: ChangeEvent<HTMLInputElement>, teamId: string) {
+	async function updateTeamLogo(file: File, teamId: string) {
 		if (!activeOrganization) return;
-		const file = event.target.files?.[0];
-		event.target.value = "";
-		if (!file) return;
 
 		setBusy(`team-logo:${teamId}`);
 		setStatus(null);
@@ -802,14 +792,11 @@ export function Organizations() {
 									<div className="truncate text-sm font-medium">{activeOrganization.name}</div>
 									<div className="text-xs text-muted-foreground">Active organization logo</div>
 								</div>
-								<Field label="Upload organization logo" hint="PNG, JPG, GIF, or WebP up to 2 MB.">
-									<FieldInput
-										type="file"
-										accept="image/png,image/jpeg,image/gif,image/webp"
-										disabled={busy === "organization-logo"}
-										onChange={(event) => void updateOrganizationLogo(event)}
-									/>
-								</Field>
+								<FilePicker
+									label="Upload organization logo"
+									disabled={busy === "organization-logo"}
+									onFileSelect={updateOrganizationLogo}
+								/>
 							</div>
 						</div>
 					) : null}
@@ -859,21 +846,18 @@ export function Organizations() {
 											placeholder="/api/profile-images/..."
 										/>
 									</Field>
-									<Field label="Upload logo" hint="PNG, JPG, GIF, or WebP up to 2 MB.">
-										<FieldInput
-											type="file"
-											accept="image/png,image/jpeg,image/gif,image/webp"
-											disabled={busy === "new-organization-logo"}
-											onChange={(event) =>
-												void uploadDraftLogo(
-													event,
+									<FilePicker
+										label="Upload logo"
+										disabled={busy === "new-organization-logo"}
+										onFileSelect={(file) =>
+											void uploadDraftLogo(
+												file,
 													"organization-logo",
 													setNewLogo,
 													"new-organization-logo",
 												)
 											}
-										/>
-									</Field>
+									/>
 								</div>
 							</div>
 							<CheckboxField
@@ -1137,23 +1121,12 @@ export function Organizations() {
 													{formatDate(team.createdAt)}
 												</div>
 											</div>
-											<label
-												className={cn(
-													"inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-[0.8rem] font-medium shadow-xs transition-colors hover:bg-muted",
-													busy === `team-logo:${team.id}` &&
-														"pointer-events-none cursor-not-allowed opacity-50",
-												)}
-											>
-												<Upload className="size-3.5" />
-												Logo
-												<input
-													type="file"
-													accept="image/png,image/jpeg,image/gif,image/webp"
-													className="sr-only"
-													disabled={busy === `team-logo:${team.id}`}
-													onChange={(event) => void updateTeamLogo(event, team.id)}
-												/>
-											</label>
+											<FilePicker
+												compact
+												label="Logo"
+												disabled={busy === `team-logo:${team.id}`}
+												onFileSelect={(file) => updateTeamLogo(file, team.id)}
+											/>
 											<Button
 												variant="outline"
 												size="sm"
@@ -1283,16 +1256,13 @@ export function Organizations() {
 												disabled={!activeOrganization}
 											/>
 										</Field>
-										<Field label="Upload logo" hint="PNG, JPG, GIF, or WebP up to 2 MB.">
-											<FieldInput
-												type="file"
-												accept="image/png,image/jpeg,image/gif,image/webp"
-												disabled={!activeOrganization || busy === "new-team-logo"}
-												onChange={(event) =>
-													void uploadDraftLogo(event, "team-logo", setNewTeamLogo, "new-team-logo")
-												}
-											/>
-										</Field>
+										<FilePicker
+											label="Upload logo"
+											disabled={!activeOrganization || busy === "new-team-logo"}
+											onFileSelect={(file) =>
+												void uploadDraftLogo(file, "team-logo", setNewTeamLogo, "new-team-logo")
+											}
+										/>
 									</div>
 								</div>
 							</SheetBody>
