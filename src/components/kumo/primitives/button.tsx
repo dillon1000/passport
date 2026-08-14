@@ -13,10 +13,10 @@ type PassportButtonProps = Omit<React.ComponentProps<typeof KumoButton>, "varian
 };
 
 const variantMap = {
-	default: "secondary",
+	default: "primary",
 	secondary: "secondary",
 	ghost: "ghost",
-	destructive: "secondary",
+	destructive: "destructive",
 	outline: "outline",
 	link: "ghost",
 } as const;
@@ -24,11 +24,13 @@ const variantMap = {
 const sizeMap = { default: "base", xs: "xs", sm: "sm", lg: "lg", icon: "base", "icon-xs": "xs", "icon-sm": "sm", "icon-lg": "lg" } as const;
 
 const variantClasses = {
-	default: "!bg-primary !text-primary-foreground shadow-sm shadow-primary/20 hover:!bg-primary/90 active:!bg-primary",
+	// Kumo's emphasis variants render their own gradient layer, highlight edge,
+	// and pressed-state ring. Keep them free of Passport background overrides.
+	default: "",
 	outline: "!border !border-border !bg-background !text-foreground shadow-xs hover:!bg-muted",
 	secondary: "!bg-secondary !text-secondary-foreground hover:!bg-secondary/90",
 	ghost: "!bg-transparent !text-foreground hover:!bg-muted",
-	destructive: "!border !border-destructive/20 !bg-destructive/10 !text-destructive hover:!bg-destructive/20",
+	destructive: "",
 	link: "!bg-transparent !text-primary underline-offset-4 hover:!underline",
 } as const;
 
