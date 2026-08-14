@@ -20,7 +20,7 @@ vi.mock("@/components/kumo/primitives/dialog", () => {
 
 import { SecurityConfirmationDialog } from "./Security";
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const sourceRoots = ["src", "example-client/src"].map((sourceRoot) =>
 	path.join(projectRoot, sourceRoot),
 );
