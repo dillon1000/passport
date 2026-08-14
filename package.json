@@ -44,7 +44,7 @@
 		"@react-email/render": "^2.0.8",
 		"@tailwindcss/vite": "^4.3.1",
 		"@tanstack/react-query": "^5.101.0",
-		"better-auth": "^1.6.19",
+		"better-auth": "^1.6.22",
 		"cap-widget": "^0.1.56",
 		"clsx": "^2.1.1",
 		"drizzle-orm": "^0.45.2",
