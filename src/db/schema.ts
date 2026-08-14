@@ -503,6 +503,10 @@ export const oauthClient = pgTable(
     clientId: text("client_id").notNull().unique(),
     clientSecret: text("client_secret"),
     disabled: boolean("disabled").default(false),
+    // When enabled, the authorization flow issues codes only to Passport
+    // platform administrators. This is a Passport-owned access policy, not
+    // OAuth client metadata consumed by Better Auth.
+    platformAdminOnly: boolean("platform_admin_only").default(false).notNull(),
     skipConsent: boolean("skip_consent"),
     enableEndSession: boolean("enable_end_session"),
     subjectType: text("subject_type"),

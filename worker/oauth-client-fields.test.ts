@@ -73,4 +73,27 @@ describe("OAuth client Passport-owned fields", () => {
 			},
 		]);
 	});
+
+	it("keeps the platform-admin-only policy when listing Better Auth clients", () => {
+		const clients: OAuthClientSummary[] = [
+			{
+				clientId: "admin-app",
+				name: "Admin app",
+				redirectUris: ["https://app.example.com/callback"],
+			},
+		];
+
+		const merged = mergeOAuthClientPassportFields(clients, [
+			{
+				clientId: "admin-app",
+				backchannelLogoutUri: null,
+				platformAdminOnly: true,
+			},
+		]);
+
+		expect(merged[0]).toMatchObject({
+			clientId: "admin-app",
+			platformAdminOnly: true,
+		});
+	});
 });

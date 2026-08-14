@@ -28,7 +28,11 @@ import { isE164PhoneNumber, sendPhoneVerificationSMS } from "../../sms";
 import { CAPTCHA_ENDPOINTS } from "../captcha-endpoints";
 import { organizationAccessControl, organizationRoles } from "../organization-access";
 import { accountSecurityEmailPlugin } from "./hooks";
-import { oauthProviderPlugin, oauthResourceAuthorizationPlugin } from "./oauth";
+import {
+	oauthProviderPlugin,
+	oauthResourceAuthorizationPlugin,
+	platformAdminOnlyOAuthClientPlugin,
+} from "./oauth";
 import { optionalEnv, parseOptionalNumber } from "./env";
 import { buildStripePlugins } from "./stripe";
 import type { AuthDatabase } from "./types";
@@ -323,6 +327,7 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 			},
 		}),
 		oauthResourceAuthorizationPlugin(env, db),
+		platformAdminOnlyOAuthClientPlugin(env, db),
 		oauthProviderPlugin(env, db),
 		accountSecurityEmailPlugin(env, db),
 	];

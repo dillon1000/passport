@@ -12,6 +12,7 @@ export type OAuthClientPassportFields = {
 	backchannelLogoutUri: string | null;
 	grantTypes?: OAuthGrantType[] | null;
 	allowedAudiences?: string[] | null;
+	platformAdminOnly?: boolean;
 };
 
 export function mergeOAuthClientPassportFields(
@@ -34,6 +35,7 @@ export function mergeOAuthClientPassportFields(
 			backchannelLogoutUri: field?.backchannelLogoutUri ?? null,
 			grantTypes: field?.grantTypes ?? client.grantTypes,
 			allowedAudiences: field?.allowedAudiences ?? client.allowedAudiences,
+			platformAdminOnly: field?.platformAdminOnly ?? client.platformAdminOnly,
 		};
 	});
 }

@@ -120,6 +120,7 @@ export type OAuthClientSummary = {
 	policy?: string | null;
 	public?: boolean;
 	disabled?: boolean;
+	platformAdminOnly?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
@@ -443,6 +444,7 @@ export type CreateOAuthClientInput = {
 	tos?: string;
 	policy?: string;
 	public?: boolean;
+	platformAdminOnly?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
@@ -644,6 +646,7 @@ const baseCreateOAuthClientSchema = z.object({
 	policy: optionalOAuthURL,
 	public: z.boolean().optional(),
 	skipConsent: z.boolean().optional(),
+	platformAdminOnly: z.boolean().optional(),
 	enableEndSession: z.boolean().optional(),
 	backchannelLogoutUri: z.string().url().nullable().optional(),
 });
@@ -1756,6 +1759,7 @@ async function handleAdminOAuthClients(
 					redirectUris: client.redirectUris,
 					scopes: client.scopes,
 					public: client.public,
+					platformAdminOnly: client.platformAdminOnly,
 					grantTypes: client.grantTypes,
 					allowedAudiences: client.allowedAudiences,
 					skipConsent: client.skipConsent,

@@ -114,6 +114,7 @@ type OAuthClientAPIShape = {
 	scope?: string;
 	public?: boolean;
 	disabled?: boolean;
+	platform_admin_only?: boolean;
 	skip_consent?: boolean;
 	enable_end_session?: boolean;
 	grant_types?: OAuthGrantType[];
@@ -163,6 +164,7 @@ function mapOAuthClient(client: OAuthClientAPIShape): OAuthClientWithSecret {
 		policy: client.policy_uri,
 		public: client.public,
 		disabled: client.disabled,
+		platformAdminOnly: client.platform_admin_only,
 		skipConsent: client.skip_consent,
 		enableEndSession: client.enable_end_session,
 		grantTypes: client.grant_types,
@@ -190,6 +192,7 @@ function mapDatabaseClient(client: typeof schema.oauthClient.$inferSelect): OAut
 		policy: client.policy,
 		public: client.public ?? undefined,
 		disabled: client.disabled ?? undefined,
+		platformAdminOnly: client.platformAdminOnly,
 		skipConsent: client.skipConsent ?? undefined,
 		enableEndSession: client.enableEndSession ?? undefined,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
@@ -211,6 +214,7 @@ function redactClientSecret(client: OAuthClientWithSecret): OAuthClientSummary {
 		policy: client.policy,
 		public: client.public,
 		disabled: client.disabled,
+		platformAdminOnly: client.platformAdminOnly,
 		skipConsent: client.skipConsent,
 		enableEndSession: client.enableEndSession,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
@@ -269,6 +273,7 @@ async function createMachineOAuthClient(
 			tokenEndpointAuthMethod: "client_secret_basic",
 			public: false,
 			disabled: false,
+			platformAdminOnly: input.platformAdminOnly ?? false,
 			skipConsent: input.skipConsent,
 			enableEndSession: false,
 			userId: session.user.id,
@@ -306,6 +311,9 @@ async function updateMachineOAuthClient(
 	}
 	if (input.scopes !== undefined) update.scopes = input.scopes;
 	if (input.skipConsent !== undefined) update.skipConsent = input.skipConsent;
+	if (input.platformAdminOnly !== undefined) {
+		update.platformAdminOnly = input.platformAdminOnly;
+	}
 	if (input.enableEndSession !== undefined) update.enableEndSession = input.enableEndSession;
 	if (input.grantTypes !== undefined) update.grantTypes = input.grantTypes;
 	if (input.allowedAudiences !== undefined) {
@@ -336,6 +344,7 @@ async function persistOAuthClientPassportFields(
 		backchannelLogoutUri?: string | null;
 		grantTypes?: OAuthGrantType[];
 		allowedAudiences?: string[];
+		platformAdminOnly?: boolean;
 	},
 ) {
 	const update: Partial<typeof schema.oauthClient.$inferInsert> = {};
@@ -347,6 +356,9 @@ async function persistOAuthClientPassportFields(
 	}
 	if (input.allowedAudiences !== undefined) {
 		update.metadata = oauthClientMetadata(input.allowedAudiences);
+	}
+	if (input.platformAdminOnly !== undefined) {
+		update.platformAdminOnly = input.platformAdminOnly;
 	}
 	if (Object.keys(update).length === 0) return undefined;
 	await createDb(env as AuthEnv)
@@ -990,6 +1002,7 @@ const app = createWorkerApp({
 					backchannelLogoutUri: schema.oauthClient.backchannelLogoutUri,
 					grantTypes: schema.oauthClient.grantTypes,
 					allowedAudiences: schema.oauthClient.metadata,
+					platformAdminOnly: schema.oauthClient.platformAdminOnly,
 				})
 				.from(schema.oauthClient)
 				.where(
@@ -1007,6 +1020,7 @@ const app = createWorkerApp({
 						backchannelLogoutUri: field.backchannelLogoutUri,
 						grantTypes: oauthGrantTypesFromDatabase(field.grantTypes),
 						allowedAudiences: allowedAudiencesFromMetadata(field.allowedAudiences),
+						platformAdminOnly: field.platformAdminOnly,
 					})),
 				),
 			};
@@ -1038,6 +1052,7 @@ const app = createWorkerApp({
 				backchannelLogoutUri: input.backchannelLogoutUri,
 				grantTypes: input.grantTypes,
 				allowedAudiences: input.allowedAudiences,
+				platformAdminOnly: input.platformAdminOnly,
 			});
 			return storedFields === undefined ? created : { ...created, ...storedFields };
 		},
@@ -1070,6 +1085,7 @@ const app = createWorkerApp({
 				backchannelLogoutUri: input.backchannelLogoutUri,
 				grantTypes: input.grantTypes,
 				allowedAudiences: input.allowedAudiences,
+				platformAdminOnly: input.platformAdminOnly,
 			});
 			return storedFields === undefined ? updated : { ...updated, ...storedFields };
 		},

@@ -3,8 +3,12 @@
  * seed JSON, supported scope definitions, and user claim context from the
  * database; output is the configured Better Auth OAuth provider plugin.
  */
-import { oauthProvider } from "@better-auth/oauth-provider";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { getOAuthProviderState, oauthProvider } from "@better-auth/oauth-provider";
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import * as schema from "../../db/schema";
@@ -37,6 +41,17 @@ import {
 	type SupportedOAuthScope,
 } from "../oauth-scopes";
 import type { AuthDatabase } from "./types";
+
+const OAUTH_INTERACTION_PATHS = new Set([
+	"/oauth2/authorize",
+	"/oauth2/consent",
+	"/oauth2/continue",
+]);
+
+type OAuthInteractionContext = {
+	path?: string;
+	query?: { client_id?: string };
+};
 
 const emptyOAuthClaimContext: OAuthClaimContext = {
 	organizations: [],
@@ -105,6 +120,53 @@ function tokenRequestValues(value: unknown) {
 
 function oauthTokenRequestBody(value: unknown) {
 	return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+async function oauthClientIdFromInteraction(context: OAuthInteractionContext) {
+	if (context.query?.client_id) return context.query.client_id;
+	const state = await getOAuthProviderState();
+	return state?.query ? new URLSearchParams(state.query).get("client_id") ?? undefined : undefined;
+}
+
+/**
+ * Rejects a signed-in non-admin before the provider can issue an authorization
+ * code for a client that has the Passport platform-admin-only policy enabled.
+ * Unauthenticated requests continue to the provider's normal login page, then
+ * re-enter this check after sign-in. Consent and account-selection continuations
+ * are included so an existing OAuth interaction cannot bypass the policy.
+ */
+export function platformAdminOnlyOAuthClientPlugin(env: AuthEnv, db: AuthDatabase) {
+	return {
+		id: "platform-admin-only-oauth-client",
+		hooks: {
+			before: [
+				{
+					matcher: (context: OAuthInteractionContext) =>
+						OAUTH_INTERACTION_PATHS.has(context.path ?? ""),
+					handler: createAuthMiddleware(async (context) => {
+						const clientId = await oauthClientIdFromInteraction(context);
+						if (!clientId) return;
+
+						const [client] = await db
+							.select({ platformAdminOnly: schema.oauthClient.platformAdminOnly })
+							.from(schema.oauthClient)
+							.where(eq(schema.oauthClient.clientId, clientId))
+							.limit(1);
+						if (!client?.platformAdminOnly) return;
+
+						const session = await getSessionFromCtx(context);
+						if (!session || isAdminOperator(env, session.user)) return;
+
+						throw new APIError("FORBIDDEN", {
+							error: "access_denied",
+							error_description:
+								"This application is available only to platform administrators.",
+						});
+					}),
+				},
+			],
+		},
+	};
 }
 
 function configuredOAuthResources(env: AuthEnv) {

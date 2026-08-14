@@ -104,6 +104,7 @@ type OAuthClientSummary = {
 	policy?: string | null;
 	public?: boolean;
 	disabled?: boolean;
+	platformAdminOnly?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
@@ -124,6 +125,7 @@ type ClientDraft = {
 	tos: string;
 	policy: string;
 	skipConsent: boolean;
+	platformAdminOnly: boolean;
 	enableEndSession: boolean;
 	backchannelLogoutUri: string;
 };
@@ -238,6 +240,7 @@ function clientDraft(client?: OAuthClientSummary): ClientDraft {
 		tos: client?.tos ?? "",
 		policy: client?.policy ?? "",
 		skipConsent: Boolean(client?.skipConsent),
+		platformAdminOnly: Boolean(client?.platformAdminOnly),
 		enableEndSession: Boolean(client?.enableEndSession),
 		backchannelLogoutUri: client?.backchannelLogoutUri ?? "",
 	};
@@ -436,6 +439,7 @@ export function Applications() {
 				policy: newClient.policy || undefined,
 				public: newClient.clientType === "m2m" ? false : newClientPublic,
 				skipConsent: newClient.skipConsent,
+				platformAdminOnly: newClient.platformAdminOnly,
 				enableEndSession: newClient.enableEndSession,
 				backchannelLogoutUri: newClient.backchannelLogoutUri.trim() || undefined,
 			}),
@@ -479,6 +483,7 @@ export function Applications() {
 				tos: draft.tos || undefined,
 				policy: draft.policy || undefined,
 				skipConsent: draft.skipConsent,
+				platformAdminOnly: draft.platformAdminOnly,
 				enableEndSession: draft.enableEndSession,
 				backchannelLogoutUri: draft.backchannelLogoutUri.trim() || null,
 			}),
@@ -835,13 +840,23 @@ export function Applications() {
 													</div>
 													<div className="flex flex-wrap items-end justify-between gap-3 pt-1">
 														<div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
-															<CheckboxField
-																label="Skip consent"
-																checked={draft.skipConsent}
-																onCheckedChange={(value) =>
-																	setDraft(client.clientId, { skipConsent: value })
-																}
-															/>
+										<CheckboxField
+											label="Skip consent"
+											checked={draft.skipConsent}
+											onCheckedChange={(value) =>
+												setDraft(client.clientId, { skipConsent: value })
+											}
+										/>
+										{draft.clientType === "browser" ? (
+											<CheckboxField
+												label="Platform admins only"
+												hint="Only platform admins can sign in to this app."
+												checked={draft.platformAdminOnly}
+												onCheckedChange={(value) =>
+													setDraft(client.clientId, { platformAdminOnly: value })
+												}
+											/>
+										) : null}
 															<CheckboxField
 															label={<OIDCLogoutLabel enabled={false} />}
 																checked={draft.enableEndSession}
@@ -1061,14 +1076,24 @@ export function Applications() {
 														onCheckedChange={setNewClientPublic}
 													/>
 												)}
-												<CheckboxField
-													label="Skip consent"
-													checked={newClient.skipConsent}
-													onCheckedChange={(value) =>
-														setNewClient((current) => ({ ...current, skipConsent: value }))
-													}
-												/>
-												<CheckboxField
+										<CheckboxField
+											label="Skip consent"
+											checked={newClient.skipConsent}
+											onCheckedChange={(value) =>
+												setNewClient((current) => ({ ...current, skipConsent: value }))
+											}
+										/>
+										{newClient.clientType === "browser" ? (
+											<CheckboxField
+												label="Platform admins only"
+												hint="Only platform admins can sign in to this app."
+												checked={newClient.platformAdminOnly}
+												onCheckedChange={(value) =>
+													setNewClient((current) => ({ ...current, platformAdminOnly: value }))
+												}
+											/>
+										) : null}
+										<CheckboxField
 													label={<OIDCLogoutLabel enabled />}
 													checked={newClient.enableEndSession}
 													onCheckedChange={(value) =>
