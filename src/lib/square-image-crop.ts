@@ -13,8 +13,8 @@ export type SquareCropGeometry = {
 
 /**
  * Calculates a contained crop that shows the entire image at the initial zoom.
- * Higher zoom values preserve the image aspect ratio and enable panning once
- * the image extends past the square's bounds.
+ * Higher zoom values preserve the image aspect ratio. The image can move
+ * within either its empty space or its overflow past the square's bounds.
  */
 export function squareCropGeometry(sourceWidth: number, sourceHeight: number, edge: number, zoom: number): SquareCropGeometry {
 	const scale = Math.min(edge / sourceWidth, edge / sourceHeight) * zoom;
@@ -24,8 +24,8 @@ export function squareCropGeometry(sourceWidth: number, sourceHeight: number, ed
 	return {
 		drawWidth,
 		drawHeight,
-		maxOffsetX: Math.max(0, (drawWidth - edge) / 2),
-		maxOffsetY: Math.max(0, (drawHeight - edge) / 2),
+		maxOffsetX: Math.abs(drawWidth - edge) / 2,
+		maxOffsetY: Math.abs(drawHeight - edge) / 2,
 	};
 }
 

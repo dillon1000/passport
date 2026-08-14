@@ -86,6 +86,7 @@ function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEdi
 
 	function startDrag(event: PointerEvent<HTMLDivElement>) {
 		if (!geometry) return;
+		event.preventDefault();
 		event.currentTarget.setPointerCapture(event.pointerId);
 		dragStart.current = { offset, pointerX: event.clientX, pointerY: event.clientY };
 	}

@@ -8,7 +8,7 @@ describe("squareCropGeometry", () => {
 			drawWidth: 320,
 			drawHeight: 160,
 			maxOffsetX: 0,
-			maxOffsetY: 0,
+			maxOffsetY: 80,
 		});
 	});
 
