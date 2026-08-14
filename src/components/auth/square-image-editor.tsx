@@ -132,13 +132,22 @@ function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEdi
 					<img
 						ref={imageRef}
 						src={imageURL}
-						alt="Image crop preview"
-						draggable={false}
+						alt=""
 						onLoad={(event) => setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
 						onError={() => setError("This image could not be opened.")}
-						className="pointer-events-none absolute top-1/2 left-1/2 max-w-none"
-						style={geometry ? { height: geometry.drawHeight, transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`, width: geometry.drawWidth } : undefined}
+						className="sr-only"
 					/>
+					{geometry ? (
+						<div
+							aria-hidden="true"
+							className="pointer-events-none absolute inset-0 bg-no-repeat"
+							style={{
+								backgroundImage: `url(${imageURL})`,
+								backgroundPosition: `calc(50% + ${offset.x}px) calc(50% + ${offset.y}px)`,
+								backgroundSize: `${geometry.drawWidth}px ${geometry.drawHeight}px`,
+							}}
+						/>
+					) : null}
 				</div>
 				<label className="mt-5 grid gap-2 text-sm font-medium">
 					Zoom
