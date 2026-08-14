@@ -64,7 +64,7 @@ export function CaptchaChallenge({
 	}
 
 	return (
-		<div className="flex justify-center">
+		<div className="w-full">
 			<cap-widget
 				key={`${config.siteKey}-${resetKey}`}
 				ref={widgetRef}
@@ -75,9 +75,12 @@ export function CaptchaChallenge({
 				data-cap-i18n-solved-label="Sign-in verified"
 				data-cap-i18n-error-label="Verification failed"
 				style={{
+					display: "block",
+					width: "100%",
 					"--cap-background": "var(--card)",
 					"--cap-border-color": "var(--border)",
 					"--cap-border-radius": "var(--radius)",
+					"--cap-widget-width": "100%",
 					"--cap-color": "var(--foreground)",
 					"--cap-checkbox-background": "var(--background)",
 					"--cap-checkbox-border": "1px solid var(--input)",
