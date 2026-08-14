@@ -87,6 +87,6 @@ export {
 	UserXmark as UserMinus,
 	WarningTriangle as TriangleAlert,
 	Network as Webhook,
-	X,
+	Xmark as X,
 	XmarkCircle as XCircle,
 } from "iconoir-react";
