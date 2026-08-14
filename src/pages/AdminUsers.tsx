@@ -299,9 +299,6 @@ export function AdminUsers() {
 				<SettingsCard
 					title="Promote admin"
 					description="Grant the admin role by exact user email."
-					footer={
-						<SettingsCardFooter hint="Role changes are written through the audited admin endpoint." />
-					}
 				>
 					<form onSubmit={promoteUser} className="flex flex-col gap-3 sm:flex-row sm:items-end">
 						<Field label="User email" className="min-w-0 flex-1">
@@ -324,7 +321,6 @@ export function AdminUsers() {
 			<section id="users" className="scroll-mt-32">
 				<SettingsCard
 					title="User governance"
-					description="Better Auth admin APIs enforce access; this page only exposes the operator workflow."
 					footer={
 						<SettingsCardFooter
 							hint={

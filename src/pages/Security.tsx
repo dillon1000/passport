@@ -544,7 +544,7 @@ export function Security() {
 								title="Passkeys"
 								description="Add a named passkey for phishing-resistant, passwordless sign-in on this device."
 								footer={
-									<SettingsCardFooter hint="Stored securely on your device.">
+									<SettingsCardFooter>
 										<Button variant="outline" size="sm" type="submit" disabled={busy}>
 											<KeyRound className="size-4" />
 											Add passkey
@@ -828,7 +828,6 @@ export function Security() {
 							<SettingsCard
 								title="Connected Accounts"
 								description="Social providers linked to this Passport account."
-								footer={<SettingsCardFooter hint="Better Auth prevents unlinking the last sign-in method." />}
 							>
 								<ul className="divide-y rounded-lg border">
 									{SOCIAL_PROVIDERS.map((provider) => {

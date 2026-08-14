@@ -194,7 +194,6 @@ export function Settings() {
 				<SettingsCard
 					title="Profile Display"
 					description="Choose the text shown beside your avatar in the top bar."
-					footer={<SettingsCardFooter hint="Changes apply instantly." />}
 				>
 					<ProfileFlairSetting />
 				</SettingsCard>
@@ -273,7 +272,6 @@ export function Settings() {
 				<SettingsCard
 					title="Legal"
 					description={`Privacy Policy and Terms of Service. Updated ${legalUpdatedAt}.`}
-					footer={<SettingsCardFooter hint="Opens in a side drawer." />}
 				>
 					<div className="grid gap-3 sm:grid-cols-2">
 						<LegalButton

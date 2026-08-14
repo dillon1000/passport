@@ -243,7 +243,6 @@ export function Account() {
 				<SettingsCard
 					title="User ID"
 					description="The stable subject identifier issued in tokens."
-					footer={<SettingsCardFooter hint="Used by clients to reference your account." />}
 				>
 					<ClipboardText
 						text={user.id}

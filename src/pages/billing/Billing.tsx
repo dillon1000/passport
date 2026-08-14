@@ -108,7 +108,7 @@ export function Billing() {
 		<BillingShell
 			user={user}
 			title="Billing"
-			description="Manage subscriptions, plans, and one-time purchases backed by Stripe."
+			description="Manage subscriptions, plans, and one-time purchases."
 			subnav={
 				<div className="flex items-center justify-between gap-3 py-1">
 					<BillingNav user={user} />
