@@ -8,6 +8,7 @@ import { Image as ImageIcon, Upload } from "@/lib/icons";
 
 import { Label } from "@/components/kumo/primitives/label";
 import { cn } from "@/lib/utils";
+import { SquareImageEditor } from "./square-image-editor";
 
 const ACCEPTED_IMAGE_TYPES = "image/png,image/jpeg,image/gif,image/webp";
 
@@ -23,10 +24,17 @@ export function FilePicker({ label, onFileSelect, disabled = false, compact = fa
 	const inputId = useId();
 	const descriptionId = `${inputId}-description`;
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
+	const [fileToCrop, setFileToCrop] = useState<File | null>(null);
 
-	/** Updates the local affordance before the caller starts its upload workflow. */
+	/** Opens the square editor before any caller receives an image for upload. */
 	function selectFile(file: File | null) {
 		if (!file || disabled) return;
+		setFileToCrop(file);
+	}
+
+	/** Stores the edited file locally, then starts the existing caller-owned upload workflow. */
+	function completeCrop(file: File) {
+		setFileToCrop(null);
 		setSelectedFile(file);
 		void onFileSelect(file);
 	}
@@ -43,6 +51,7 @@ export function FilePicker({ label, onFileSelect, disabled = false, compact = fa
 
 	if (compact) {
 		return (
+			<>
 			<label
 				htmlFor={inputId}
 				onDragOver={(event) => event.preventDefault()}
@@ -64,10 +73,13 @@ export function FilePicker({ label, onFileSelect, disabled = false, compact = fa
 				<Upload className="size-3.5" aria-hidden="true" />
 				{selectedFile ? "Replace logo" : label}
 			</label>
+			<SquareImageEditor file={fileToCrop} onCancel={() => setFileToCrop(null)} onComplete={completeCrop} />
+			</>
 		);
 	}
 
 	return (
+		<>
 		<div className={cn("space-y-1.5", className)}>
 			<Label htmlFor={inputId}>{label}</Label>
 			<input
@@ -105,5 +117,7 @@ export function FilePicker({ label, onFileSelect, disabled = false, compact = fa
 				</span>
 			</label>
 		</div>
+		<SquareImageEditor file={fileToCrop} onCancel={() => setFileToCrop(null)} onComplete={completeCrop} />
+		</>
 	);
 }
