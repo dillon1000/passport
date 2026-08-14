@@ -17,6 +17,7 @@ import { constrainSquareCropOffset, squareCropGeometry } from "@/lib/square-imag
 
 const EDITOR_EDGE = 320;
 const OUTPUT_EDGE = 512;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 3;
 
 type ImageDimensions = { height: number; width: number };
@@ -120,7 +121,7 @@ function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEdi
 			<DialogContent className="w-[calc(100vw-2rem)] max-w-md" showCloseButton={!isSaving}>
 				<DialogHeader>
 					<DialogTitle>Adjust image</DialogTitle>
-					<DialogDescription>The whole image starts in view. Drag to position it, then use the slider to zoom.</DialogDescription>
+					<DialogDescription>Drag to position the image. Zoom out to leave space for circular profile pictures.</DialogDescription>
 				</DialogHeader>
 				<div
 					className="relative mx-auto mt-5 size-80 max-w-full touch-none overflow-hidden rounded-lg bg-muted select-none"
@@ -153,7 +154,7 @@ function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEdi
 					Zoom
 					<input
 						type="range"
-						min="1"
+						min={MIN_ZOOM}
 						max={MAX_ZOOM}
 						step="0.01"
 						value={zoom}
