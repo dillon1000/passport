@@ -931,7 +931,7 @@ export function Applications() {
 							if (open) setCreateClientStep("details");
 						}}
 					>
-						<SheetContent pushed={oidcSheetOpen}>
+						<SheetContent className="[--sheet-width:68rem]" pushed={oidcSheetOpen}>
 							<form onSubmit={createClient} className="flex min-h-0 flex-1 flex-col">
 								<SheetHeader>
 									<SheetTitle>Register OAuth client</SheetTitle>
