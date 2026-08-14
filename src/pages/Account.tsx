@@ -1,5 +1,5 @@
-import { useState, type ChangeEvent, type FormEvent } from "react";
-import { MailPlus, Save, Upload } from "@/lib/icons";
+import { useId, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
+import { Image as ImageIcon, MailPlus, Save, Upload } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitive
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Button } from "@/components/kumo/primitives/button";
 import { ClipboardText } from "@/components/kumo/primitives/clipboard-text";
+import { Label } from "@/components/kumo/primitives/label";
 import { normalizeEmailChangeValue } from "@/lib/account";
 import { uploadProfileImageAsset } from "@/lib/image-upload";
 import { initialsOf, useRequireSession } from "@/lib/session";
@@ -51,6 +52,8 @@ export function Account() {
 	const [newEmail, setNewEmail] = useState("");
 	const [imageURL, setImageURL] = useState<string | null>(null);
 	const [imageFile, setImageFile] = useState<File | null>(null);
+	const imageInputId = useId();
+	const imageInputDescriptionId = `${imageInputId}-description`;
 	const user = session?.user as AccountUser | undefined;
 
 	async function updateProfile(event: FormEvent<HTMLFormElement>) {
@@ -95,6 +98,12 @@ export function Account() {
 
 	function selectImage(event: ChangeEvent<HTMLInputElement>) {
 		setImageFile(event.target.files?.[0] ?? null);
+	}
+
+	/** Selects the first dropped image so dropping and browsing use one upload state. */
+	function dropImage(event: DragEvent<HTMLLabelElement>) {
+		event.preventDefault();
+		setImageFile(event.dataTransfer.files?.[0] ?? null);
 	}
 
 	async function uploadProfileImage(event: FormEvent<HTMLFormElement>) {
@@ -237,13 +246,39 @@ export function Account() {
 										<AvatarImage src={imageURL ?? user.image ?? undefined} />
 										<AvatarFallback>{initialsOf(user.name)}</AvatarFallback>
 									</Avatar>
-									<Field label="Image file" className="flex-1">
-										<FieldInput
+									<div className="min-w-0 flex-1 space-y-1.5">
+										<Label htmlFor={imageInputId}>Image file</Label>
+										<input
+											id={imageInputId}
 											type="file"
+											className="sr-only"
 											accept="image/png,image/jpeg,image/gif,image/webp"
+											aria-describedby={imageInputDescriptionId}
 											onChange={selectImage}
 										/>
-									</Field>
+										<label
+											htmlFor={imageInputId}
+											onDragOver={(event) => event.preventDefault()}
+											onDrop={dropImage}
+											className="group flex min-h-20 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-input bg-muted/30 p-3 transition-[border-color,background-color,transform] duration-150 ease-out hover:border-ring/70 hover:bg-muted/50 active:scale-[0.96] focus-within:border-ring focus-within:bg-muted/50 focus-within:ring-3 focus-within:ring-ring/35"
+										>
+											<span className="grid size-10 shrink-0 place-items-center rounded-lg bg-background text-muted-foreground shadow-xs transition-[color,background-color] duration-150 group-hover:bg-primary/10 group-hover:text-primary">
+												<ImageIcon className="size-5" aria-hidden="true" />
+											</span>
+											<span className="min-w-0 flex-1">
+												<span className="block truncate text-sm font-medium text-foreground">
+													{imageFile ? imageFile.name : "Choose a profile picture"}
+												</span>
+												<span id={imageInputDescriptionId} className="mt-0.5 block text-xs text-muted-foreground" aria-live="polite">
+													{imageFile ? "Ready to upload" : "Drop an image here or browse your files"}
+												</span>
+											</span>
+											<span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-xs font-medium text-foreground shadow-xs transition-[background-color,transform] duration-150 group-hover:bg-muted group-active:scale-[0.96]">
+												<Upload className="size-3.5" aria-hidden="true" />
+												Browse
+											</span>
+										</label>
+									</div>
 								</div>
 							</SettingsCard>
 						</form>
