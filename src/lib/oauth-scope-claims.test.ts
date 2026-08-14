@@ -21,6 +21,8 @@ const env = {
 
 const user = {
 	id: "user_123",
+	email: "dillon@example.com",
+	role: "user",
 	image: "/api/profile-images/profile-images/user_123/avatar.png",
 	username: "dillon",
 	displayUsername: "Dillon",
@@ -193,6 +195,24 @@ describe("OAuth scope claims", () => {
 		expect(buildAccessTokenScopeClaims(env, user, ["openid"], context)).toEqual({});
 	});
 
+	it("adds platform administrator status only when the client requests its dedicated scope", () => {
+		const adminEnv = { ...env, ADMIN_USER_IDS: user.id };
+
+		expect(buildIDTokenScopeClaims(adminEnv, user, ["openid", "platform:admin"])).toMatchObject({
+			[oauthClaimURL(adminEnv, "platform_admin")]: true,
+		});
+		expect(buildUserInfoScopeClaims(adminEnv, user, ["platform:admin"], context)).toEqual({
+			[oauthClaimURL(adminEnv, "platform_admin")]: true,
+		});
+		expect(buildAccessTokenScopeClaims(adminEnv, user, ["platform:admin"], context)).toEqual({
+			[oauthClaimURL(adminEnv, "platform_admin")]: true,
+		});
+		expect(buildAccessTokenScopeClaims(env, user, ["platform:admin"], context)).toEqual({
+			[oauthClaimURL(env, "platform_admin")]: false,
+		});
+		expect(buildAccessTokenScopeClaims(adminEnv, user, ["openid"], context)).toEqual({});
+	});
+
 	it("adds minimal account security claims when consented", () => {
 		expect(buildUserInfoScopeClaims(env, user, ["account:security"], context)).toEqual({
 			[oauthClaimURL(env, "mfa_enabled")]: true,
@@ -347,6 +367,7 @@ describe("OAuth scope claims", () => {
 				"https://passport.test/claims/roles",
 				"https://passport.test/claims/permissions",
 				"https://passport.test/claims/entitlements",
+				"https://passport.test/claims/platform_admin",
 				"https://passport.test/claims/mfa_enabled",
 				"https://passport.test/claims/passkey_enabled",
 				"https://passport.test/claims/connections",

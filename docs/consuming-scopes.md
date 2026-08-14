@@ -135,6 +135,7 @@ For signature verification, introspection, and revocation guidance, see [Token V
 | `teams` | Detailed `teams`, plus `team_ids` and relevant `organization_ids` |
 | `teams:ids` | `team_ids` only |
 | `permissions` | Tenant-scoped `roles`, `permissions`, and `entitlements` |
+| `platform:admin` | `platform_admin`, a boolean that identifies Passport platform administrators |
 | `account:security` | `mfa_enabled` and `passkey_enabled` |
 | `connections` | Connected-provider metadata without provider access or refresh tokens |
 | `profile:write` | Update the subject's profile and manage their profile picture through `/api/v1` |

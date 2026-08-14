@@ -9,6 +9,7 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import * as schema from "../db/schema";
 import type { createDb } from "../db/client";
 import type { AuthEnv } from "../env";
+import { isAdminOperator } from "./admin-access";
 import { billingPlanCatalog, type BillingPlanCatalog } from "./billing";
 import { loadBillingPlans } from "./billing-plan-store";
 import {
@@ -18,12 +19,15 @@ import {
 } from "./billing-claims";
 import { buildOAuthPolicyClaims } from "./oauth-policy";
 
-type ClaimEnv = Pick<AuthEnv, "BETTER_AUTH_URL">;
+type ClaimEnv = Pick<AuthEnv, "BETTER_AUTH_URL"> &
+	Partial<Pick<AuthEnv, "ADMIN_EMAILS" | "ADMIN_USER_IDS">>;
 type ClaimContextEnv = Pick<AuthEnv, "STRIPE_BILLING_PLANS">;
 type OAuthClaimDatabase = ReturnType<typeof createDb>;
 
 export type OAuthClaimUser = {
 	id: string;
+	email?: string | null;
+	role?: string | null;
 	image?: string | null;
 	username?: string | null;
 	displayUsername?: string | null;
@@ -156,6 +160,7 @@ export function oauthClaimsSupported(env: ClaimEnv) {
 		oauthClaimURL(env, "roles"),
 		oauthClaimURL(env, "permissions"),
 		oauthClaimURL(env, "entitlements"),
+		oauthClaimURL(env, "platform_admin"),
 		oauthClaimURL(env, "mfa_enabled"),
 		oauthClaimURL(env, "passkey_enabled"),
 		oauthClaimURL(env, "connections"),
@@ -253,6 +258,15 @@ function policyClaims(env: ClaimEnv, scopes: readonly string[], context: OAuthCl
 	};
 }
 
+/** Returns platform-administrator status only after the client requests its dedicated scope. */
+function platformAdminClaim(env: ClaimEnv, user: OAuthClaimUser, scopes: readonly string[]) {
+	if (!hasScope(scopes, "platform:admin")) return {};
+
+	return {
+		[oauthClaimURL(env, "platform_admin")]: isAdminOperator(env, user),
+	};
+}
+
 function accountSecurityClaims(
 	env: ClaimEnv,
 	user: OAuthClaimUser,
@@ -330,6 +344,7 @@ export function buildIDTokenScopeClaims(
 		...pictureClaim(env, user, scopes),
 		...usernameClaim(user, scopes),
 		...phoneClaim(user, scopes),
+		...platformAdminClaim(env, user, scopes),
 	};
 }
 
@@ -349,6 +364,7 @@ export function buildUserInfoScopeClaims(
 		...(hasScope(scopes, "teams") ? { [oauthClaimURL(env, "teams")]: context.teams } : {}),
 		...compactMembershipClaims(env, scopes, context),
 		...policyClaims(env, scopes, context),
+		...platformAdminClaim(env, user, scopes),
 		...accountSecurityClaims(env, user, scopes, context),
 		...connectionClaims(env, scopes, context),
 		...billingClaims(env, scopes, context),
@@ -366,6 +382,7 @@ export function buildAccessTokenScopeClaims(
 	return {
 		...compactMembershipClaims(env, scopes, context),
 		...policyClaims(env, scopes, context),
+		...platformAdminClaim(env, user, scopes),
 		...accountSecurityClaims(env, user, scopes, context),
 		...billingClaims(env, scopes, context),
 	};

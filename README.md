@@ -211,6 +211,7 @@ Passport advertises standard OIDC scopes plus Passport-specific scopes through d
 - `teams` - read team memberships inside organizations.
 - `teams:ids` - read only team IDs.
 - `permissions` - read tenant-scoped policy outputs for roles, permissions, and reserved entitlements.
+- `platform:admin` - read whether the signed-in user is a Passport platform administrator. This scope is excluded from dynamic client registration; an administrator must explicitly assign it to an approved client.
 - `account:security` - read minimal MFA/passkey enrollment state.
 - `connections` - read connected social provider account metadata without provider tokens.
 - `profile:write` - update the current user's name or username and manage their profile picture.
@@ -241,6 +242,7 @@ Standard profile data and Passport custom data are emitted as standard OIDC clai
 - `{issuer}/claims/roles`
 - `{issuer}/claims/permissions`
 - `{issuer}/claims/entitlements`
+- `{issuer}/claims/platform_admin`
 - `{issuer}/claims/mfa_enabled`
 - `{issuer}/claims/passkey_enabled`
 - `{issuer}/claims/connections`

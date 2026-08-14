@@ -31,6 +31,7 @@ export const PASSPORT_CUSTOM_OAUTH_SCOPES = [
 	"team-members:read",
 	"team-members:write",
 	"permissions",
+	"platform:admin",
 	"account:security",
 	"connections",
 	"billing:status",
@@ -265,6 +266,13 @@ export const OAUTH_SCOPE_DEFINITIONS: Record<SupportedOAuthScope, OAuthScopeDefi
 		label: "Permissions",
 		description: "Reads computed roles, permissions, and entitlements.",
 		consent: "Read your app permissions",
+		category: "account",
+	},
+	"platform:admin": {
+		scope: "platform:admin",
+		label: "Platform administrator status",
+		description: "Reads whether the signed-in user is a Passport platform administrator.",
+		consent: "Read your Passport administrator status",
 		category: "account",
 	},
 	"account:security": {

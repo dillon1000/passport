@@ -91,6 +91,7 @@ const SCOPE_ICONS: Record<SupportedOAuthScope, ComponentType<{ className?: strin
 	"team-members:read": UsersRound,
 	"team-members:write": UsersRound,
 	permissions: ShieldCheck,
+	"platform:admin": ShieldCheck,
 	"account:security": Fingerprint,
 	connections: Link2,
 	"billing:status": CreditCard,

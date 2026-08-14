@@ -37,6 +37,7 @@ describe("OAuth scope registry", () => {
 			"team-members:read",
 			"team-members:write",
 			"permissions",
+			"platform:admin",
 			"account:security",
 			"connections",
 			"billing:status",
@@ -87,7 +88,7 @@ describe("OAuth scope registry", () => {
 			"billing:manage",
 		]);
 		expect(supportedScopeString()).toBe(
-			"openid profile email phone offline_access profile:picture profile:username profile:write organizations organizations:ids organizations:roles organizations:write organization-invitations:read organization-invitations:write organization-members:read organization-members:write teams teams:ids teams:write team-members:read team-members:write permissions account:security connections billing:status billing:subscriptions billing:purchases billing:entitlements billing:limits billing:checkout billing:manage",
+			"openid profile email phone offline_access profile:picture profile:username profile:write organizations organizations:ids organizations:roles organizations:write organization-invitations:read organization-invitations:write organization-members:read organization-members:write teams teams:ids teams:write team-members:read team-members:write permissions platform:admin account:security connections billing:status billing:subscriptions billing:purchases billing:entitlements billing:limits billing:checkout billing:manage",
 		);
 	});
 
