@@ -28,10 +28,12 @@ ADMIN_EMAILS=
 # Optional comma-separated Better Auth user IDs that can use Better Auth admin plugin APIs.
 ADMIN_USER_IDS=
 
-# Optional CAPTCHA protection. When CAPTCHA_SECRET_KEY is empty, the plugin is not enabled.
-CAPTCHA_PROVIDER=cloudflare-turnstile
+# Optional Cap CAPTCHA protection. Keep the secret only in this local file or
+# Cloudflare secrets; the API endpoint includes the public site key.
+CAPTCHA_PROVIDER=cap
 CAPTCHA_SECRET_KEY=
 CAPTCHA_SITE_KEY=
+CAPTCHA_API_ENDPOINT=
 CAPTCHA_SITE_VERIFY_URL=
 CAPTCHA_MIN_SCORE=
 

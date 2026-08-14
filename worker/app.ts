@@ -542,6 +542,7 @@ type PublicEnv = Env & {
 	CAPTCHA_PROVIDER?: string;
 	CAPTCHA_SECRET_KEY?: string;
 	CAPTCHA_SITE_KEY?: string;
+	CAPTCHA_API_ENDPOINT?: string;
 	ADMIN_USER_IDS?: string;
 	STRIPE_BILLING_PLANS?: string;
 };
@@ -877,13 +878,15 @@ function captchaConfig(env: Env) {
 	const publicEnv = env as PublicEnv;
 	const secretKey = publicEnv.CAPTCHA_SECRET_KEY?.trim();
 	const siteKey = publicEnv.CAPTCHA_SITE_KEY?.trim();
-	if (!secretKey || !siteKey) {
+	const apiEndpoint = publicEnv.CAPTCHA_API_ENDPOINT?.trim();
+	if (!secretKey || !siteKey || !apiEndpoint) {
 		return { enabled: false };
 	}
 	return {
 		enabled: true,
 		provider: publicEnv.CAPTCHA_PROVIDER?.trim() || "cloudflare-turnstile",
 		siteKey,
+		apiEndpoint,
 	};
 }
 

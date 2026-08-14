@@ -15,8 +15,9 @@ type CaptchaConfigResponse =
 	  }
 	| {
 			enabled: true;
-			provider: string;
-			siteKey: string;
+		provider: string;
+		siteKey: string;
+		apiEndpoint: string;
 	  };
 
 export type CaptchaConfig = {
@@ -24,6 +25,7 @@ export type CaptchaConfig = {
 	enabled: boolean;
 	provider?: string;
 	siteKey?: string;
+	apiEndpoint?: string;
 };
 
 export type CaptchaFetchOptions = {
@@ -46,6 +48,7 @@ async function loadCaptchaConfig(): Promise<CaptchaConfig> {
 					enabled: true,
 					provider: payload.provider,
 					siteKey: payload.siteKey,
+					apiEndpoint: payload.apiEndpoint,
 				}
 			: disabledCaptchaConfig;
 	} catch {

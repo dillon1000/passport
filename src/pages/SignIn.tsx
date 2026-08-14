@@ -609,7 +609,6 @@ export function SignIn() {
 									<CaptchaChallenge
 										config={captchaConfig}
 										resetKey={captchaResetKey}
-										action={mode}
 										onTokenChange={setCaptchaToken}
 									/>
 								</>

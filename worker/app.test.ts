@@ -474,9 +474,10 @@ describe("createWorkerApp", () => {
 	it("returns public captcha config when both server and site keys are configured", async () => {
 		const requestEnv = {
 			...createEnv(),
-			CAPTCHA_PROVIDER: "cloudflare-turnstile",
+			CAPTCHA_PROVIDER: "cap",
 			CAPTCHA_SECRET_KEY: "server-secret",
 			CAPTCHA_SITE_KEY: "site-key",
+			CAPTCHA_API_ENDPOINT: "https://captcha.test/site-key/",
 		};
 		const app = createWorkerApp({
 			authHandler: vi.fn(() => new Response("auth")),
@@ -488,16 +489,18 @@ describe("createWorkerApp", () => {
 		expect(response.headers.get("cache-control")).toBe("public, max-age=60");
 		expect(await response.json()).toEqual({
 			enabled: true,
-			provider: "cloudflare-turnstile",
+			provider: "cap",
 			siteKey: "site-key",
+			apiEndpoint: "https://captcha.test/site-key/",
 		});
 	});
 
 	it("hides captcha config when the secret key is not configured", async () => {
 		const requestEnv = {
 			...createEnv(),
-			CAPTCHA_PROVIDER: "cloudflare-turnstile",
+			CAPTCHA_PROVIDER: "cap",
 			CAPTCHA_SITE_KEY: "site-key",
+			CAPTCHA_API_ENDPOINT: "https://captcha.test/site-key/",
 		};
 		const app = createWorkerApp({
 			authHandler: vi.fn(() => new Response("auth")),

@@ -49,6 +49,7 @@ export type AuthEnv = Env & {
 	CAPTCHA_PROVIDER?: string;
 	CAPTCHA_SECRET_KEY?: string;
 	CAPTCHA_SITE_KEY?: string;
+	CAPTCHA_API_ENDPOINT?: string;
 	CAPTCHA_SITE_VERIFY_URL?: string;
 	CAPTCHA_MIN_SCORE?: string;
 	AZURE_COMMUNICATION_CONNECTION_STRING?: string;

@@ -6,7 +6,7 @@
  */
 import { agentAuth, type Capability } from "@better-auth/agent-auth";
 import { passkey } from "@better-auth/passkey";
-import { captcha, lastLoginMethod, type CaptchaOptions } from "better-auth/plugins";
+import { captcha, lastLoginMethod } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { jwt } from "better-auth/plugins/jwt";
 import { magicLink } from "better-auth/plugins/magic-link";
@@ -62,16 +62,19 @@ export function socialProviders(env: AuthEnv) {
 }
 
 const CAPTCHA_PROVIDERS = [
+	"cap",
 	"cloudflare-turnstile",
 	"google-recaptcha",
 	"hcaptcha",
 	"captchafox",
-] as const satisfies CaptchaOptions["provider"][];
+] as const;
 
-function captchaProvider(value: string | undefined): CaptchaOptions["provider"] {
+type CaptchaProvider = (typeof CAPTCHA_PROVIDERS)[number];
+
+function captchaProvider(value: string | undefined): CaptchaProvider {
 	const provider = optionalEnv(value) ?? "cloudflare-turnstile";
-	if (CAPTCHA_PROVIDERS.includes(provider as CaptchaOptions["provider"])) {
-		return provider as CaptchaOptions["provider"];
+	if (CAPTCHA_PROVIDERS.includes(provider as CaptchaProvider)) {
+		return provider as CaptchaProvider;
 	}
 	throw new TypeError(
 		`CAPTCHA_PROVIDER must be one of: ${CAPTCHA_PROVIDERS.join(", ")}.`,
@@ -89,6 +92,20 @@ function captchaPlugins(env: AuthEnv) {
 		endpoints: [...CAPTCHA_ENDPOINTS],
 		...(siteVerifyURLOverride ? { siteVerifyURLOverride } : {}),
 	};
+	if (provider === "cap") {
+		if (!siteVerifyURLOverride) {
+			throw new TypeError("CAPTCHA_SITE_VERIFY_URL must be set when CAPTCHA_PROVIDER is cap.");
+		}
+		// Cap's verification endpoint accepts the same JSON request and success
+		// response that Better Auth uses for Turnstile. This preserves the
+		// existing endpoint protection without placing Cap's secret in the client.
+		return [
+			captcha({
+				...baseOptions,
+				provider: "cloudflare-turnstile",
+			}),
+		];
+	}
 
 	if (provider === "google-recaptcha") {
 		const minScore = parseOptionalNumber(env.CAPTCHA_MIN_SCORE, "CAPTCHA_MIN_SCORE");
