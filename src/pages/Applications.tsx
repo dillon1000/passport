@@ -4,7 +4,7 @@
  * paginated Worker APIs and keeps client edit drafts local until an admin saves.
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
 	AppWindow,
 	ArrowRight,
@@ -25,6 +25,7 @@ import {
 } from "@/lib/icons";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
+import { FilePicker } from "@/components/auth/file-picker";
 import { CheckboxField, Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { ScopeBuilder } from "@/components/auth/scope-builder";
 import { type Section } from "@/components/auth/section-nav";
@@ -550,14 +551,10 @@ export function Applications() {
 	}
 
 	async function uploadApplicationPicture(
-		event: ChangeEvent<HTMLInputElement>,
+		file: File,
 		onUploaded: (image: string) => void,
 		busyKey: string,
 	) {
-		const file = event.target.files?.[0];
-		event.target.value = "";
-		if (!file) return;
-
 		setBusy(busyKey);
 		setStatus(null);
 		try {
@@ -756,9 +753,9 @@ export function Applications() {
 														value={draft.icon}
 														busy={busy === `upload-picture:${client.clientId}`}
 														onURLChange={(icon) => setDraft(client.clientId, { icon })}
-														onFileChange={(event) =>
-															void uploadApplicationPicture(
-																event,
+				onFileSelect={(file) =>
+					void uploadApplicationPicture(
+						file,
 																(icon) => setDraft(client.clientId, { icon }),
 																`upload-picture:${client.clientId}`,
 															)
@@ -1000,9 +997,9 @@ export function Applications() {
 												onURLChange={(icon) =>
 													setNewClient((current) => ({ ...current, icon }))
 												}
-												onFileChange={(event) =>
-													void uploadApplicationPicture(
-														event,
+						onFileSelect={(file) =>
+							void uploadApplicationPicture(
+								file,
 														(icon) => setNewClient((current) => ({ ...current, icon })),
 														"upload-picture:new-client",
 													)
@@ -1649,12 +1646,12 @@ function ClientPictureField({
 	value,
 	busy,
 	onURLChange,
-	onFileChange,
+	onFileSelect,
 }: {
 	value: string;
 	busy: boolean;
 	onURLChange: (value: string) => void;
-	onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+	onFileSelect: (file: File) => void | Promise<void>;
 }) {
 	return (
 		<div className="flex items-start gap-3 rounded-xl border bg-background p-3">
@@ -1668,14 +1665,7 @@ function ClientPictureField({
 						placeholder="https://app.example.com/icon.png"
 					/>
 				</Field>
-				<Field label="Upload picture" hint="PNG, JPG, GIF, or WebP up to 2 MB.">
-					<FieldInput
-						type="file"
-						accept="image/png,image/jpeg,image/gif,image/webp"
-						disabled={busy}
-						onChange={onFileChange}
-					/>
-					</Field>
+				<FilePicker label="Upload picture" disabled={busy} onFileSelect={onFileSelect} />
 					{busy ? (
 						<Skeleton className="h-3 w-24" />
 					) : null}
