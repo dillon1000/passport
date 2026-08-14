@@ -28,6 +28,8 @@ type SquareImageEditorProps = {
 	onComplete: (file: File) => void;
 };
 
+type SquareImageEditorSessionProps = Omit<SquareImageEditorProps, "file"> & { file: File };
+
 /** Converts the square preview into the uploaded JPEG while retaining its crop. */
 async function createCroppedFile(image: HTMLImageElement, file: File, zoom: number, offset: CropOffset) {
 	const canvas = document.createElement("canvas");
@@ -52,7 +54,7 @@ async function createCroppedFile(image: HTMLImageElement, file: File, zoom: numb
 	return new File([blob], `${stem}-square.jpg`, { type: "image/jpeg" });
 }
 
-function SquareImageEditorSession({ file, onCancel, onComplete }: Required<SquareImageEditorProps>) {
+function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEditorSessionProps) {
 	const imageRef = useRef<HTMLImageElement>(null);
 	const dragStart = useRef<{ offset: CropOffset; pointerX: number; pointerY: number } | null>(null);
 	const [imageURL] = useState(() => URL.createObjectURL(file));
