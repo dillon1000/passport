@@ -157,7 +157,7 @@ export function SignIn() {
 	);
 	const verificationCallbackURL = "/account?verified=1";
 	const copy = copyFor(mode);
-	const authActionsDisabled = loading || (mode !== "reset" && !captchaConfig.loaded);
+	const authActionsDisabled = loading;
 	const signupPasswordReady =
 		mode !== "signup" || isPasswordConfirmationReady(password, confirmPassword);
 	const signupConfirmationError =
