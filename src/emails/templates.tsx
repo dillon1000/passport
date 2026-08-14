@@ -64,8 +64,7 @@ function EmailLayout({ preview, children }: { preview: string; children: React.R
 					{children}
 					<Section style={{ borderTop: `1px solid ${colors.border}`, marginTop: "32px", paddingTop: "16px" }}>
 						<Text style={{ color: colors.muted, fontSize: "12px", lineHeight: "18px", margin: 0 }}>
-							{brand.name} — {brand.descriptor}. If you weren&apos;t expecting this email, you can safely
-							ignore it.
+							If you did not request this email, you can safely ignore it.
 						</Text>
 					</Section>
 				</Container>
@@ -200,7 +199,7 @@ export function OrganizationInvitationEmail({
 		<EmailLayout preview={`${inviterName} invited you to join ${organizationName} on ${brand.name}`}>
 			<Heading2>Join {organizationName}</Heading2>
 			<Paragraph>
-				{inviterName} invited you to join {organizationName} on {brand.name}.
+				{inviterName} invited you to join {organizationName} on {brand.name}. Accept the invitation to get started.
 			</Paragraph>
 			<ActionButton url={url} label="Accept invitation" />
 		</EmailLayout>
@@ -218,8 +217,7 @@ export function SecurityAlertEmail({
 		<EmailLayout preview={`${event} on ${brand.name}`}>
 			<Heading2>{event}</Heading2>
 			<Paragraph>
-				This security notification was generated because something changed on your {brand.name}
-				account.
+				We noticed this activity on your {brand.name} account. Review the details below and secure your account if you do not recognize it.
 			</Paragraph>
 			<DetailList metadata={metadata} />
 		</EmailLayout>
@@ -237,8 +235,7 @@ export function DataExportRequestedEmail({
 		<EmailLayout preview={`A ${brand.name} data export was requested`}>
 			<Heading2>Data export requested</Heading2>
 			<Paragraph>
-				A request was made to export the data associated with your {brand.name} account. The
-				export waits 15 minutes before it is prepared.
+				A data export was requested for your {brand.name} account. We will begin preparing it in 15 minutes.
 			</Paragraph>
 			<DetailList metadata={metadata} />
 			<ActionButton url={cancelURL} label="Review or cancel request" />
@@ -259,7 +256,7 @@ export function DataExportReadyEmail({
 		<EmailLayout preview={`Your ${brand.name} data export is ready`}>
 			<Heading2>Data export ready</Heading2>
 			<Paragraph>
-				Your account data export is ready. The download page expires{" "}
+				Your data export is ready to download. The link expires{" "}
 				{new Date(expiresAt).toLocaleString()}.
 			</Paragraph>
 			<DetailList metadata={metadata} />
@@ -272,7 +269,7 @@ export function OTPEmail({ otp }: { otp: string }) {
 	return (
 		<EmailLayout preview={`Your ${brand.name} verification code`}>
 			<Heading2>Verification code</Heading2>
-			<Paragraph>Enter this code to finish signing in. It expires shortly.</Paragraph>
+			<Paragraph>Enter this code to finish signing in. It expires shortly. Do not share it with anyone.</Paragraph>
 			<Section style={{ margin: "24px 0" }}>
 				<Text
 					style={{
