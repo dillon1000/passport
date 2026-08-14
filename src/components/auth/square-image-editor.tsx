@@ -38,6 +38,9 @@ async function createCroppedFile(image: HTMLImageElement, file: File, zoom: numb
 	const context = canvas.getContext("2d");
 	if (!context) throw new Error("Your browser cannot prepare this image.");
 
+	// JPEG has no transparency, so letterboxed images need a stable background.
+	context.fillStyle = "#ffffff";
+	context.fillRect(0, 0, OUTPUT_EDGE, OUTPUT_EDGE);
 	const geometry = squareCropGeometry(image.naturalWidth, image.naturalHeight, OUTPUT_EDGE, zoom);
 	const offsetScale = OUTPUT_EDGE / EDITOR_EDGE;
 	context.drawImage(
@@ -116,7 +119,7 @@ function SquareImageEditorSession({ file, onCancel, onComplete }: SquareImageEdi
 			<DialogContent className="w-[calc(100vw-2rem)] max-w-md" showCloseButton={!isSaving}>
 				<DialogHeader>
 					<DialogTitle>Adjust image</DialogTitle>
-					<DialogDescription>Drag to position the image, then use the slider to zoom.</DialogDescription>
+					<DialogDescription>The whole image starts in view. Drag to position it, then use the slider to zoom.</DialogDescription>
 				</DialogHeader>
 				<div
 					className="relative mx-auto mt-5 size-80 max-w-full touch-none overflow-hidden rounded-lg bg-muted select-none"
