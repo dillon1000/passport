@@ -79,6 +79,9 @@
 	--accent: oklch(0.967 0.004 264);
 	--accent-foreground: oklch(0.255 0.012 264);
 	--destructive: oklch(0.585 0.21 27.3);
+	/* Kumo's destructive button keeps its gradient, while this darker label
+	   maintains readable text across the full red surface. */
+	--destructive-foreground: oklch(0.22 0.012 264);
 	--success: oklch(0.696 0.17 162);
 	--border: oklch(0.917 0.004 264);
 	--input: oklch(0.914 0.004 264);
@@ -501,6 +504,7 @@ input {
 	--accent: oklch(0.292 0.008 264);
 	--accent-foreground: oklch(0.96 0.002 264);
 	--destructive: oklch(0.7 0.19 22.2);
+	--destructive-foreground: oklch(0.22 0.012 264);
 	--success: oklch(0.696 0.17 162);
 	--border: oklch(1 0 0 / 9%);
 	--input: oklch(1 0 0 / 12%);

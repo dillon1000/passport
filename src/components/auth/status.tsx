@@ -29,7 +29,6 @@ export function StatusBanner({ status }: { status: Status | null }) {
 	// instance lets a later failure with the same message open a new dialog.
 	const [dismissedStatus, setDismissedStatus] = useState<Status | null>(null);
 	const lastStatusKey = useRef("");
-	const statusKey = status ? `${status.tone}:${status.message}` : "";
 	const errorDialogOpen = status?.tone === "error" && dismissedStatus !== status;
 
 	useEffect(() => {

@@ -25,12 +25,13 @@ const sizeMap = { default: "base", xs: "xs", sm: "sm", lg: "lg", icon: "base", "
 
 const variantClasses = {
 	// Kumo's emphasis variants render their own gradient layer, highlight edge,
-	// and pressed-state ring. Keep them free of Passport background overrides.
-	default: "",
+	// and pressed-state ring. Keep that texture while supplying foreground colors
+	// that follow Passport's light and dark theme tokens.
+	default: "!text-primary-foreground",
 	outline: "!border !border-border !bg-background !text-foreground shadow-xs hover:!bg-muted",
 	secondary: "!bg-secondary !text-secondary-foreground hover:!bg-secondary/90",
 	ghost: "!bg-transparent !text-foreground hover:!bg-muted",
-	destructive: "",
+	destructive: "!text-[var(--destructive-foreground)]",
 	link: "!bg-transparent !text-primary underline-offset-4 hover:!underline",
 } as const;
 
