@@ -25,10 +25,12 @@ export interface Status {
  * toasts, so transient messages do not occupy page layout space.
  */
 export function StatusBanner({ status }: { status: Status | null }) {
-	const [dismissedStatusKey, setDismissedStatusKey] = useState("");
+	// Status objects represent individual outcomes. Retaining the dismissed
+	// instance lets a later failure with the same message open a new dialog.
+	const [dismissedStatus, setDismissedStatus] = useState<Status | null>(null);
 	const lastStatusKey = useRef("");
 	const statusKey = status ? `${status.tone}:${status.message}` : "";
-	const errorDialogOpen = status?.tone === "error" && dismissedStatusKey !== statusKey;
+	const errorDialogOpen = status?.tone === "error" && dismissedStatus !== status;
 
 	useEffect(() => {
 		if (!status) {
@@ -49,7 +51,7 @@ export function StatusBanner({ status }: { status: Status | null }) {
 	return (
 		<Dialog
 			open={errorDialogOpen}
-			onOpenChange={(open) => !open && setDismissedStatusKey(statusKey)}
+			onOpenChange={(open) => !open && setDismissedStatus(status)}
 		>
 			<DialogContent>
 				<DialogHeader>
@@ -60,7 +62,7 @@ export function StatusBanner({ status }: { status: Status | null }) {
 					<DialogDescription>{status?.message}</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<Button type="button" onClick={() => setDismissedStatusKey(statusKey)}>
+					<Button type="button" onClick={() => setDismissedStatus(status)}>
 						Close
 					</Button>
 				</DialogFooter>
