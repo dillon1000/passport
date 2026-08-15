@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router";
 
 import { About } from "@/pages/About";
+import { ScratchShell } from "@/pages/__ScratchShell";
 import { AdminAudit } from "@/pages/AdminAudit";
 import { Account } from "@/pages/Account";
 import { AdminUsers } from "@/pages/AdminUsers";
@@ -37,6 +38,10 @@ export const appRoutes = [
 	{
 		path: "/about",
 		element: <About />,
+	},
+	{
+		path: "/__scratch",
+		element: <ScratchShell />,
 	},
 	{
 		path: "/account",

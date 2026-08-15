@@ -46,6 +46,7 @@ export {
 	Mail,
 	MailIn as MailPlus,
 	MailOpen as MailCheck,
+	Menu,
 	NavArrowDown as ChevronDown,
 	NavArrowRight as ChevronRight,
 	Network,

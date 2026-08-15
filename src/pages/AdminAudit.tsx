@@ -135,14 +135,14 @@ export function AdminAudit() {
 													{event.targetLabel ?? event.targetId ?? event.targetType}
 												</span>
 											</div>
-											<dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-												<div className="flex gap-1.5">
+											<dl className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+												<div className="flex min-w-0 gap-1.5">
 													<dt className="text-muted-foreground/70">Actor</dt>
-													<dd>{event.actorEmail ?? event.actorUserId ?? "Unknown"}</dd>
+													<dd className="min-w-0 break-all">{event.actorEmail ?? event.actorUserId ?? "Unknown"}</dd>
 												</div>
-												<div className="flex gap-1.5">
+												<div className="flex min-w-0 gap-1.5">
 													<dt className="text-muted-foreground/70">Target</dt>
-													<dd className="font-mono">
+													<dd className="min-w-0 font-mono break-all">
 														{event.targetType}:{event.targetId ?? "unknown"}
 													</dd>
 												</div>

@@ -440,10 +440,10 @@ export function Agents() {
 											<Badge variant="secondary">{agent.mode}</Badge>
 											<StatusPill status={agent.status} />
 										</div>
-										<dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-											<div className="flex gap-1.5">
+										<dl className="mt-1 flex min-w-0 flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+											<div className="flex min-w-0 gap-1.5">
 												<dt className="text-muted-foreground/70">ID</dt>
-												<dd className="font-mono">{agent.agent_id}</dd>
+												<dd className="min-w-0 font-mono break-all">{agent.agent_id}</dd>
 											</div>
 											<div className="flex gap-1.5">
 												<dt className="text-muted-foreground/70">Host</dt>
@@ -565,7 +565,7 @@ export function Agents() {
 										<dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
 											<div className="flex gap-1.5">
 												<dt className="text-muted-foreground/70">ID</dt>
-												<dd className="font-mono">{host.id}</dd>
+												<dd className="min-w-0 font-mono break-all">{host.id}</dd>
 											</div>
 											<div className="flex gap-1.5">
 												<dt className="text-muted-foreground/70">Last used</dt>

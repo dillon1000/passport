@@ -1267,7 +1267,7 @@ export function SortablePlanItem({
 export function PricingTable({ matrix }: { matrix: ReturnType<typeof buildPricingMatrix> }) {
 	return (
 		<div className="overflow-x-auto rounded-lg border">
-			<table className="w-full border-collapse text-xs">
+			<table className="w-full min-w-[30rem] border-collapse text-xs">
 				<thead>
 					<tr className="border-b bg-muted/40">
 						<th className="px-2.5 py-2 text-left font-medium text-muted-foreground"> </th>

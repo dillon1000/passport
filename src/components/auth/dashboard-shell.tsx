@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 
 import { AuthShell } from "@/components/auth/auth-shell";
 import { DashboardNav } from "@/components/auth/dashboard-nav";
-import { SectionNav, type Section } from "@/components/auth/section-nav";
+import { SectionNav, SectionNavDrawer, type Section } from "@/components/auth/section-nav";
 import { SignOutDialog } from "@/components/auth/sign-out-dialog";
 import { UserMenu } from "@/components/auth/user-menu";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
@@ -65,12 +65,19 @@ export function DashboardShell({
 					</div>
 
 					{sections ? (
-						<div className="grid gap-8 lg:grid-cols-[180px_1fr]">
-							<aside className="hidden lg:block">
-								<SectionNav sections={sections} />
-							</aside>
-							<div className="min-w-0 space-y-6">{user ? children : <ContentSkeleton />}</div>
-						</div>
+						<>
+							{/* Sits above the grid rather than inside it: a sticky grid item
+							    only travels within its own row, so it would unpin instantly. */}
+							<div className="sticky top-[calc(3.5rem+2.75rem)] z-[5] -mx-4 -mt-2 bg-background/80 px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden">
+								<SectionNavDrawer sections={sections} />
+							</div>
+							<div className="grid gap-6 lg:grid-cols-[180px_1fr] lg:gap-8">
+								<aside className="hidden lg:block">
+									<SectionNav sections={sections} />
+								</aside>
+								<div className="min-w-0 space-y-6">{user ? children : <ContentSkeleton />}</div>
+							</div>
+						</>
 					) : (
 						<div className="space-y-6">{user ? children : <ContentSkeleton />}</div>
 					)}

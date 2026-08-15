@@ -49,6 +49,12 @@ export function navRank(pathname: string): [number, number] | null {
 	return [page, indexOf(billingNav, pathname) ?? 0];
 }
 
+/** The nav item that owns `pathname`, for naming the current page on a menu trigger. */
+export function activeNavItem(items: NavItem[], pathname: string): NavItem | null {
+	const index = indexOf(items, pathname);
+	return index === null ? null : items[index];
+}
+
 /** Index of the longest nav href that owns `pathname`, so `/billing/plans` beats `/billing`. */
 function indexOf(items: NavItem[], pathname: string): number | null {
 	let match: number | null = null;

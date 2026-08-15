@@ -386,14 +386,14 @@ export function AdminUsers() {
 												)}
 												{user.banned ? <Badge variant="destructive">Banned</Badge> : null}
 											</div>
-											<dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-												<div className="flex gap-1.5">
+											<dl className="mt-1 flex min-w-0 flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+												<div className="flex min-w-0 gap-1.5">
 													<dt className="text-muted-foreground/70">Email</dt>
-													<dd>{user.email}</dd>
+													<dd className="min-w-0 break-all">{user.email}</dd>
 												</div>
-												<div className="flex gap-1.5">
+												<div className="flex min-w-0 gap-1.5">
 													<dt className="text-muted-foreground/70">ID</dt>
-													<dd className="font-mono">{user.id}</dd>
+													<dd className="min-w-0 font-mono break-all">{user.id}</dd>
 												</div>
 												{user.banned ? (
 													<div className="flex gap-1.5">
