@@ -43,7 +43,10 @@ import {
 } from "@/lib/password-confirmation";
 import { initialsOf } from "@/lib/session";
 import { useAccountSwitch } from "@/lib/account-switch";
-import { withViewTransition } from "@/lib/view-transition";
+import {
+	withDirectionalViewTransition,
+	withViewTransition,
+} from "@/lib/view-transition";
 import { isWebAssemblyAvailable } from "@/lib/webassembly";
 import {
 	discoverSignInMethods,
@@ -118,6 +121,7 @@ export function SignIn() {
 	const resetToken = searchParams.get("token");
 	const formRef = useRef<HTMLFormElement>(null);
 	const conditionalPasskeyStarted = useRef(false);
+	const skipNextStepTransition = useRef(false);
 	const [mode, setMode] = useState<Mode>(
 		resetToken ? "reset" : searchParams.get("flow") === "reset-password" ? "recovery" : "signin",
 	);
@@ -273,10 +277,16 @@ export function SignIn() {
 		setFieldError(null);
 		setStatus(null);
 		setLoading(true);
+		const skipTransition = skipNextStepTransition.current;
+		skipNextStepTransition.current = false;
 		try {
 			const methods = await discoverSignInMethods(credentialValue);
 			setSignInMethods(methods);
-			withViewTransition(() => setSignInStep("methods"));
+			if (skipTransition) {
+				setSignInStep("methods");
+			} else {
+				withDirectionalViewTransition(() => setSignInStep("methods"), "forward");
+			}
 		} catch (error) {
 			setFieldError({
 				target: "credential",
@@ -377,6 +387,7 @@ export function SignIn() {
 	}
 
 	function handleShortcut(event: KeyboardEvent<HTMLFormElement>) {
+		if (event.key === "Enter") skipNextStepTransition.current = true;
 		if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
 			event.preventDefault();
 			formRef.current?.requestSubmit();
@@ -553,7 +564,7 @@ export function SignIn() {
 	return (
 		<AuthShell focused>
 			<div className="flex flex-col items-center gap-6">
-				<Card className="w-full">
+				<Card className="w-full [view-transition-name:auth-step]">
 					<CardContent className="space-y-5 p-7">
 						<div className="space-y-7">
 							<Wordmark className="h-7" />
@@ -627,12 +638,19 @@ export function SignIn() {
 										<button
 											type="button"
 											className="inline-flex max-w-full items-center gap-2 rounded-full border bg-background py-1.5 pr-3 pl-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-											onClick={() => {
+											onClick={(event) => {
 												setFieldError(null);
 												setPassword("");
 												setCaptchaEscalated(false);
 												setSignInMethods(null);
-												withViewTransition(() => setSignInStep("identifier"));
+												if (event.detail === 0) {
+													setSignInStep("identifier");
+												} else {
+													withDirectionalViewTransition(
+														() => setSignInStep("identifier"),
+														"backward",
+													);
+												}
 											}}
 										>
 											<span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-xs uppercase">
