@@ -2,13 +2,14 @@
  * Runtime captcha challenge renderer. It receives public captcha config and
  * emits the token Better Auth expects in the `x-captcha-response` header.
  */
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import "cap-widget";
 
-import type { CaptchaConfig } from "@/lib/captcha-config";
+import type { CaptchaConfig, CaptchaSolver } from "@/lib/captcha-config";
 
 type CapWidgetElement = HTMLElement & {
-	solve: () => Promise<{ success: boolean; token: string }>;
+	solve: () => Promise<{ success: boolean; token: string } | undefined>;
+	readonly tokenValue?: string | null;
 };
 
 declare module "react" {
@@ -30,27 +31,46 @@ export function CaptchaChallenge({
 	config,
 	resetKey,
 	onTokenChange,
+	solverRef,
 	invisible = false,
 	escalated = false,
-	reserveSpace = true,
 }: {
 	config: CaptchaConfig;
 	resetKey: number;
 	onTokenChange: (token: string) => void;
-	/** Solves Cap in the background while keeping a stable fallback slot. */
+	/** Shares one in-flight solve with form submission and background work. */
+	solverRef: RefObject<CaptchaSolver | null>;
+	/** Solves Cap in the background until the session needs a visible challenge. */
 	invisible?: boolean;
 	/** Shows the interactive widget after the session needs extra verification. */
 	escalated?: boolean;
-	/** Keeps the interactive fallback from moving later controls when it appears. */
-	reserveSpace?: boolean;
 }) {
 	const widgetRef = useRef<CapWidgetElement>(null);
+	const solvePromiseRef = useRef<Promise<string> | null>(null);
 
 	useEffect(() => {
 		const widget = widgetRef.current;
-		if (!widget) return;
+		if (!widget) {
+			solverRef.current = null;
+			return;
+		}
+		const activeWidget = widget;
 
-	function handleSolve(event: Event) {
+		function solveChallenge() {
+			if (solvePromiseRef.current) return solvePromiseRef.current;
+			const solvePromise = activeWidget
+				.solve()
+				.then((result) => result?.token ?? activeWidget.tokenValue ?? "")
+				.catch(() => "")
+				.finally(() => {
+					if (solvePromiseRef.current === solvePromise) solvePromiseRef.current = null;
+				});
+			solvePromiseRef.current = solvePromise;
+			return solvePromise;
+		}
+		solverRef.current = solveChallenge;
+
+		function handleSolve(event: Event) {
 			const token = (event as CustomEvent<{ token: string }>).detail.token;
 			onTokenChange(token);
 		}
@@ -58,18 +78,20 @@ export function CaptchaChallenge({
 			onTokenChange("");
 		}
 
-		widget.addEventListener("solve", handleSolve);
-		widget.addEventListener("error", clearToken);
-		widget.addEventListener("reset", clearToken);
+		activeWidget.addEventListener("solve", handleSolve);
+		activeWidget.addEventListener("error", clearToken);
+		activeWidget.addEventListener("reset", clearToken);
 		if (invisible && !escalated) {
-			void widget.solve().catch(clearToken);
+			void solveChallenge();
 		}
 		return () => {
-			widget.removeEventListener("solve", handleSolve);
-			widget.removeEventListener("error", clearToken);
-			widget.removeEventListener("reset", clearToken);
+			if (solverRef.current === solveChallenge) solverRef.current = null;
+			solvePromiseRef.current = null;
+			activeWidget.removeEventListener("solve", handleSolve);
+			activeWidget.removeEventListener("error", clearToken);
+			activeWidget.removeEventListener("reset", clearToken);
 		};
-	}, [config.enabled, config.siteKey, escalated, invisible, onTokenChange, resetKey]);
+	}, [config.enabled, config.siteKey, escalated, invisible, onTokenChange, resetKey, solverRef]);
 
 	if (!config.enabled) return null;
 
@@ -82,7 +104,7 @@ export function CaptchaChallenge({
 	}
 
 	return (
-		<div className={invisible && reserveSpace ? "relative min-h-14 w-full" : "w-full"}>
+		<div className="w-full">
 			<cap-widget
 				key={`${config.siteKey}-${resetKey}`}
 				ref={widgetRef}

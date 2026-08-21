@@ -34,6 +34,8 @@ export type CaptchaFetchOptions = {
 	};
 };
 
+export type CaptchaSolver = () => Promise<string>;
+
 const disabledCaptchaConfig: CaptchaConfig = {
 	loaded: true,
 	enabled: false,
@@ -83,4 +85,21 @@ export function captchaFetchOptions(
 			"x-captcha-response": token,
 		},
 	};
+}
+
+/**
+ * Resolves the token already in state or waits for the widget's current solve.
+ * A null result means the protected action must pause for configuration or an
+ * interactive challenge; undefined means captcha protection is disabled.
+ */
+export async function resolveCaptchaFetchOptions(
+	config: CaptchaConfig,
+	token: string,
+	solve: CaptchaSolver | null,
+): Promise<CaptchaFetchOptions | null | undefined> {
+	if (!config.loaded) return null;
+	if (!config.enabled) return undefined;
+
+	const resolvedToken = token || (await solve?.()) || "";
+	return resolvedToken ? captchaFetchOptions(config, resolvedToken) : null;
 }
