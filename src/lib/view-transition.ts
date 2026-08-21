@@ -5,6 +5,8 @@
  * animate. Both paths degrade to an immediate update when motion is reduced or
  * the browser does not support the API.
  */
+import { flushSync } from "react-dom";
+
 type StartViewTransition = (callback: () => void) => unknown;
 export type ViewTransitionDirection = "forward" | "backward";
 
@@ -44,7 +46,12 @@ function startViewTransition(
 	}
 
 	try {
-		const transition = doc.startViewTransition(update) as { finished?: Promise<unknown> };
+		// React normally batches state updates. Commit inside the capture callback
+		// so the browser snapshots the complete next view instead of exposing it
+		// for one unmanaged frame after the transition starts.
+		const transition = doc.startViewTransition(() => flushSync(update)) as {
+			finished?: Promise<unknown>;
+		};
 		if (transition.finished) {
 			void transition.finished.catch(() => undefined).finally(clearDirection);
 		} else {
