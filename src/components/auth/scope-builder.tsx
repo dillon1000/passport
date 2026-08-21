@@ -50,14 +50,24 @@ export function ScopeBuilder({
 	value,
 	onValueChange,
 	onCopyError,
+	availableScopes = SUPPORTED_OAUTH_SCOPES,
+	title = "Scopes",
+	description,
 }: {
 	value: readonly string[];
 	onValueChange: (value: SupportedOAuthScope[]) => void;
 	onCopyError?: (message: string) => void;
+	availableScopes?: readonly string[];
+	title?: string;
+	description?: string;
 }) {
 	const legendId = useId();
 	const selectedScopes = new Set(value);
-	const selectedSupportedScopes = SUPPORTED_OAUTH_SCOPES.filter((scope) => selectedScopes.has(scope));
+	const availableScopeSet = new Set(availableScopes);
+	const selectableScopes = SUPPORTED_OAUTH_SCOPES.filter((scope) =>
+		availableScopeSet.has(scope),
+	);
+	const selectedSupportedScopes = selectableScopes.filter((scope) => selectedScopes.has(scope));
 	const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
 	const copyResetTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,7 +80,7 @@ export function ScopeBuilder({
 
 	function setScope(scope: SupportedOAuthScope, checked: boolean) {
 		onValueChange(
-			SUPPORTED_OAUTH_SCOPES.filter((candidate) =>
+			selectableScopes.filter((candidate) =>
 				candidate === scope ? checked : selectedScopes.has(candidate),
 			),
 		);
@@ -90,9 +100,12 @@ export function ScopeBuilder({
 
 	return (
 		<fieldset className="flex flex-col gap-3">
-			<legend className="sr-only">OAuth scopes</legend>
+			<legend className="sr-only">{title}</legend>
 			<div id={legendId} className="flex flex-wrap items-center justify-between gap-2">
-				<span className="text-sm font-medium">Scopes</span>
+				<span>
+					<span className="block text-sm font-medium">{title}</span>
+					{description ? <span className="block text-xs text-muted-foreground">{description}</span> : null}
+				</span>
 				<div className="flex items-center gap-2">
 					<span className="text-xs tabular-nums text-muted-foreground">
 						{selectedSupportedScopes.length} selected
@@ -120,15 +133,20 @@ export function ScopeBuilder({
 				</div>
 			</div>
 			<div className="flex flex-col gap-3">
-				{SCOPE_CATEGORIES.map((group) => (
-					<fieldset key={group.category} className="overflow-hidden rounded-lg border">
+				{SCOPE_CATEGORIES.map((group) => {
+					const groupScopes = scopesForCategory(group.category).filter((scope) =>
+						availableScopeSet.has(scope),
+					);
+					if (groupScopes.length === 0) return null;
+					return (
+						<fieldset key={group.category} className="overflow-hidden rounded-lg border">
 						<legend className="sr-only">{group.label}</legend>
 						<div className="border-b bg-muted/30 px-3 py-2.5">
 							<div className="text-xs font-medium">{group.label}</div>
 							<p className="text-xs text-muted-foreground">{group.description}</p>
 						</div>
 						<div className="grid sm:grid-cols-2">
-							{scopesForCategory(group.category).map((scope) => {
+							{groupScopes.map((scope) => {
 								const definition = OAUTH_SCOPE_DEFINITIONS[scope];
 								const id = `${legendId}-${scope.replaceAll(":", "-")}`;
 								return (
@@ -152,8 +170,9 @@ export function ScopeBuilder({
 								);
 							})}
 						</div>
-					</fieldset>
-				))}
+						</fieldset>
+					);
+				})}
 			</div>
 		</fieldset>
 	);

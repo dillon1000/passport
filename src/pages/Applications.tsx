@@ -98,6 +98,7 @@ type OAuthClientSummary = {
 	redirectUris: string[];
 	postLogoutRedirectUris?: string[];
 	scopes?: string[];
+	optionalScopes?: string[];
 	uri?: string | null;
 	icon?: string | null;
 	tos?: string | null;
@@ -120,6 +121,7 @@ type ClientDraft = {
 	redirectUris: string;
 	postLogoutRedirectUris: string;
 	scopes: string[];
+	optionalScopes: string[];
 	allowedAudiences: string;
 	uri: string;
 	icon: string;
@@ -236,6 +238,7 @@ function clientDraft(client?: OAuthClientSummary): ClientDraft {
 		redirectUris: client?.redirectUris.join("\n") ?? "",
 		postLogoutRedirectUris: client?.postLogoutRedirectUris?.join("\n") ?? "",
 		scopes: client?.scopes ?? [...DEFAULT_CLIENT_REGISTRATION_SCOPES],
+		optionalScopes: client?.optionalScopes ?? [],
 		allowedAudiences: client?.allowedAudiences?.join("\n") ?? "",
 		uri: client?.uri ?? "",
 		icon: client?.icon ?? "",
@@ -433,6 +436,7 @@ export function Applications() {
 				postLogoutRedirectUris:
 					newClient.clientType === "m2m" ? [] : lines(newClient.postLogoutRedirectUris),
 				scopes: newClient.scopes,
+				optionalScopes: newClient.optionalScopes,
 				grantTypes: grantTypesForClientType(newClient.clientType),
 				allowedAudiences:
 					newClient.clientType === "m2m" ? lines(newClient.allowedAudiences) : undefined,
@@ -479,6 +483,7 @@ export function Applications() {
 				postLogoutRedirectUris:
 					draft.clientType === "m2m" ? [] : lines(draft.postLogoutRedirectUris),
 				scopes: draft.scopes,
+				optionalScopes: draft.optionalScopes,
 				grantTypes: grantTypesForClientType(draft.clientType),
 				allowedAudiences:
 					draft.clientType === "m2m" ? lines(draft.allowedAudiences) : undefined,
@@ -756,26 +761,43 @@ export function Applications() {
 													<Segmented
 														value={draft.clientType}
 														onChange={(clientType) => setDraft(client.clientId, { clientType })}
-														options={CLIENT_TYPE_OPTIONS}
-														aria-label="Client type"
-													/>
-													<ClientPictureField
-														value={draft.icon}
-														busy={busy === `upload-picture:${client.clientId}`}
-														onURLChange={(icon) => setDraft(client.clientId, { icon })}
-				onFileSelect={(file) =>
-					void uploadApplicationPicture(
-						file,
-																(icon) => setDraft(client.clientId, { icon }),
-																`upload-picture:${client.clientId}`,
-															)
-														}
-													/>
-													<ScopeBuilder
-														value={draft.scopes}
-														onValueChange={(scopes) => setDraft(client.clientId, { scopes })}
-														onCopyError={(message) => setStatus({ tone: "error", message })}
-													/>
+												options={CLIENT_TYPE_OPTIONS}
+												aria-label="Client type"
+											/>
+											<ClientPictureField
+												value={draft.icon}
+												busy={busy === `upload-picture:${client.clientId}`}
+												onURLChange={(icon) => setDraft(client.clientId, { icon })}
+												onFileSelect={(file) =>
+													void uploadApplicationPicture(
+														file,
+														(icon) => setDraft(client.clientId, { icon }),
+														`upload-picture:${client.clientId}`,
+													)
+												}
+											/>
+											<ScopeBuilder
+												value={draft.scopes}
+												onValueChange={(scopes) =>
+													setDraft(client.clientId, {
+														scopes,
+														optionalScopes: draft.optionalScopes.filter((scope) =>
+															new Set<string>(scopes).has(scope),
+														),
+													})
+												}
+												onCopyError={(message) => setStatus({ tone: "error", message })}
+											/>
+											<ScopeBuilder
+												title="Optional scopes"
+												description="Users may remove only these scopes during consent."
+												availableScopes={draft.scopes}
+												value={draft.optionalScopes}
+												onValueChange={(optionalScopes) =>
+													setDraft(client.clientId, { optionalScopes })
+												}
+												onCopyError={(message) => setStatus({ tone: "error", message })}
+											/>
 													{draft.clientType === "m2m" ? (
 														<Field label="Allowed audiences" hint="One protected API resource per line.">
 															<FieldTextarea
@@ -1023,9 +1045,9 @@ export function Applications() {
 												onURLChange={(icon) =>
 													setNewClient((current) => ({ ...current, icon }))
 												}
-						onFileSelect={(file) =>
-							void uploadApplicationPicture(
-								file,
+												onFileSelect={(file) =>
+													void uploadApplicationPicture(
+														file,
 														(icon) => setNewClient((current) => ({ ...current, icon })),
 														"upload-picture:new-client",
 													)
@@ -1037,7 +1059,20 @@ export function Applications() {
 													setNewClient((current) => ({
 														...current,
 														scopes,
+														optionalScopes: current.optionalScopes.filter((scope) =>
+															new Set<string>(scopes).has(scope),
+														),
 													}))
+												}
+												onCopyError={(message) => setStatus({ tone: "error", message })}
+											/>
+											<ScopeBuilder
+												title="Optional scopes"
+												description="Users may remove only these scopes during consent."
+												availableScopes={newClient.scopes}
+												value={newClient.optionalScopes}
+												onValueChange={(optionalScopes) =>
+													setNewClient((current) => ({ ...current, optionalScopes }))
 												}
 												onCopyError={(message) => setStatus({ tone: "error", message })}
 											/>

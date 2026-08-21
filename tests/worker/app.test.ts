@@ -2029,6 +2029,43 @@ describe("createWorkerApp", () => {
 		expect(adminOAuth.create).not.toHaveBeenCalled();
 	});
 
+	it("rejects optional scopes outside the client scope list", async () => {
+		const requestEnv = createEnv();
+		const adminOAuth = {
+			list: vi.fn(),
+			create: vi.fn(),
+			update: vi.fn(),
+			rotateSecret: vi.fn(),
+			setDisabled: vi.fn(),
+		};
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			getSession: vi.fn(() => ({ user: { id: "admin_123", email: "admin@example.com" } })),
+			adminOAuth,
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/admin/oauth-clients", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					name: "Scoped Client",
+					redirectUris: ["https://app.example.com/callback"],
+					scopes: ["openid", "profile"],
+					optionalScopes: ["phone"],
+					public: false,
+				}),
+			}),
+			requestEnv,
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			error: "Optional scopes must be included in scopes: phone",
+		});
+		expect(adminOAuth.create).not.toHaveBeenCalled();
+	});
+
 	it("accepts an empty optional post-logout URI list when updating a client", async () => {
 		const requestEnv = createEnv();
 		const adminOAuth = {

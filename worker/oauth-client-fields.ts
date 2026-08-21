@@ -12,6 +12,7 @@ export type OAuthClientPassportFields = {
 	backchannelLogoutUri: string | null;
 	grantTypes?: OAuthGrantType[] | null;
 	allowedAudiences?: string[] | null;
+	optionalScopes?: string[] | null;
 	platformAdminOnly?: boolean;
 	verified?: boolean;
 };
@@ -36,6 +37,9 @@ export function mergeOAuthClientPassportFields(
 			backchannelLogoutUri: field?.backchannelLogoutUri ?? null,
 			grantTypes: field?.grantTypes ?? client.grantTypes,
 			allowedAudiences: field?.allowedAudiences ?? client.allowedAudiences,
+			...(field?.optionalScopes !== undefined || client.optionalScopes !== undefined
+				? { optionalScopes: field?.optionalScopes ?? client.optionalScopes }
+				: {}),
 			platformAdminOnly: field?.platformAdminOnly ?? client.platformAdminOnly,
 			...(field?.verified !== undefined || client.verified !== undefined
 				? { verified: field?.verified ?? client.verified }

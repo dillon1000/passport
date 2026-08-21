@@ -9,6 +9,7 @@ export type OAuthClientSeed = {
 	postLogoutRedirectUris?: string[];
 	uri?: string;
 	scopes?: string[];
+	optionalScopes?: string[];
 	grantTypes?: OAuthGrantType[];
 	allowedAudiences?: string[];
 	public?: boolean;
