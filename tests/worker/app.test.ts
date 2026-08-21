@@ -16,6 +16,10 @@ function createEnv() {
 			get: vi.fn(),
 			put: vi.fn(),
 		},
+		AUTH_SECONDARY_STORAGE: {
+			get: vi.fn(() => null),
+			put: vi.fn(),
+		},
 	} as unknown as Env & {
 		PROFILE_IMAGES: {
 			get: ReturnType<typeof vi.fn>;
@@ -510,6 +514,45 @@ describe("createWorkerApp", () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ enabled: false });
+	});
+
+	it("discovers sign-in methods without returning account profile data", async () => {
+		const requestEnv = createEnv();
+		const discover = vi.fn(() => ({
+			password: true,
+			passkey: true,
+			magicLink: true,
+			socialProviders: ["github" as const],
+		}));
+		const app = createWorkerApp({
+			authHandler: vi.fn(() => new Response("auth")),
+			signInMethods: { discover },
+		});
+
+		const response = await app.fetch(
+			new Request("https://passport.test/api/sign-in-methods", {
+				method: "POST",
+				headers: {
+					"cf-connecting-ip": "203.0.113.7",
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({ credential: " user@example.com " }),
+			}),
+			requestEnv,
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("cache-control")).toBe("no-store");
+		expect(await response.json()).toEqual({
+			password: true,
+			passkey: true,
+			magicLink: true,
+			socialProviders: ["github"],
+		});
+		expect(discover).toHaveBeenCalledWith(
+			{ request: expect.any(Request), env: requestEnv },
+			"user@example.com",
+		);
 	});
 
 	it("rejects password updates without a session", async () => {

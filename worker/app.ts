@@ -36,6 +36,11 @@ import {
 import type { RequestLocation } from "../src/lib/request-location";
 import { isAdminOperator } from "../src/lib/admin-access";
 import { createClientAPI } from "./client-api";
+import { enforceSignInMethodRateLimit } from "../src/lib/sign-in-method-rate-limit";
+import {
+	signInMethodRequestSchema,
+	type SignInMethods,
+} from "../src/lib/sign-in-methods";
 
 type AuthHandler = (request: Request, env: Env) => Response | Promise<Response>;
 type ProfileSession = {
@@ -85,6 +90,18 @@ type AgentConfigurationContext = {
 type AgentConfigurationResolver = (
 	context: AgentConfigurationContext,
 ) => unknown | Promise<unknown>;
+
+type SignInMethodContext = {
+	request: Request;
+	env: Env;
+};
+
+export type SignInMethodService = {
+	discover: (
+		context: SignInMethodContext,
+		credential: string,
+	) => SignInMethods | Promise<SignInMethods>;
+};
 
 type ApplicationRevokeContext = ApplicationContext & {
 	consentId: string;
@@ -498,6 +515,7 @@ type AppOptions = {
 	billingRegistry?: BillingRegistryService;
 	billingCheckout?: BillingCheckoutService;
 	billingPurchases?: BillingPurchasesService;
+	signInMethods?: SignInMethodService;
 };
 
 const AUTH_PATH_PREFIXES = [
@@ -710,6 +728,7 @@ function routeTraceName(pathname: string) {
 	if (pathname === "/.well-known/agent-configuration") return "agent-configuration";
 	if (pathname === "/api/brand-config") return "brand-config";
 	if (pathname === "/api/captcha-config") return "captcha-config";
+	if (pathname === "/api/sign-in-methods") return "sign-in-methods";
 	if (pathname === "/api/billing/plans") return "billing-plans";
 	if (pathname.startsWith("/api/billing/products/")) return "billing-product";
 	if (pathname === "/api/account/password") return "account-password";
@@ -2008,6 +2027,7 @@ export function createWorkerApp({
 	billingRegistry,
 	billingCheckout,
 	billingPurchases,
+	signInMethods,
 }: AppOptions) {
 	const app = new Hono<{ Bindings: Env }>();
 	// The versioned resource API owns its explicit routes before this app's
@@ -2033,6 +2053,33 @@ export function createWorkerApp({
 						"cache-control": "public, max-age=60",
 					},
 				});
+			}
+
+			if (url.pathname === "/api/sign-in-methods" && request.method === "POST") {
+				if (!signInMethods) return jsonError("Sign-in discovery is not configured.", 501);
+				const body = await readJSON(request);
+				const parsed = signInMethodRequestSchema.safeParse(body);
+				if (!parsed.success) return jsonError("Enter a valid email or username.", 400);
+
+				const clientAddress = request.headers.get("cf-connecting-ip") ?? "unknown";
+				const rateLimit = await enforceSignInMethodRateLimit(
+					c.env.AUTH_SECONDARY_STORAGE,
+					clientAddress,
+				);
+				if (!rateLimit.allowed) {
+					return Response.json(
+						{ error: "Too many sign-in attempts. Try again shortly." },
+						{ status: 429, headers: rateLimit.headers },
+					);
+				}
+
+				const methods = await signInMethods.discover(
+					{ request, env: c.env },
+					parsed.data.credential,
+				);
+				const headers = new Headers(rateLimit.headers);
+				headers.set("cache-control", "no-store");
+				return Response.json(methods, { headers });
 			}
 
 			if (url.pathname === "/api/billing/plans" && request.method === "GET") {

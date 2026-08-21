@@ -6,13 +6,20 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import "cap-widget";
 
 import type { CaptchaConfig } from "@/lib/captcha-config";
+import { ShieldCheck } from "@/lib/icons";
+
+type CapWidgetElement = HTMLElement & {
+	solve: () => Promise<{ success: boolean; token: string }>;
+};
 
 declare module "react" {
+	// React exposes custom element typing through this declaration namespace.
+	// eslint-disable-next-line @typescript-eslint/no-namespace
 	namespace JSX {
 		interface IntrinsicElements {
 			"cap-widget": {
 				key?: string;
-				ref?: { current: HTMLElement | null } | ((element: HTMLElement | null) => void);
+				ref?: { current: CapWidgetElement | null } | ((element: CapWidgetElement | null) => void);
 				style?: CSSProperties;
 				[key: `data-cap-${string}`]: string | boolean | undefined;
 			};
@@ -24,12 +31,21 @@ export function CaptchaChallenge({
 	config,
 	resetKey,
 	onTokenChange,
+	invisible = false,
+	escalated = false,
+	reserveSpace = true,
 }: {
 	config: CaptchaConfig;
 	resetKey: number;
 	onTokenChange: (token: string) => void;
+	/** Solves Cap in the background while keeping a stable fallback slot. */
+	invisible?: boolean;
+	/** Shows the interactive widget after the session needs extra verification. */
+	escalated?: boolean;
+	/** Keeps the interactive fallback from moving later controls when it appears. */
+	reserveSpace?: boolean;
 }) {
-	const widgetRef = useRef<HTMLElement>(null);
+	const widgetRef = useRef<CapWidgetElement>(null);
 
 	useEffect(() => {
 		const widget = widgetRef.current;
@@ -46,12 +62,15 @@ export function CaptchaChallenge({
 		widget.addEventListener("solve", handleSolve);
 		widget.addEventListener("error", clearToken);
 		widget.addEventListener("reset", clearToken);
+		if (invisible && !escalated) {
+			void widget.solve().catch(clearToken);
+		}
 		return () => {
 			widget.removeEventListener("solve", handleSolve);
 			widget.removeEventListener("error", clearToken);
 			widget.removeEventListener("reset", clearToken);
 		};
-	}, [config.enabled, config.siteKey, onTokenChange, resetKey]);
+	}, [config.enabled, config.siteKey, escalated, invisible, onTokenChange, resetKey]);
 
 	if (!config.enabled) return null;
 
@@ -64,7 +83,7 @@ export function CaptchaChallenge({
 	}
 
 	return (
-		<div className="w-full">
+		<div className={invisible && reserveSpace ? "relative min-h-14 w-full" : "w-full"}>
 			<cap-widget
 				key={`${config.siteKey}-${resetKey}`}
 				ref={widgetRef}
@@ -75,7 +94,7 @@ export function CaptchaChallenge({
 				data-cap-i18n-solved-label="Sign-in verified"
 				data-cap-i18n-error-label="Verification failed"
 				style={{
-					display: "block",
+					display: invisible && !escalated ? "none" : "block",
 					width: "100%",
 					"--cap-background": "var(--card)",
 					"--cap-border-color": "var(--border)",
@@ -90,6 +109,12 @@ export function CaptchaChallenge({
 					"--cap-spinner-background-color": "var(--muted)",
 				} as CSSProperties}
 			/>
+			{invisible && !escalated && reserveSpace ? (
+				<p className="flex min-h-14 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
+					<ShieldCheck aria-hidden="true" className="size-4" />
+					Protected by Cap — no challenge needed
+				</p>
+			) : null}
 		</div>
 	);
 }

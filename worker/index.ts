@@ -6,7 +6,7 @@
  * Cloudflare's custom-span tracer into the app boundary.
  */
 import { tracing } from "cloudflare:workers";
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import {
 	createWorkerApp,
@@ -97,6 +97,8 @@ import {
 } from "../src/lib/request-location";
 import { mergeOAuthClientPassportFields } from "./oauth-client-fields";
 import { cleanupBillingActionIntents } from "./client-api";
+import { socialProviders } from "../src/lib/auth-server/plugins";
+import type { SocialProviderId } from "../src/components/auth/social-provider-config";
 
 export { DataExportWorkflow };
 export { WebhookDeliveryWorkflow } from "./webhooks";
@@ -654,6 +656,53 @@ const app = createWorkerApp({
 		auth(env as AuthEnv).api.getSession({
 			headers: request.headers,
 		}),
+	signInMethods: {
+		discover: async ({ env }, credential) => {
+			const normalized = credential.trim().toLowerCase();
+			const db = createDb(env as AuthEnv);
+			const [matchedUser] = await db
+				.select({ id: schema.user.id, email: schema.user.email })
+				.from(schema.user)
+				.where(or(eq(schema.user.email, normalized), eq(schema.user.username, normalized)))
+				.limit(1);
+
+			// Unknown identifiers still advance to a credential step. The neutral
+			// fallback keeps password errors identical without returning profile data.
+			if (!matchedUser) {
+				return {
+					password: true,
+					passkey: false,
+					magicLink: false,
+					socialProviders: [],
+				};
+			}
+
+			const [linkedAccounts, registeredPasskeys] = await Promise.all([
+				db
+					.select({ providerId: schema.account.providerId })
+					.from(schema.account)
+					.where(eq(schema.account.userId, matchedUser.id)),
+				db
+					.select({ id: schema.passkey.id })
+					.from(schema.passkey)
+					.where(eq(schema.passkey.userId, matchedUser.id))
+					.limit(1),
+			]);
+			const providerIds = new Set(linkedAccounts.map((account) => account.providerId));
+			const configuredProviders = socialProviders(env as AuthEnv);
+			const socialProviderIds = ["github", "discord", "twitter"] as const;
+
+			return {
+				password: providerIds.has("credential"),
+				passkey: registeredPasskeys.length > 0,
+				magicLink: normalized.includes("@"),
+				socialProviders: socialProviderIds.filter(
+					(provider): provider is SocialProviderId =>
+						Boolean(configuredProviders[provider]) && providerIds.has(provider),
+				),
+			};
+		},
+	},
 	applications: {
 		list: async ({ request, env }, page) => {
 			const authInstance = auth(env as AuthEnv);

@@ -12,15 +12,26 @@ export function SocialButtons({
 	onSelect,
 	disabled,
 	lastUsedMethod,
+	providers: allowedProviders,
 }: {
 	onSelect: (provider: SocialProviderId) => void;
 	disabled?: boolean;
 	/** Better Auth's cookie value; its matching provider gets the visible marker. */
 	lastUsedMethod?: string | null;
+	/** Account-linked providers to show. The default is every configured UI provider. */
+	providers?: SocialProviderId[];
 }) {
+	const providers = SOCIAL_PROVIDERS.filter(
+		(provider) => !allowedProviders || allowedProviders.includes(provider.id),
+	).sort((left, right) => {
+		if (left.id === lastUsedMethod) return -1;
+		if (right.id === lastUsedMethod) return 1;
+		return 0;
+	});
+
 	return (
 		<div className="grid grid-cols-3 gap-2">
-			{SOCIAL_PROVIDERS.map(({ id, label, icon }) => (
+			{providers.map(({ id, label, icon }) => (
 				<Button
 					key={id}
 					variant="outline"

@@ -20,6 +20,7 @@ export function AuthShell({
 	actions,
 	nav,
 	subnav,
+	focused = false,
 }: {
 	children: ReactNode;
 	/** Content well width. `sm` for forms, `md` for denser forms, `lg`/`xl`/`2xl` for the dashboard. */
@@ -32,6 +33,8 @@ export function AuthShell({
 	nav?: ReactNode;
 	/** Page-scoped tab strip rendered as a third header row, below `nav`. */
 	subnav?: ReactNode;
+	/** Removes dashboard chrome for focused authentication and recovery forms. */
+	focused?: boolean;
 }) {
 	const brand = useBrand();
 	const { pathname } = useLocation();
@@ -39,34 +42,40 @@ export function AuthShell({
 
 	return (
 		<div className="flex min-h-svh flex-col">
-			<header className="sticky top-0 z-10 bg-background/75 backdrop-blur-md [view-transition-name:site-header]">
-				<PageHeader
-					spacing="compact"
-					className="!gap-0"
-					breadcrumbs={
-						<div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
-							<Wordmark className="h-6" />
-							{breadcrumb ? (
-								<>
-									<Slash />
-									<span className="text-sm font-medium">{breadcrumb}</span>
-								</>
-							) : null}
-							<div className="ml-auto flex items-center gap-1">{actions}</div>
+			{focused ? (
+				<div className="fixed top-3 right-3 z-10 sm:top-4 sm:right-4">
+					<ThemeToggle />
+				</div>
+			) : (
+				<header className="sticky top-0 z-10 bg-background/75 backdrop-blur-md [view-transition-name:site-header]">
+					<PageHeader
+						spacing="compact"
+						className="!gap-0"
+						breadcrumbs={
+							<div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4 sm:px-6">
+								<Wordmark className="h-6" />
+								{breadcrumb ? (
+									<>
+										<Slash />
+										<span className="text-sm font-medium">{breadcrumb}</span>
+									</>
+								) : null}
+								<div className="ml-auto flex items-center gap-1">{actions}</div>
+							</div>
+						}
+					/>
+					{nav ? (
+						<div className={cn(!subnav && "border-b")}>
+							<div className="mx-auto w-full max-w-5xl px-3 sm:px-5">{nav}</div>
 						</div>
-					}
-				/>
-				{nav ? (
-					<div className={cn(!subnav && "border-b")}>
-						<div className="mx-auto w-full max-w-5xl px-3 sm:px-5">{nav}</div>
-					</div>
-				) : null}
-				{subnav ? (
-					<div className="border-b bg-muted/30">
-						<div className="mx-auto w-full max-w-5xl px-4 sm:px-6">{subnav}</div>
-					</div>
-				) : null}
-			</header>
+					) : null}
+					{subnav ? (
+						<div className="border-b bg-muted/30">
+							<div className="mx-auto w-full max-w-5xl px-4 sm:px-6">{subnav}</div>
+						</div>
+					) : null}
+				</header>
+			)}
 
 			<main
 				id="main"
@@ -88,23 +97,25 @@ export function AuthShell({
 				</div>
 			</main>
 
-			<footer className="border-t [view-transition-name:site-footer]">
-				<div className="relative mx-auto flex w-full max-w-5xl items-center justify-center gap-3 px-4 py-4 font-mono text-xs text-muted-foreground/70 sm:px-6">
-					{brand.capabilities.map((capability, index) => (
-						<span key={capability} className="flex items-center gap-3">
-							{index > 0 ? (
-								<span aria-hidden="true" className="text-border">
-									·
-								</span>
-							) : null}
-							{capability}
-						</span>
-					))}
-					<div className="absolute right-2 top-1/2 -translate-y-1/2 sm:right-4">
-						<ThemeToggle />
+			{focused ? null : (
+				<footer className="border-t [view-transition-name:site-footer]">
+					<div className="relative mx-auto flex w-full max-w-5xl items-center justify-center gap-3 px-4 py-4 font-mono text-xs text-muted-foreground/70 sm:px-6">
+						{brand.capabilities.map((capability, index) => (
+							<span key={capability} className="flex items-center gap-3">
+								{index > 0 ? (
+									<span aria-hidden="true" className="text-border">
+										·
+									</span>
+								) : null}
+								{capability}
+							</span>
+						))}
+						<div className="absolute right-2 top-1/2 -translate-y-1/2 sm:right-4">
+							<ThemeToggle />
+						</div>
 					</div>
-				</div>
-			</footer>
+				</footer>
+			)}
 		</div>
 	);
 }
