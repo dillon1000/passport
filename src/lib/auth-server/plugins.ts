@@ -6,6 +6,8 @@
  */
 import { agentAuth, type Capability } from "@better-auth/agent-auth";
 import { passkey } from "@better-auth/passkey";
+import { APIError, createEmailVerificationToken } from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
 import { captcha, lastLoginMethod } from "better-auth/plugins";
 import { admin } from "better-auth/plugins/admin";
 import { jwt } from "better-auth/plugins/jwt";
@@ -16,7 +18,9 @@ import { organization } from "better-auth/plugins/organization";
 import { phoneNumber } from "better-auth/plugins/phone-number";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { username } from "better-auth/plugins/username";
+import { eq } from "drizzle-orm";
 
+import { user as userTable } from "../../db/schema";
 import {
 	sendMagicLinkEmail,
 	sendOrganizationInvitationEmail,
@@ -27,6 +31,7 @@ import { splitCsv } from "../../env";
 import { isE164PhoneNumber, sendPhoneVerificationSMS } from "../../sms";
 import { CAPTCHA_ENDPOINTS } from "../captcha-endpoints";
 import { organizationAccessControl, organizationRoles } from "../organization-access";
+import { parsePasskeySignupContext } from "../passkey-signup";
 import { accountSecurityEmailPlugin } from "./hooks";
 import {
 	oauthProviderPlugin,
@@ -38,6 +43,17 @@ import { buildStripePlugins } from "./stripe";
 import type { AuthDatabase } from "./types";
 
 export const MULTI_SESSION_MAXIMUM_SESSIONS = 5;
+
+const PASSKEY_SIGNUP_ERROR = "An account with this email already exists.";
+
+async function emailIsRegistered(db: AuthDatabase, email: string) {
+	const [existingUser] = await db
+		.select({ id: userTable.id })
+		.from(userTable)
+		.where(eq(userTable.email, email))
+		.limit(1);
+	return Boolean(existingUser);
+}
 
 export function socialProviders(env: AuthEnv) {
 	return {
@@ -313,6 +329,69 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 		passkey({
 			rpName: "Passport",
 			origin: env.BETTER_AUTH_URL,
+			registration: {
+				requireSession: false,
+				resolveUser: async ({ context }) => {
+					const signup = parsePasskeySignupContext(context);
+					if (!signup) {
+						throw new APIError("BAD_REQUEST", { message: "Passkey sign-up details are invalid." });
+					}
+					if (await emailIsRegistered(db, signup.email)) {
+						throw new APIError("BAD_REQUEST", { message: PASSKEY_SIGNUP_ERROR });
+					}
+					return {
+						id: crypto.randomUUID(),
+						name: signup.email,
+						displayName: signup.name,
+					};
+				},
+				afterVerification: async ({ ctx, context, user }) => {
+					// Existing authenticated users add passkeys without sign-up context.
+					if (!context) return;
+					const signup = parsePasskeySignupContext(context);
+					if (!signup) {
+						throw new APIError("BAD_REQUEST", { message: "Passkey sign-up details are invalid." });
+					}
+					if (await emailIsRegistered(db, signup.email)) {
+						throw new APIError("BAD_REQUEST", { message: PASSKEY_SIGNUP_ERROR });
+					}
+
+					const createdUser = await ctx.context.internalAdapter.createUser({
+						id: user.id,
+						name: signup.name,
+						email: signup.email,
+						emailVerified: false,
+						role: "user",
+						banned: false,
+						banReason: null,
+						banExpires: null,
+					});
+					const session = await ctx.context.internalAdapter.createSession(createdUser.id);
+					if (!session) {
+						throw new APIError("BAD_REQUEST", { message: "Could not create an account session." });
+					}
+					await setSessionCookie(ctx, { session, user: createdUser });
+
+					const sendVerification = ctx.context.options.emailVerification?.sendVerificationEmail;
+					if (sendVerification) {
+						const token = await createEmailVerificationToken(
+							ctx.context.secret,
+							createdUser.email,
+							undefined,
+							ctx.context.options.emailVerification?.expiresIn,
+						);
+						const verificationURL = `${ctx.context.baseURL}/verify-email?token=${token}&callbackURL=${encodeURIComponent(signup.callbackURL)}`;
+						await ctx.context.runInBackgroundOrAwait(
+							sendVerification(
+								{ user: createdUser, url: verificationURL, token },
+								ctx.request?.clone(),
+							),
+						);
+					}
+
+					return { userId: createdUser.id, name: "Passkey" };
+				},
+			},
 		}),
 		magicLink({
 			sendMagicLink: async ({ email, url }) => {

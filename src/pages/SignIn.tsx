@@ -1,8 +1,8 @@
 /**
- * Sign-in and account recovery page. Inputs are URL query params, runtime brand
- * and captcha config, and Better Auth client methods; outputs are auth
- * redirects, reset-link email requests, and reset-password submissions.
- * Safe changes are mode copy, visible recovery options, and callback handling.
+ * Authentication entry page. Inputs are URL query params, account details,
+ * runtime captcha config, and Better Auth client methods; outputs are account
+ * creation, sign-in, recovery, and redirect workflows. Sign-up keeps passkey,
+ * social, and password creation distinct so each path asks only for needed data.
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Fingerprint, LogIn, Mail, Pencil } from "@/lib/icons";
@@ -39,8 +39,9 @@ import {
 } from "@/lib/captcha-config";
 import {
 	getPasswordConfirmationError,
-	isPasswordConfirmationReady,
 } from "@/lib/password-confirmation";
+import { createPasskeySignupContext } from "@/lib/passkey-signup";
+import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { initialsOf } from "@/lib/session";
 import { useAccountSwitch } from "@/lib/account-switch";
 import {
@@ -55,7 +56,8 @@ import {
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
 type SignInStep = "identifier" | "methods";
-type FieldErrorTarget = "credential" | "password" | "confirmPassword";
+type SignupMethod = "password" | "passkey";
+type FieldErrorTarget = "name" | "credential" | "password" | "confirmPassword";
 
 interface FieldError {
 	target: FieldErrorTarget;
@@ -112,6 +114,11 @@ function credentialLooksLikeEmail(value: string) {
 	return value.includes("@");
 }
 
+function isExistingAccountError(error: { code?: string; message?: string }) {
+	const detail = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();
+	return detail.includes("user_already_exists") || detail.includes("already exist");
+}
+
 export function SignIn() {
 	useEffect(() => {
 		if (!isWebAssemblyAvailable()) window.location.replace("/error/no-webassembly");
@@ -132,7 +139,8 @@ export function SignIn() {
 	const [newPassword, setNewPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
 	const [name, setName] = useState("");
-	const [username, setUsername] = useState("");
+	const [signupMethod, setSignupMethod] = useState<SignupMethod>("password");
+	const [existingAccountEmail, setExistingAccountEmail] = useState<string | null>(null);
 	const [fieldError, setFieldError] = useState<FieldError | null>(null);
 	const [captchaToken, setCaptchaToken] = useState("");
 	const [captchaResetKey, setCaptchaResetKey] = useState(0);
@@ -179,17 +187,8 @@ export function SignIn() {
 	const verificationCallbackURL = "/account?verified=1";
 	const copy = copyFor(mode);
 	const authActionsDisabled = loading;
-	const signupPasswordReady =
-		mode !== "signup" || isPasswordConfirmationReady(password, confirmPassword);
-	const signupConfirmationError =
-		mode === "signup" && confirmPassword && password !== confirmPassword
-			? "Passwords don't match."
-			: mode === "signup" &&
-				  fieldError?.target === "confirmPassword" &&
-				  !isPasswordConfirmationReady(password, confirmPassword)
-				? fieldError.message
-				: undefined;
 	const credentialError = fieldError?.target === "credential" ? fieldError.message : undefined;
+	const nameError = fieldError?.target === "name" ? fieldError.message : undefined;
 	const passwordError = fieldError?.target === "password" ? fieldError.message : undefined;
 	const resetConfirmationError =
 		mode === "reset" &&
@@ -223,6 +222,7 @@ export function SignIn() {
 
 	function switchMode(nextMode: Mode) {
 		setFieldError(null);
+		setExistingAccountEmail(null);
 		setCaptchaToken("");
 		setCaptchaEscalated(false);
 		setSignInStep("identifier");
@@ -316,9 +316,12 @@ export function SignIn() {
 		}
 
 		if (mode === "signup") {
-			const confirmationError = getPasswordConfirmationError(password, confirmPassword);
-			if (confirmationError) {
-				setFieldError({ target: "confirmPassword", message: confirmationError });
+			if (!name.trim()) {
+				setFieldError({ target: "name", message: "Enter what we should call you." });
+				return;
+			}
+			if (signupMethod === "passkey") {
+				await signUpWithPasskey();
 				return;
 			}
 		}
@@ -329,6 +332,20 @@ export function SignIn() {
 		}
 
 		setLoading(true);
+		if (mode === "signup") {
+			try {
+				if ((await checkPwnedPassword(password)) > 0) {
+					setFieldError({
+						target: "password",
+						message: "This password appears in a known data breach. Choose another.",
+					});
+					setLoading(false);
+					return;
+				}
+			} catch {
+				// Availability failures must not turn an optional safety service into an outage.
+			}
+		}
 
 		const result =
 			mode === "signin"
@@ -348,8 +365,7 @@ export function SignIn() {
 				: await authClient.signUp.email({
 						email: credentialValue,
 						password,
-						name: name || credentialValue,
-						username: username || undefined,
+						name: name.trim(),
 						callbackURL: verificationCallbackURL,
 						...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 					});
@@ -365,7 +381,15 @@ export function SignIn() {
 					message: "The email, username, or password is incorrect.",
 				});
 			} else {
-				setStatus({ tone: "error", message: result.error.message ?? "Authentication failed." });
+				if (isExistingAccountError(result.error)) {
+					setExistingAccountEmail(credentialValue);
+					setFieldError({
+						target: "credential",
+						message: "An account with this email already exists.",
+					});
+				} else {
+					setStatus({ tone: "error", message: result.error.message ?? "Account creation failed." });
+				}
 			}
 			return;
 		}
@@ -384,6 +408,43 @@ export function SignIn() {
 			tone: "success",
 			message: "Account created. Check your email if verification is required.",
 		});
+	}
+
+	async function signUpWithPasskey() {
+		const email = credential.trim();
+		if (!credentialLooksLikeEmail(email)) {
+			setFieldError({ target: "credential", message: "Enter a valid account email." });
+			return;
+		}
+
+		const authFetchOptions = requireCaptcha();
+		if (authFetchOptions === null) return;
+
+		setExistingAccountEmail(null);
+		setLoading(true);
+		const result = await authClient.passkey.addPasskey({
+			name: "Passkey",
+			context: createPasskeySignupContext({
+				name: name.trim(),
+				email,
+				callbackURL,
+			}),
+			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+		});
+		setLoading(false);
+
+		if (result.error) {
+			resetCaptcha();
+			if (isExistingAccountError(result.error)) {
+				setExistingAccountEmail(email);
+				setFieldError({ target: "credential", message: "An account with this email already exists." });
+			} else {
+				setStatus({ tone: "error", message: result.error.message ?? "Passkey creation failed." });
+			}
+			return;
+		}
+
+		window.location.assign(callbackURL);
 	}
 
 	function handleShortcut(event: KeyboardEvent<HTMLFormElement>) {
@@ -554,7 +615,7 @@ export function SignIn() {
 		(provider) => provider.id === lastUsedSignInMethod,
 	);
 	const showAlternateSignIn =
-		mode !== "reset" && (showPasskey || showMagicLink || showSocialProviders);
+		mode !== "reset" && mode !== "signup" && (showPasskey || showMagicLink || showSocialProviders);
 	const signInTitle = isMethodStep
 		? signInMethods?.password
 			? "Enter your password"
@@ -583,12 +644,45 @@ export function SignIn() {
 							/>
 						) : (
 							<>
+								{mode === "signup" ? (
+									<div className="space-y-3">
+										<Button
+											variant="outline"
+											size="lg"
+											type="button"
+											className="w-full"
+											onClick={() => {
+												setFieldError(null);
+												setExistingAccountEmail(null);
+												setSignupMethod((current) =>
+													current === "password" ? "passkey" : "password",
+												);
+											}}
+											disabled={authActionsDisabled}
+										>
+											<Fingerprint className="size-4" />
+											{signupMethod === "password"
+												? "Create with a passkey"
+												: "Use a password instead"}
+										</Button>
+										<SocialButtons
+											onSelect={social}
+											disabled={authActionsDisabled}
+											lastUsedMethod={lastUsedSignInMethod}
+										/>
+										<div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 pt-1 text-xs text-muted-foreground">
+											<Separator />
+											<span>or use email</span>
+											<Separator />
+										</div>
+									</div>
+								) : null}
 								<form
-							ref={formRef}
-							className="space-y-3.5"
-							onSubmit={formSubmitHandler}
-							onKeyDown={handleShortcut}
-						>
+									ref={formRef}
+									className="space-y-3.5"
+									onSubmit={formSubmitHandler}
+									onKeyDown={handleShortcut}
+								>
 							{mode === "reset" ? (
 								<>
 									<Field label="New password">
@@ -615,22 +709,16 @@ export function SignIn() {
 							) : (
 								<>
 									{mode === "signup" ? (
-										<Field label="Name">
+										<Field label="What should we call you?" error={nameError}>
 											<FieldInput
 												autoComplete="name"
 												placeholder="Ada Lovelace"
 												value={name}
-												onChange={(event) => setName(event.target.value)}
-											/>
-										</Field>
-									) : null}
-									{mode === "signup" ? (
-										<Field label="Username">
-											<FieldInput
-												autoComplete="username"
-												placeholder="ada"
-												value={username}
-												onChange={(event) => setUsername(event.target.value)}
+												onChange={(event) => {
+													setName(event.target.value);
+													if (fieldError?.target === "name") setFieldError(null);
+												}}
+												required
 											/>
 										</Field>
 									) : null}
@@ -661,27 +749,43 @@ export function SignIn() {
 											<span className="sr-only">Change email or username</span>
 										</button>
 									) : (
-									<Field
-										label={mode === "signin" ? "Email or username" : "Account email"}
-										error={credentialError}
+										<Field
+											label={mode === "signin" ? "Email or username" : "Account email"}
+										error={
+											existingAccountEmail ? (
+												<>
+													{credentialError}{" "}
+													<button
+														type="button"
+														className="font-semibold underline underline-offset-2"
+														onClick={() => switchMode("signin")}
+													>
+														Sign in with {existingAccountEmail}
+													</button>
+												</>
+											) : credentialError
+										}
 										errorAboveControl={mode === "signin"}
 										hint={
 											mode === "recovery"
 												? "Used for reset links and magic links."
 												: undefined
 										}
-									>
-										<FieldInput
+										>
+											<FieldInput
 											type={mode === "signin" ? "text" : "email"}
 											inputMode="email"
 											autoComplete={mode === "signin" ? "username webauthn" : "email"}
 											placeholder={mode === "signin" ? "you@example.com or ada" : "you@example.com"}
 											autoFocus
 											value={credential}
-											onChange={(event) => setCredential(event.target.value)}
+											onChange={(event) => {
+												setCredential(event.target.value);
+												setExistingAccountEmail(null);
+											}}
 											required
-										/>
-									</Field>
+											/>
+										</Field>
 									)}
 									{mode === "recovery" ? (
 										<div className="rounded-lg border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
@@ -695,27 +799,25 @@ export function SignIn() {
 										<>
 											{mode === "signup" ? (
 												<>
-													<Field label="Password">
-														<FieldPasswordInput
+													{signupMethod === "password" ? (
+														<Field label="Password" error={passwordError} errorAboveControl>
+															<FieldPasswordInput
 															autoComplete="new-password"
 															placeholder="••••••••"
 															value={password}
 															onChange={(event) => setPassword(event.target.value)}
 															minLength={8}
-															required
-														/>
-													</Field>
-													<Field label="Verify password" error={signupConfirmationError}>
-														<FieldPasswordInput
-															autoComplete="new-password"
-															placeholder="••••••••"
-															value={confirmPassword}
-															onChange={(event) => setConfirmPassword(event.target.value)}
-															minLength={8}
-															required
-														/>
-													</Field>
-													<PasswordStrength value={password} />
+																required
+															/>
+														</Field>
+													) : null}
+													{signupMethod === "password" ? (
+														<PasswordStrength value={password} userInputs={[name, credential]} />
+													) : (
+														<p className="rounded-lg border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+															Your device will ask you to save a passkey. You will not need a password.
+														</p>
+													)}
 												</>
 											) : mode !== "signin" || signInMethods?.password ? (
 												<>
@@ -736,24 +838,33 @@ export function SignIn() {
 										config={captchaConfig}
 										resetKey={captchaResetKey}
 										onTokenChange={setCaptchaToken}
-										invisible={mode === "signin"}
+										invisible={mode === "signin" || mode === "signup"}
 										escalated={captchaEscalated}
-										reserveSpace={isMethodStep}
+										reserveSpace={isMethodStep || mode === "signup"}
 									/>
 								</>
 							)}
-							{!isMethodStep || signInMethods?.password ? <Button
-								className="mt-1 w-full"
-								size="lg"
-								type="submit"
-								disabled={authActionsDisabled || !signupPasswordReady}
-								aria-keyshortcuts="Meta+Enter Control+Enter"
-							>
-								{isIdentifierStep ? null : <LogIn className="size-4" />}
-								{isIdentifierStep ? "Continue" : copy.action}
+							{!isMethodStep || signInMethods?.password ? (
+								<Button
+									className="mt-1 w-full"
+									size="lg"
+									type="submit"
+									disabled={authActionsDisabled}
+									aria-keyshortcuts="Meta+Enter Control+Enter"
+								>
+									{isIdentifierStep ? null : mode === "signup" && signupMethod === "passkey" ? (
+										<Fingerprint className="size-4" />
+									) : (
+										<LogIn className="size-4" />
+									)}
+								{isIdentifierStep
+									? "Continue"
+									: mode === "signup" && signupMethod === "passkey"
+										? "Create passkey"
+										: copy.action}
 								{!isIdentifierStep && lastUsedSignInMethod === "email" ? <LastUsedBadge /> : null}
-							</Button>
-							 : null}
+								</Button>
+							) : null}
 							{isMethodStep && signInMethods?.password ? (
 								<button
 									type="button"
