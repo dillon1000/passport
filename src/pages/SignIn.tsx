@@ -10,7 +10,7 @@ import { Loader } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
+import { AccountChoice } from "@/components/auth/account-choice";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
@@ -42,7 +42,6 @@ import {
 } from "@/lib/password-confirmation";
 import { createPasskeySignupContext } from "@/lib/passkey-signup";
 import { checkPwnedPassword } from "@/lib/pwned-passwords";
-import { initialsOf } from "@/lib/session";
 import { useAccountSwitch } from "@/lib/account-switch";
 import {
 	withDirectionalViewTransition,
@@ -609,13 +608,10 @@ export function SignIn() {
 	const isMethodStep = mode === "signin" && signInStep === "methods";
 	const showPasskey = !isMethodStep || Boolean(signInMethods?.passkey);
 	const showMagicLink = mode !== "signin" || Boolean(isMethodStep && signInMethods?.magicLink);
-	const methodSocialProviders = isMethodStep ? signInMethods?.socialProviders : undefined;
-	const showSocialProviders = !isMethodStep || Boolean(methodSocialProviders?.length);
 	const lastUsedSocialProvider = SOCIAL_PROVIDERS.some(
 		(provider) => provider.id === lastUsedSignInMethod,
 	);
-	const showAlternateSignIn =
-		mode !== "reset" && mode !== "signup" && (showPasskey || showMagicLink || showSocialProviders);
+	const showAlternateSignIn = mode !== "reset" && mode !== "signup";
 	const signInTitle = isMethodStep
 		? signInMethods?.password
 			? "Enter your password"
@@ -725,7 +721,7 @@ export function SignIn() {
 									{isMethodStep ? (
 										<button
 											type="button"
-											className="inline-flex max-w-full items-center gap-2 rounded-full border bg-background py-1.5 pr-3 pl-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+											className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border bg-background py-1 pr-2.5 pl-1.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
 											onClick={(event) => {
 												setFieldError(null);
 												setPassword("");
@@ -741,11 +737,11 @@ export function SignIn() {
 												}
 											}}
 										>
-											<span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-xs uppercase">
+											<span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-[0.6875rem] uppercase">
 												{credential.trim().charAt(0)}
 											</span>
 											<span className="truncate">{credential.trim()}</span>
-											<Pencil aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+											<Pencil aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
 											<span className="sr-only">Change email or username</span>
 										</button>
 									) : (
@@ -868,7 +864,7 @@ export function SignIn() {
 							{isMethodStep && signInMethods?.password ? (
 								<button
 									type="button"
-									className="mx-auto flex min-h-10 items-center text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+									className="mx-auto flex min-h-8 items-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
 									onClick={() => switchMode("recovery")}
 								>
 									Forgot username, email, or password?
@@ -883,11 +879,10 @@ export function SignIn() {
 									<span>or</span>
 									<Separator />
 								</div>
-								{showSocialProviders && lastUsedSocialProvider ? <SocialButtons
+								{lastUsedSocialProvider ? <SocialButtons
 									onSelect={social}
 									disabled={authActionsDisabled}
 									lastUsedMethod={lastUsedSignInMethod}
-									providers={methodSocialProviders}
 								/> : null}
 
 								<div className={showPasskey && showMagicLink ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
@@ -919,11 +914,10 @@ export function SignIn() {
 									 : null}
 								</div>
 
-								{showSocialProviders && !lastUsedSocialProvider ? <SocialButtons
+								{!lastUsedSocialProvider ? <SocialButtons
 										onSelect={social}
 										disabled={authActionsDisabled}
 										lastUsedMethod={lastUsedSignInMethod}
-										providers={methodSocialProviders}
 									/>
 								 : null}
 							</>
@@ -979,14 +973,15 @@ function ExistingSessionChoice({
 }) {
 	return (
 		<div className="space-y-4">
-			<div className="space-y-1 text-center">
+			<div className="space-y-0.5">
 				<p className="text-sm font-medium">You’re already signed in</p>
-				<p className="text-sm text-muted-foreground">Choose how you want to continue.</p>
+				<p className="text-xs text-muted-foreground">Choose how you want to continue.</p>
 			</div>
 
 			<div className="space-y-2">
-				<SessionChoice
+				<AccountChoice
 					account={account}
+					label={`Continue as ${account.name}`}
 					disabled={disabled}
 					onChoose={() => onChoose(currentSessionToken, account)}
 				/>
@@ -996,9 +991,10 @@ function ExistingSessionChoice({
 					</div>
 				) : null}
 				{otherAccounts.map((otherAccount) => (
-					<SessionChoice
+					<AccountChoice
 						key={otherAccount.session.token}
 						account={otherAccount.user}
+						label={`Continue as ${otherAccount.user.name}`}
 						disabled={disabled}
 						onChoose={() => onChoose(otherAccount.session.token, otherAccount.user)}
 					/>
@@ -1009,34 +1005,5 @@ function ExistingSessionChoice({
 				<a href={resolveAddAccountURL(callbackURL)}>Sign in to another account</a>
 			</Button>
 		</div>
-	);
-}
-
-/** Renders one local account that can resume the sign-in destination. */
-function SessionChoice({
-	account,
-	disabled,
-	onChoose,
-}: {
-	account: DeviceAccount["user"];
-	disabled: boolean;
-	onChoose: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			className="flex w-full items-center gap-3 rounded-lg border bg-background px-3 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-			disabled={disabled}
-			onClick={onChoose}
-		>
-			<Avatar>
-				<AvatarImage src={account.image ?? undefined} />
-				<AvatarFallback>{initialsOf(account.name)}</AvatarFallback>
-			</Avatar>
-			<span className="min-w-0 flex-1">
-				<span className="block truncate text-sm font-medium">Continue as {account.name}</span>
-				<span className="block truncate text-xs text-muted-foreground">{account.email}</span>
-			</span>
-		</button>
 	);
 }
