@@ -947,7 +947,7 @@ export function SignIn() {
 
 /** Marks the control that matches Better Auth's recent sign-in-method cookie. */
 function LastUsedBadge() {
-	return <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap" variant="secondary">Last used</Badge>;
+	return <Badge className="pointer-events-none absolute -top-3 right-2 whitespace-nowrap" variant="secondary">Last used</Badge>;
 }
 
 /**

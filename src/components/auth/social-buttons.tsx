@@ -44,7 +44,7 @@ export function SocialButtons({
 					<PublicIcon src={icon} className="size-4" />
 					{label}
 					{lastUsedMethod === id ? (
-						<Badge className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap" variant="secondary">
+						<Badge className="pointer-events-none absolute -top-3 right-1 whitespace-nowrap" variant="secondary">
 							Last used
 						</Badge>
 					) : null}
