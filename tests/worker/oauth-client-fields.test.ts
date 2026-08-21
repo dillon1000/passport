@@ -96,4 +96,13 @@ describe("OAuth client Passport-owned fields", () => {
 			platformAdminOnly: true,
 		});
 	});
+
+	it("keeps the reviewed publication state when listing Better Auth clients", () => {
+		const merged = mergeOAuthClientPassportFields(
+			[{ clientId: "published-app", name: "Published app", redirectUris: [] }],
+			[{ clientId: "published-app", backchannelLogoutUri: null, verified: true }],
+		);
+
+		expect(merged[0]?.verified).toBe(true);
+	});
 });

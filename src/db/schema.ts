@@ -507,6 +507,9 @@ export const oauthClient = pgTable(
     // platform administrators. This is a Passport-owned access policy, not
     // OAuth client metadata consumed by Better Auth.
     platformAdminOnly: boolean("platform_admin_only").default(false).notNull(),
+    // Verified clients may show their uploaded brand on consent screens. New
+    // registrations stay unpublished until an administrator reviews them.
+    verified: boolean("verified").default(false).notNull(),
     skipConsent: boolean("skip_consent"),
     enableEndSession: boolean("enable_end_session"),
     subjectType: text("subject_type"),

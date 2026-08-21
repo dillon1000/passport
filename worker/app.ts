@@ -138,6 +138,7 @@ export type OAuthClientSummary = {
 	public?: boolean;
 	disabled?: boolean;
 	platformAdminOnly?: boolean;
+	verified?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
@@ -462,6 +463,7 @@ export type CreateOAuthClientInput = {
 	policy?: string;
 	public?: boolean;
 	platformAdminOnly?: boolean;
+	verified?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
@@ -665,6 +667,7 @@ const baseCreateOAuthClientSchema = z.object({
 	public: z.boolean().optional(),
 	skipConsent: z.boolean().optional(),
 	platformAdminOnly: z.boolean().optional(),
+	verified: z.boolean().optional(),
 	enableEndSession: z.boolean().optional(),
 	backchannelLogoutUri: z.string().url().nullable().optional(),
 });
@@ -2338,7 +2341,16 @@ export function createWorkerApp({
 				return authHandler(request, c.env);
 			}
 
-			return c.env.ASSETS.fetch(request);
+			const asset = await c.env.ASSETS.fetch(request);
+			if (url.pathname !== "/consent") return asset;
+			const headers = new Headers(asset.headers);
+			headers.set("content-security-policy", "frame-ancestors 'none'");
+			headers.set("x-frame-options", "DENY");
+			return new Response(asset.body, {
+				status: asset.status,
+				statusText: asset.statusText,
+				headers,
+			});
 		});
 	});
 

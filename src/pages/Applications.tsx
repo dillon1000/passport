@@ -105,6 +105,7 @@ type OAuthClientSummary = {
 	public?: boolean;
 	disabled?: boolean;
 	platformAdminOnly?: boolean;
+	verified?: boolean;
 	skipConsent?: boolean;
 	enableEndSession?: boolean;
 	backchannelLogoutUri?: string | null;
@@ -126,6 +127,7 @@ type ClientDraft = {
 	policy: string;
 	skipConsent: boolean;
 	platformAdminOnly: boolean;
+	verified: boolean;
 	enableEndSession: boolean;
 	backchannelLogoutUri: string;
 };
@@ -241,6 +243,7 @@ function clientDraft(client?: OAuthClientSummary): ClientDraft {
 		policy: client?.policy ?? "",
 		skipConsent: Boolean(client?.skipConsent),
 		platformAdminOnly: Boolean(client?.platformAdminOnly),
+		verified: Boolean(client?.verified),
 		enableEndSession: Boolean(client?.enableEndSession),
 		backchannelLogoutUri: client?.backchannelLogoutUri ?? "",
 	};
@@ -440,6 +443,7 @@ export function Applications() {
 				public: newClient.clientType === "m2m" ? false : newClientPublic,
 				skipConsent: newClient.skipConsent,
 				platformAdminOnly: newClient.platformAdminOnly,
+				verified: false,
 				enableEndSession: newClient.enableEndSession,
 				backchannelLogoutUri: newClient.backchannelLogoutUri.trim() || undefined,
 			}),
@@ -484,6 +488,7 @@ export function Applications() {
 				policy: draft.policy || undefined,
 				skipConsent: draft.skipConsent,
 				platformAdminOnly: draft.platformAdminOnly,
+				verified: draft.verified,
 				enableEndSession: draft.enableEndSession,
 				backchannelLogoutUri: draft.backchannelLogoutUri.trim() || null,
 			}),
@@ -848,14 +853,20 @@ export function Applications() {
 											}
 										/>
 										{draft.clientType === "browser" ? (
-											<CheckboxField
-												label="Platform admins only"
-												hint="Only platform admins can sign in to this app."
-												checked={draft.platformAdminOnly}
-												onCheckedChange={(value) =>
-													setDraft(client.clientId, { platformAdminOnly: value })
-												}
-											/>
+											<>
+												<CheckboxField
+													label="Published"
+													hint="Show reviewed branding on consent screens."
+													checked={draft.verified}
+													onCheckedChange={(value) => setDraft(client.clientId, { verified: value })}
+												/>
+												<CheckboxField
+													label="Platform admins only"
+													hint="Only platform admins can sign in to this app."
+													checked={draft.platformAdminOnly}
+													onCheckedChange={(value) => setDraft(client.clientId, { platformAdminOnly: value })}
+												/>
+											</>
 										) : null}
 															<CheckboxField
 															label={<OIDCLogoutLabel enabled={false} />}

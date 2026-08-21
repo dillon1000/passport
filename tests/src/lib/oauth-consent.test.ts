@@ -29,6 +29,17 @@ describe("oauth consent helpers", () => {
 		expect(oauthConsentRequestBody("", true)).toBeNull();
 	});
 
+	it("sends a partial scope grant only when access is allowed", () => {
+		expect(oauthConsentRequestBody("?scope=openid+teams", true, ["openid"])).toEqual({
+			accept: true,
+			oauth_query: "scope=openid+teams",
+			scope: "openid",
+		});
+		expect(oauthConsentRequestBody("?scope=openid+teams", false, ["openid"])).not.toHaveProperty(
+			"scope",
+		);
+	});
+
 	it("reads redirect URLs from current and legacy response shapes", () => {
 		expect(oauthConsentRedirect({ redirect_uri: "https://client.test/current" })).toBe(
 			"https://client.test/current",

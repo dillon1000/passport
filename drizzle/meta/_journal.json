@@ -127,6 +127,13 @@
       "when": 1786738514970,
       "tag": "0017_thin_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787352086355,
+      "tag": "0018_cultured_junta",
+      "breakpoints": true
     }
   ]
 }

@@ -19,6 +19,7 @@ describe("OAuth client consent metadata", () => {
 			policy: "https://app.example.com/privacy",
 			public: false,
 			disabled: true,
+			verified: true,
 		});
 
 		expect(metadata).toEqual({
@@ -32,6 +33,7 @@ describe("OAuth client consent metadata", () => {
 			policy: "https://app.example.com/privacy",
 			public: false,
 			disabled: true,
+			verified: true,
 			source: "database",
 		});
 		expect(metadata).not.toHaveProperty("clientSecret");
@@ -54,6 +56,7 @@ describe("OAuth client consent metadata", () => {
 			scopes: ["openid"],
 			public: true,
 			disabled: false,
+			verified: true,
 			source: "seed",
 		});
 	});
