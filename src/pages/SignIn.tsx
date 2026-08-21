@@ -5,7 +5,7 @@
  * Safe changes are mode copy, visible recovery options, and callback handling.
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Fingerprint, LogIn, Mail } from "@/lib/icons";
+import { Fingerprint, LogIn, Mail, Pencil } from "@/lib/icons";
 import { Loader } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 
@@ -14,12 +14,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitive
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
 import { PasswordStrength } from "@/components/auth/password-strength";
-import { type SocialProviderId } from "@/components/auth/social-provider-config";
+import {
+	SOCIAL_PROVIDERS,
+	type SocialProviderId,
+} from "@/components/auth/social-provider-config";
 import { SocialButtons } from "@/components/auth/social-buttons";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Wordmark } from "@/components/auth/wordmark";
 import { Button } from "@/components/kumo/primitives/button";
-import { Card, CardContent } from "@/components/kumo/primitives/card";
+import { Card, CardContent, CardFooter } from "@/components/kumo/primitives/card";
 import { Separator } from "@/components/kumo/primitives/separator";
 import { authClient } from "@/auth-client";
 import {
@@ -42,9 +45,14 @@ import { initialsOf } from "@/lib/session";
 import { useAccountSwitch } from "@/lib/account-switch";
 import { withViewTransition } from "@/lib/view-transition";
 import { isWebAssemblyAvailable } from "@/lib/webassembly";
+import {
+	discoverSignInMethods,
+	type SignInMethods,
+} from "@/lib/sign-in-methods";
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
-type FieldErrorTarget = "credential" | "confirmPassword";
+type SignInStep = "identifier" | "methods";
+type FieldErrorTarget = "credential" | "password" | "confirmPassword";
 
 interface FieldError {
 	target: FieldErrorTarget;
@@ -109,10 +117,13 @@ export function SignIn() {
 	const searchParams = new URLSearchParams(window.location.search);
 	const resetToken = searchParams.get("token");
 	const formRef = useRef<HTMLFormElement>(null);
+	const conditionalPasskeyStarted = useRef(false);
 	const [mode, setMode] = useState<Mode>(
 		resetToken ? "reset" : searchParams.get("flow") === "reset-password" ? "recovery" : "signin",
 	);
 	const [credential, setCredential] = useState("");
+	const [signInStep, setSignInStep] = useState<SignInStep>("identifier");
+	const [signInMethods, setSignInMethods] = useState<SignInMethods | null>(null);
 	const [password, setPassword] = useState("");
 	const [newPassword, setNewPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
@@ -121,6 +132,7 @@ export function SignIn() {
 	const [fieldError, setFieldError] = useState<FieldError | null>(null);
 	const [captchaToken, setCaptchaToken] = useState("");
 	const [captchaResetKey, setCaptchaResetKey] = useState(0);
+	const [captchaEscalated, setCaptchaEscalated] = useState(false);
 	const [status, setStatus] = useState<Status | null>(() => {
 		if (searchParams.get("flow") === "reset-password" && searchParams.get("error")) {
 			return {
@@ -174,6 +186,7 @@ export function SignIn() {
 				? fieldError.message
 				: undefined;
 	const credentialError = fieldError?.target === "credential" ? fieldError.message : undefined;
+	const passwordError = fieldError?.target === "password" ? fieldError.message : undefined;
 	const resetConfirmationError =
 		mode === "reset" &&
 		fieldError?.target === "confirmPassword" &&
@@ -181,9 +194,35 @@ export function SignIn() {
 			? fieldError.message
 			: undefined;
 
+	useEffect(() => {
+		if (
+			mode !== "signin" ||
+			signInStep !== "identifier" ||
+			!captchaConfig.loaded ||
+			(captchaConfig.enabled && !captchaToken) ||
+			conditionalPasskeyStarted.current
+		) {
+			return;
+		}
+
+		conditionalPasskeyStarted.current = true;
+		const fetchOptions = captchaFetchOptions(captchaConfig, captchaToken);
+		void authClient.signIn
+			.passkey({
+				autoFill: true,
+				...(fetchOptions ? { fetchOptions } : {}),
+			})
+			.then((result) => {
+				if (!result.error) window.location.assign(callbackURL);
+			});
+	}, [callbackURL, captchaConfig, captchaToken, mode, signInStep]);
+
 	function switchMode(nextMode: Mode) {
 		setFieldError(null);
 		setCaptchaToken("");
+		setCaptchaEscalated(false);
+		setSignInStep("identifier");
+		setSignInMethods(null);
 		withViewTransition(() => setMode(nextMode));
 	}
 
@@ -224,6 +263,30 @@ export function SignIn() {
 		return captchaFetchOptions(captchaConfig, captchaToken);
 	}
 
+	async function continueToMethods() {
+		const credentialValue = credential.trim();
+		if (!credentialValue) {
+			setFieldError({ target: "credential", message: "Enter your email or username." });
+			return;
+		}
+
+		setFieldError(null);
+		setStatus(null);
+		setLoading(true);
+		try {
+			const methods = await discoverSignInMethods(credentialValue);
+			setSignInMethods(methods);
+			withViewTransition(() => setSignInStep("methods"));
+		} catch (error) {
+			setFieldError({
+				target: "credential",
+				message: error instanceof Error ? error.message : "Could not continue to sign in.",
+			});
+		} finally {
+			setLoading(false);
+		}
+	}
+
 	async function submitPassword(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setFieldError(null);
@@ -235,6 +298,10 @@ export function SignIn() {
 				target: "credential",
 				message: mode === "signin" ? "Enter your email or username." : "Enter your email.",
 			});
+			return;
+		}
+		if (mode === "signin" && signInStep === "identifier") {
+			await continueToMethods();
 			return;
 		}
 
@@ -281,7 +348,15 @@ export function SignIn() {
 
 		if (result.error) {
 			resetCaptcha();
-			setStatus({ tone: "error", message: result.error.message ?? "Authentication failed." });
+			if (mode === "signin") {
+				setCaptchaEscalated(true);
+				setFieldError({
+					target: "password",
+					message: "The email, username, or password is incorrect.",
+				});
+			} else {
+				setStatus({ tone: "error", message: result.error.message ?? "Authentication failed." });
+			}
 			return;
 		}
 
@@ -458,20 +533,32 @@ export function SignIn() {
 
 	const formSubmitHandler =
 		mode === "recovery" ? requestPasswordReset : mode === "reset" ? submitNewPassword : submitPassword;
-	const showAlternateSignIn = mode !== "reset";
+	const isIdentifierStep = mode === "signin" && signInStep === "identifier";
+	const isMethodStep = mode === "signin" && signInStep === "methods";
+	const showPasskey = !isMethodStep || Boolean(signInMethods?.passkey);
+	const showMagicLink = mode !== "signin" || Boolean(isMethodStep && signInMethods?.magicLink);
+	const methodSocialProviders = isMethodStep ? signInMethods?.socialProviders : undefined;
+	const showSocialProviders = !isMethodStep || Boolean(methodSocialProviders?.length);
+	const lastUsedSocialProvider = SOCIAL_PROVIDERS.some(
+		(provider) => provider.id === lastUsedSignInMethod,
+	);
+	const showAlternateSignIn =
+		mode !== "reset" && (showPasskey || showMagicLink || showSocialProviders);
+	const signInTitle = isMethodStep
+		? signInMethods?.password
+			? "Enter your password"
+			: "Choose how to sign in"
+		: titleFor(mode, addingAccount);
 
 	return (
-		<AuthShell>
+		<AuthShell focused>
 			<div className="flex flex-col items-center gap-6">
-				<div className="flex flex-col items-center gap-3 text-center">
-					<Wordmark className="h-7" />
-					<h1 className="text-xl font-semibold tracking-tight">
-						{titleFor(mode, addingAccount)}
-					</h1>
-				</div>
-
 				<Card className="w-full">
-					<CardContent className="space-y-4">
+					<CardContent className="space-y-5 p-7">
+						<div className="space-y-7">
+							<Wordmark className="h-7" />
+							<h1 className="text-2xl font-semibold tracking-tight">{signInTitle}</h1>
+						</div>
 						<StatusBanner status={status} />
 						{canChooseExistingAccount && session ? (
 							<ExistingSessionChoice
@@ -536,9 +623,30 @@ export function SignIn() {
 											/>
 										</Field>
 									) : null}
+									{isMethodStep ? (
+										<button
+											type="button"
+											className="inline-flex max-w-full items-center gap-2 rounded-full border bg-background py-1.5 pr-3 pl-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+											onClick={() => {
+												setFieldError(null);
+												setPassword("");
+												setCaptchaEscalated(false);
+												setSignInMethods(null);
+												withViewTransition(() => setSignInStep("identifier"));
+											}}
+										>
+											<span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-xs uppercase">
+												{credential.trim().charAt(0)}
+											</span>
+											<span className="truncate">{credential.trim()}</span>
+											<Pencil aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+											<span className="sr-only">Change email or username</span>
+										</button>
+									) : (
 									<Field
 										label={mode === "signin" ? "Email or username" : "Account email"}
 										error={credentialError}
+										errorAboveControl={mode === "signin"}
 										hint={
 											mode === "recovery"
 												? "Used for reset links and magic links."
@@ -547,7 +655,8 @@ export function SignIn() {
 									>
 										<FieldInput
 											type={mode === "signin" ? "text" : "email"}
-											autoComplete={mode === "signin" ? "username" : "email"}
+											inputMode="email"
+											autoComplete={mode === "signin" ? "username webauthn" : "email"}
 											placeholder={mode === "signin" ? "you@example.com or ada" : "you@example.com"}
 											autoFocus
 											value={credential}
@@ -555,6 +664,7 @@ export function SignIn() {
 											required
 										/>
 									</Field>
+									)}
 									{mode === "recovery" ? (
 										<div className="rounded-lg border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
 											<p className="font-medium text-foreground">Forgot your email?</p>
@@ -589,9 +699,9 @@ export function SignIn() {
 													</Field>
 													<PasswordStrength value={password} />
 												</>
-											) : (
+											) : mode !== "signin" || signInMethods?.password ? (
 												<>
-													<Field label="Password">
+													<Field label="Password" error={passwordError} errorAboveControl>
 														<FieldPasswordInput
 															autoComplete="current-password"
 															placeholder="••••••••"
@@ -600,37 +710,41 @@ export function SignIn() {
 															required
 														/>
 													</Field>
-													<div className="flex justify-end">
-														<button
-															type="button"
-															className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-xs font-medium text-muted-foreground underline-offset-4 transition-[scale,color] duration-150 ease-out hover:text-foreground hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
-															onClick={() => switchMode("recovery")}
-														>
-															Forgot username, password, or email?
-														</button>
-													</div>
 												</>
-											)}
+											) : null}
 										</>
 									)}
 									<CaptchaChallenge
 										config={captchaConfig}
 										resetKey={captchaResetKey}
 										onTokenChange={setCaptchaToken}
+										invisible={mode === "signin"}
+										escalated={captchaEscalated}
+										reserveSpace={isMethodStep}
 									/>
 								</>
 							)}
-							<Button
+							{!isMethodStep || signInMethods?.password ? <Button
 								className="mt-1 w-full"
 								size="lg"
 								type="submit"
 								disabled={authActionsDisabled || !signupPasswordReady}
 								aria-keyshortcuts="Meta+Enter Control+Enter"
 							>
-								<LogIn className="size-4" />
-								{copy.action}
-								{lastUsedSignInMethod === "email" ? <LastUsedBadge /> : null}
+								{isIdentifierStep ? null : <LogIn className="size-4" />}
+								{isIdentifierStep ? "Continue" : copy.action}
+								{!isIdentifierStep && lastUsedSignInMethod === "email" ? <LastUsedBadge /> : null}
 							</Button>
+							 : null}
+							{isMethodStep && signInMethods?.password ? (
+								<button
+									type="button"
+									className="mx-auto flex min-h-10 items-center text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+									onClick={() => switchMode("recovery")}
+								>
+									Forgot username, email, or password?
+								</button>
+							) : null}
 						</form>
 
 						{showAlternateSignIn ? (
@@ -640,13 +754,19 @@ export function SignIn() {
 									<span>or</span>
 									<Separator />
 								</div>
+								{showSocialProviders && lastUsedSocialProvider ? <SocialButtons
+									onSelect={social}
+									disabled={authActionsDisabled}
+									lastUsedMethod={lastUsedSignInMethod}
+									providers={methodSocialProviders}
+								/> : null}
 
-								<div className="grid grid-cols-2 gap-2">
-									<Button
+								<div className={showPasskey && showMagicLink ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
+									{showPasskey ? <Button
 										variant="outline"
 										size="lg"
 										type="button"
-										className="relative w-full"
+										className={lastUsedSignInMethod === "magic-link" ? "relative order-2 w-full" : "relative w-full"}
 										onClick={signInWithPasskey}
 										disabled={authActionsDisabled}
 									>
@@ -654,11 +774,12 @@ export function SignIn() {
 										Passkey
 										{lastUsedSignInMethod === "passkey" ? <LastUsedBadge /> : null}
 									</Button>
-									<Button
+									 : null}
+									{showMagicLink ? <Button
 										variant="outline"
 										size="lg"
 										type="button"
-										className="relative w-full"
+										className={lastUsedSignInMethod === "magic-link" ? "relative order-first w-full" : "relative w-full"}
 										onClick={sendMagicLink}
 										disabled={authActionsDisabled}
 									>
@@ -666,32 +787,36 @@ export function SignIn() {
 										Magic link
 										{lastUsedSignInMethod === "magic-link" ? <LastUsedBadge /> : null}
 									</Button>
+									 : null}
 								</div>
 
-									<SocialButtons
+								{showSocialProviders && !lastUsedSocialProvider ? <SocialButtons
 										onSelect={social}
 										disabled={authActionsDisabled}
 										lastUsedMethod={lastUsedSignInMethod}
+										providers={methodSocialProviders}
 									/>
+								 : null}
 							</>
 								) : null}
 							</>
 						)}
 					</CardContent>
+					{!canChooseExistingAccount ? (
+						<CardFooter className="border-t bg-muted/35 text-sm text-muted-foreground">
+							<p>
+								{copy.toggle}{" "}
+								<button
+									type="button"
+									className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
+									onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
+								>
+									{copy.switchTo}
+								</button>
+							</p>
+						</CardFooter>
+					) : null}
 				</Card>
-
-				{!canChooseExistingAccount ? (
-					<p className="text-sm text-muted-foreground">
-						{copy.toggle}{" "}
-						<button
-							type="button"
-							className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
-							onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
-						>
-							{copy.switchTo}
-						</button>
-					</p>
-				) : null}
 			</div>
 		</AuthShell>
 	);

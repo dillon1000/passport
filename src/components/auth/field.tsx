@@ -36,12 +36,15 @@ export function Field({
 	label,
 	hint,
 	error,
+	errorAboveControl = false,
 	children,
 	className,
 }: {
 	label: ReactNode;
 	hint?: ReactNode;
 	error?: ReactNode;
+	/** Places urgent form errors before the control so they are read before retry input. */
+	errorAboveControl?: boolean;
 	children: ReactNode;
 	className?: string;
 }) {
@@ -56,14 +59,19 @@ export function Field({
 		<FieldContext value={{ id, describedBy, invalid }}>
 			<div className={cn("space-y-1.5", className)}>
 				<Label htmlFor={id}>{label}</Label>
+				{error && errorAboveControl ? (
+					<p id={errorId} role="alert" className="text-xs font-medium text-destructive">
+						{error}
+					</p>
+				) : null}
 				{children}
 				{hint && !error ? (
 					<p id={hintId} className="text-xs text-muted-foreground">
 						{hint}
 					</p>
 				) : null}
-				{error ? (
-					<p id={errorId} className="text-xs font-medium text-destructive">
+				{error && !errorAboveControl ? (
+					<p id={errorId} role="alert" className="text-xs font-medium text-destructive">
 						{error}
 					</p>
 				) : null}
