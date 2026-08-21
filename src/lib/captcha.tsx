@@ -6,7 +6,6 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import "cap-widget";
 
 import type { CaptchaConfig } from "@/lib/captcha-config";
-import { ShieldCheck } from "@/lib/icons";
 
 type CapWidgetElement = HTMLElement & {
 	solve: () => Promise<{ success: boolean; token: string }>;
@@ -109,12 +108,6 @@ export function CaptchaChallenge({
 					"--cap-spinner-background-color": "var(--muted)",
 				} as CSSProperties}
 			/>
-			{invisible && !escalated && reserveSpace ? (
-				<p className="flex min-h-14 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-					<ShieldCheck aria-hidden="true" className="size-4" />
-					Protected by Cap — no challenge needed
-				</p>
-			) : null}
 		</div>
 	);
 }
