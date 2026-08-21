@@ -1,30 +1,33 @@
 /**
  * OAuth consent page. Inputs are the provider-signed OAuth query, reviewed
  * client metadata, and the current account; output is an allow or deny POST.
- * The page groups scopes by effect and sends partial grants when users omit
- * optional access. Unpublished clients lose uploaded branding and expose raw
- * scope strings so development requests are explicit.
+ * Required scopes render as fixed capability rows. Only scopes explicitly
+ * marked optional by the client can be removed with Passport's checkbox.
  */
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
-	Check,
+	AppWindow,
+	Building2,
 	CheckCircle2,
 	ChevronDown,
 	Clock,
-	ExternalLink,
-	Globe2,
-	Repeat2,
-	ShieldCheck,
+	CreditCard,
+	History,
+	Link2,
+	Lock,
+	Pencil,
+	Phone,
 	TriangleAlert,
-	X,
+	UserRound,
 } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { StatusBanner, type Status } from "@/components/auth/status";
 import { Button } from "@/components/kumo/primitives/button";
-import { Card, CardContent, CardFooter } from "@/components/kumo/primitives/card";
+import { Card, CardContent } from "@/components/kumo/primitives/card";
+import { Checkbox } from "@/components/kumo/primitives/checkbox";
 import { Loader } from "@/components/kumo/primitives/loader";
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { useBrand } from "@/lib/brand-runtime";
@@ -35,6 +38,7 @@ import {
 	isOptionalConsentScope,
 	oauthRedirectHost,
 	safeOAuthClientName,
+	type ConsentScopeGroup,
 } from "@/lib/oauth-consent-scopes";
 import {
 	OAUTH_CONSENT_ENDPOINT,
@@ -43,12 +47,12 @@ import {
 } from "@/lib/oauth-consent";
 import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { initialsOf } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 type ConsentClientMetadata = {
 	clientId: string;
 	name: string;
 	redirectUris: string[];
+	optionalScopes?: string[];
 	uri?: string | null;
 	icon?: string | null;
 	tos?: string | null;
@@ -56,6 +60,15 @@ type ConsentClientMetadata = {
 	disabled?: boolean;
 	verified: boolean;
 	source: "database" | "seed";
+};
+
+const GROUP_ICONS: Record<ConsentScopeGroup["id"], ComponentType<{ className?: string }>> = {
+	write: Pencil,
+	identity: UserRound,
+	phone: Phone,
+	organization: Building2,
+	security: Link2,
+	billing: CreditCard,
 };
 
 export function Consent() {
@@ -102,8 +115,10 @@ export function Consent() {
 		client?.verified && registeredRedirect && !isLocalOAuthHost(redirectHost),
 	);
 	const clientName = safeOAuthClientName(client?.name ?? "", "Unknown application");
-	const groups = consentScopeGroups(requestedScopes);
+	const optionalScopes = client?.optionalScopes ?? [];
+	const groups = consentScopeGroups(requestedScopes, optionalScopes);
 	const hasOfflineAccess = requestedScopes.includes("offline_access");
+	const offlineAccessOptional = isOptionalConsentScope("offline_access", optionalScopes);
 	const links = [
 		...(client?.uri ? [{ label: "Website", href: client.uri }] : []),
 		...(client?.tos ? [{ label: "Terms", href: client.tos }] : []),
@@ -127,7 +142,7 @@ export function Consent() {
 		setSelectedScopes((current) => {
 			const next = new Set(current);
 			for (const scope of scopes) {
-				if (!isOptionalConsentScope(scope)) continue;
+				if (!isOptionalConsentScope(scope, optionalScopes)) continue;
 				if (enabled) next.add(scope);
 				else next.delete(scope);
 			}
@@ -171,7 +186,7 @@ export function Consent() {
 
 	if (redirecting) {
 		return (
-			<AuthShell width="md" focused>
+			<AuthShell width="sm" focused>
 				<Card>
 					<CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
 						<AppMark client={client} published={published} name={clientName} />
@@ -183,70 +198,67 @@ export function Consent() {
 	}
 
 	return (
-		<AuthShell width="md" focused>
+		<AuthShell width="sm" focused>
 			<Card className="w-full gap-0 overflow-hidden py-0">
-				<CardContent className="space-y-5 px-5 pt-5 pb-6 sm:px-6 sm:pt-6">
-					<div className="flex items-start gap-4">
+				<CardContent className="px-5 py-6 sm:px-6 sm:py-7">
+					<header className="flex flex-col items-center text-center">
 						<AppMark client={client} published={published} name={clientName} />
-						<div className="min-w-0 flex-1 pt-0.5">
-							<h1 className="text-xl font-semibold tracking-tight">
-								{clientName} wants access to your {brand.name} account
-							</h1>
-							{redirectHost ? (
-								<p className="mt-1.5 flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-									{published ? <CheckCircle2 className="size-3.5" /> : <Globe2 className="size-3.5" />}
-									<span className="truncate">{redirectHost}</span>
-									{published ? <span className="font-sans">verified redirect</span> : null}
-								</p>
-							) : null}
-						</div>
-					</div>
+						<h1 className="mt-5 text-xl leading-7 font-semibold tracking-tight">
+							{clientName} wants to access your {brand.name} account
+						</h1>
+						{redirectHost ? (
+							<p className="mt-2 flex max-w-full items-center justify-center gap-2 font-mono text-sm text-muted-foreground">
+								{published ? (
+									<CheckCircle2 className="size-4 shrink-0 text-green-700 dark:text-green-400" />
+								) : null}
+								<span className="truncate">{redirectHost}</span>
+							</p>
+						) : null}
+					</header>
 
 					{!published ? (
-						<div className="flex gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2.5 text-sm">
+						<div className="mt-5 flex gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm">
 							<TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
 							<div>
 								<p className="font-medium">Unpublished application</p>
-								<p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Passport has not verified this application and its redirect. Continue only if you trust the developer.</p>
+								<p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+									Passport has not verified this application and its redirect. Continue only if you trust the developer.
+								</p>
 							</div>
 						</div>
 					) : null}
 
-					<StatusBanner status={status} />
-					{client?.disabled ? (
-						<StatusBanner
-							status={{
-								tone: "error",
-								message: "This application is disabled and cannot receive access.",
-							}}
-						/>
-					) : null}
+					<div className="mt-5">
+						<StatusBanner status={status} />
+						{client?.disabled ? (
+							<StatusBanner status={{ tone: "error", message: "This application is disabled and cannot receive access." }} />
+						) : null}
+					</div>
 
 					{session?.user ? (
-						<div className="flex items-center gap-2.5 rounded-lg border bg-muted/30 px-3 py-2.5">
-							<span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full border bg-background text-xs font-medium">
+						<div className="mt-5 flex min-h-10 items-center gap-2.5 rounded-lg border px-2.5 py-2">
+							<span className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-blue-100 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
 								{session.user.image ? (
 									<img src={session.user.image} alt="" className="size-full object-cover" />
 								) : (
-									initialsOf(session.user.name || session.user.email)
+									initialsOf(session.user.email)
 								)}
 							</span>
-							<div className="min-w-0 flex-1">
-								<p className="truncate text-sm font-medium">{session.user.name || session.user.email}</p>
-								{session.user.name ? <p className="truncate text-xs text-muted-foreground">{session.user.email}</p> : null}
-							</div>
-							<Button asChild size="sm" variant="ghost">
-								<a href={accountSelectionURL}>
-									<Repeat2 className="size-3.5" />
-									Switch account
-								</a>
-							</Button>
+							<p className="min-w-0 flex-1 truncate text-sm font-medium">{session.user.email}</p>
+							<a
+								href={accountSelectionURL}
+								className="shrink-0 text-sm font-medium text-blue-700 hover:underline dark:text-blue-400"
+							>
+								Switch account
+							</a>
 						</div>
 					) : null}
 
-					<section aria-labelledby="access-heading" className="space-y-2">
-						<h2 id="access-heading" className="text-sm font-medium">{clientName} is asking to</h2>
-						<div className="divide-y rounded-xl border">
+					<section aria-labelledby="access-heading" className="mt-6">
+						<h2 id="access-heading" className="pb-2 text-sm text-muted-foreground">
+							This will allow {clientName} to
+						</h2>
+						<div className="border-y">
 							{groups.map((group) => (
 								<ScopeGroup
 									key={group.id}
@@ -260,79 +272,99 @@ export function Consent() {
 					</section>
 
 					{hasOfflineAccess ? (
-						<label className="flex cursor-pointer gap-3 rounded-xl border border-foreground/20 bg-muted/25 p-3.5">
-							<input
-								type="checkbox"
-								className="mt-1 size-4 accent-foreground"
-								checked={selectedScopes.has("offline_access")}
-								onChange={(event) =>
-									setScopeSelection(["offline_access"], event.target.checked)
-								}
-							/>
+						<div className="mt-3 flex gap-3 rounded-lg bg-amber-200/80 px-3 py-3 text-amber-950 dark:bg-amber-900/45 dark:text-amber-100">
 							<Clock className="mt-0.5 size-5 shrink-0" />
-							<span>
-								<span className="block text-sm font-medium">Let {clientName} access your account in the background</span>
-								<span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{clientName} can refresh access while you are away for up to 30 days. You can revoke access sooner.</span>
-								{!published ? <code className="mt-1.5 block text-[0.6875rem] text-muted-foreground">offline_access</code> : null}
-							</span>
-						</label>
+							<div className="min-w-0 flex-1">
+								<p className="text-sm font-medium leading-5">Keep this access when you’re not using {clientName}</p>
+								<p className="mt-0.5 text-xs leading-5">{clientName} can read the access above in the background for up to 30 days, until you revoke it.</p>
+								{!published ? <code className="mt-1 block text-[0.6875rem]">offline_access</code> : null}
+							</div>
+							{offlineAccessOptional ? (
+								<Checkbox
+									aria-label="Allow background access"
+									checked={selectedScopes.has("offline_access")}
+									onCheckedChange={(checked) => setScopeSelection(["offline_access"], checked === true)}
+									className="mt-0.5 shrink-0"
+								/>
+							) : null}
+						</div>
 					) : null}
-				</CardContent>
 
-				<CardFooter className="flex-col gap-3 border-t bg-muted/40 px-5 py-4 sm:px-6">
-					<div className="grid w-full grid-cols-2 gap-2">
-						<Button
-							size="lg"
-							variant="secondary"
-							onClick={() => void decide(false)}
-							disabled={loading !== null}
-						>
-							{loading === "deny" ? <Loader size="sm" /> : <><X className="size-4" />Deny</>}
+					<div className="mt-5 grid grid-cols-2 gap-2">
+						<Button size="lg" variant="outline" onClick={() => void decide(false)} disabled={loading !== null}>
+							{loading === "deny" ? <Loader size="sm" /> : "Deny"}
 						</Button>
 						<Button size="lg" onClick={() => void decide(true)} disabled={approvalBlocked}>
-							{loading === "accept" ? <Loader size="sm" className="text-primary-foreground" /> : <><Check className="size-4" />Allow</>}
+							{loading === "accept" ? <Loader size="sm" className="text-primary-foreground" /> : "Allow access"}
 						</Button>
 					</div>
-					<div className="space-y-1 text-center text-xs leading-relaxed text-muted-foreground">
-						<p>You can revoke {clientName}'s access at any time from Applications.</p>
-						<p>{clientName} cannot access your password.</p>
+
+					<div className="mt-5 space-y-2 border-t pt-4 text-sm text-muted-foreground">
+						<p className="flex items-center gap-2"><Lock className="size-4 shrink-0" />{clientName} cannot see your password.</p>
+						<p className="flex items-center gap-2"><History className="size-4 shrink-0" />Revoke any time in <a href="/applications" className="text-blue-700 hover:underline dark:text-blue-400">Applications.</a></p>
 					</div>
-					{links.length ? <nav aria-label="Application policies" className="flex flex-wrap justify-center gap-x-4 gap-y-1 border-t pt-3 text-xs text-muted-foreground">{links.map((link) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">{link.label}<ExternalLink className="size-3" /></a>)}</nav> : null}
-					<p className="text-center text-[0.6875rem] text-muted-foreground/70">Consent managed by {brand.name}</p>
-				</CardFooter>
+
+					<footer className="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground/80">
+						{links.map((link) => <a key={link.label} href={link.href} target="_blank" rel="noreferrer" className="hover:text-foreground">{link.label}</a>)}
+						{links.length ? <span aria-hidden="true">·</span> : null}
+						<span>Secured by {brand.name}</span>
+					</footer>
+				</CardContent>
 			</Card>
 		</AuthShell>
 	);
 }
 
 function AppMark({ client, published, name }: { client: ConsentClientMetadata | null; published: boolean; name: string }) {
-	return published && client?.icon ? (
-		<img src={client.icon} alt="" className="size-14 shrink-0 rounded-xl bg-muted object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
-	) : (
-		<div className="grid size-14 shrink-0 place-items-center rounded-xl border bg-muted text-base font-semibold">
-			{initialsOf(name)}
+	if (published && client?.icon) {
+		return <img src={client.icon} alt="" className="size-11 rounded-xl bg-muted object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />;
+	}
+	return (
+		<div className="grid size-11 place-items-center rounded-xl border text-muted-foreground">
+			{published ? <span className="text-sm font-semibold">{initialsOf(name)}</span> : <AppWindow className="size-5" />}
 		</div>
 	);
 }
 
-function ScopeGroup({ group, selected, unpublished, onChange }: { group: ReturnType<typeof consentScopeGroups>[number]; selected: Set<string>; unpublished: boolean; onChange: (scopes: readonly string[], enabled: boolean) => void }) {
-	const checked = group.scopes.every((scope) => selected.has(scope));
+function ScopeGroup({ group, selected, unpublished, onChange }: { group: ConsentScopeGroup; selected: Set<string>; unpublished: boolean; onChange: (scopes: readonly string[], enabled: boolean) => void }) {
+	const Icon = GROUP_ICONS[group.id];
+	const fullyOptional = group.requiredScopes.length === 0;
+	const checked = group.optionalScopes.every((scope) => selected.has(scope));
 	return (
-		<details
-			className={cn(
-				"group px-3.5 py-3",
-				group.id === "write" && "bg-destructive/[0.035]",
-			)}
-		>
-			<summary className="flex cursor-pointer list-none items-start gap-3 [&::-webkit-details-marker]:hidden">
-				{group.optional ? <input type="checkbox" aria-label={group.title} className="mt-0.5 size-4 shrink-0 accent-foreground" checked={checked} onClick={(event) => event.stopPropagation()} onChange={(event) => onChange(group.scopes, event.target.checked)} /> : <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
-				<span className="min-w-0 flex-1"><span className="block text-sm font-medium">{group.title}</span><span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{group.description}</span></span>
-				<ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+		<details className="group border-t first:border-t-0">
+			<summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 py-2.5 [&::-webkit-details-marker]:hidden">
+				<Icon className="size-5 shrink-0 text-muted-foreground" />
+				<span className="min-w-0 flex-1">
+					<span className="block text-sm font-medium leading-5">{group.title}</span>
+					{group.description ? <span className="block text-xs leading-4 text-muted-foreground">{group.description}</span> : null}
+				</span>
+				{fullyOptional ? (
+					<span onClick={(event) => event.stopPropagation()}>
+						<Checkbox
+							aria-label={`Allow ${group.title.toLowerCase()}`}
+							checked={checked}
+							onCheckedChange={(value) => onChange(group.optionalScopes, value === true)}
+						/>
+					</span>
+				) : null}
+				<ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
 			</summary>
-			<ul className="mt-3 space-y-2 border-t pt-3 pl-7">
+			<ul className="space-y-2 border-t py-3 pl-8 text-xs">
 				{group.visibleScopes.map((scope) => {
-					const optional = isOptionalConsentScope(scope);
-					return <li key={scope} className="flex items-start gap-2 text-xs"><input type="checkbox" aria-label={consentScopeLabel(scope)} className={cn("mt-0.5 size-3.5 accent-foreground", !optional && "invisible")} checked={selected.has(scope)} disabled={!optional} onChange={(event) => onChange([scope], event.target.checked)} /><span className="min-w-0 flex-1"><span className="block">{consentScopeLabel(scope)}</span>{unpublished ? <code className="mt-0.5 block break-all text-[0.6875rem] text-muted-foreground">{scope}</code> : null}</span></li>;
+					const optional = group.optionalScopes.includes(scope);
+					return (
+						<li key={scope} className="flex items-start gap-2">
+							{optional && !fullyOptional ? (
+								<Checkbox
+									aria-label={consentScopeLabel(scope)}
+									checked={selected.has(scope)}
+									onCheckedChange={(value) => onChange([scope], value === true)}
+									className="mt-0.5"
+								/>
+							) : null}
+							<span className="min-w-0 flex-1"><span className="block">{consentScopeLabel(scope)}</span>{unpublished ? <code className="block break-all text-[0.6875rem] text-muted-foreground">{scope}</code> : null}</span>
+						</li>
+					);
 				})}
 			</ul>
 		</details>
@@ -340,5 +372,9 @@ function ScopeGroup({ group, selected, unpublished, onChange }: { group: ReturnT
 }
 
 function ConsentSkeleton() {
-	return <AuthShell width="md" focused><Card className="w-full"><CardContent className="space-y-5 px-6 py-6"><div className="flex gap-4"><Skeleton className="size-14 rounded-xl" /><div className="flex-1 space-y-2"><Skeleton className="h-6 w-4/5" /><Skeleton className="h-3 w-2/5" /></div></div><Skeleton className="h-16 w-full rounded-lg" /><Skeleton className="h-14 w-full rounded-lg" /><Skeleton className="h-44 w-full rounded-xl" /></CardContent></Card></AuthShell>;
+	return (
+		<AuthShell width="sm" focused>
+			<Card><CardContent className="space-y-5 px-6 py-7"><div className="flex flex-col items-center gap-3"><Skeleton className="size-11 rounded-xl" /><Skeleton className="h-6 w-4/5" /><Skeleton className="h-4 w-2/5" /></div><Skeleton className="h-11 w-full rounded-lg" /><Skeleton className="h-52 w-full" /><Skeleton className="h-16 w-full rounded-lg" /></CardContent></Card>
+		</AuthShell>
+	);
 }

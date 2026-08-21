@@ -131,6 +131,7 @@ export type OAuthClientSummary = {
 	redirectUris: string[];
 	postLogoutRedirectUris?: string[];
 	scopes?: string[];
+	optionalScopes?: string[];
 	uri?: string | null;
 	icon?: string | null;
 	tos?: string | null;
@@ -457,6 +458,7 @@ export type CreateOAuthClientInput = {
 	redirectUris: string[];
 	postLogoutRedirectUris?: string[];
 	scopes?: string[];
+	optionalScopes?: string[];
 	uri?: string;
 	icon?: string;
 	tos?: string;
@@ -588,15 +590,38 @@ const oauthScopesArray = z.array(z.string().trim().min(1)).superRefine((scopes, 
 	});
 });
 
+/**
+ * Optional scopes are a client policy, so each one must also be present in the
+ * client's requested scope allowlist. This prevents the consent page from
+ * presenting a permission policy that the OAuth client cannot request.
+ */
+function validateOptionalOAuthScopes(
+	value: { scopes?: string[]; optionalScopes?: string[] },
+	context: z.RefinementCtx,
+) {
+	if (!value.scopes || !value.optionalScopes) return;
+	const allowedScopes = new Set(value.scopes);
+	const invalidScopes = value.optionalScopes.filter((scope) => !allowedScopes.has(scope));
+	if (invalidScopes.length === 0) return;
+	context.addIssue({
+		code: "custom",
+		message: `Optional scopes must be included in scopes: ${invalidScopes.join(", ")}`,
+		path: ["optionalScopes"],
+	});
+}
+
 function validateCreateOAuthClientGrantShape(
 	value: {
 		redirectUris?: string[];
 		grantTypes?: OAuthGrantType[];
 		allowedAudiences?: string[];
 		public?: boolean;
+		scopes?: string[];
+		optionalScopes?: string[];
 	},
 	context: z.RefinementCtx,
 ) {
+	validateOptionalOAuthScopes(value, context);
 	const grantTypes = value.grantTypes ?? ["authorization_code"];
 	if (hasClientCredentialsGrant(grantTypes)) {
 		if (value.public) {
@@ -637,9 +662,12 @@ function validateUpdateOAuthClientGrantShape(
 		redirectUris?: string[];
 		grantTypes?: OAuthGrantType[];
 		allowedAudiences?: string[];
+		scopes?: string[];
+		optionalScopes?: string[];
 	},
 	context: z.RefinementCtx,
 ) {
+	validateOptionalOAuthScopes(value, context);
 	if (!value.grantTypes) {
 		if (value.redirectUris && value.redirectUris.length === 0) {
 			context.addIssue({
@@ -650,7 +678,14 @@ function validateUpdateOAuthClientGrantShape(
 		}
 		return;
 	}
-	validateCreateOAuthClientGrantShape(value, context);
+	validateCreateOAuthClientGrantShape(
+		{
+			redirectUris: value.redirectUris,
+			grantTypes: value.grantTypes,
+			allowedAudiences: value.allowedAudiences,
+		},
+		context,
+	);
 }
 
 const baseCreateOAuthClientSchema = z.object({
@@ -658,6 +693,7 @@ const baseCreateOAuthClientSchema = z.object({
 	redirectUris: optionalOAuthURLArray.default([]),
 	postLogoutRedirectUris: optionalOAuthURLArray.optional(),
 	scopes: oauthScopesArray.optional(),
+	optionalScopes: oauthScopesArray.optional(),
 	grantTypes: oauthGrantTypesArray.optional(),
 	allowedAudiences: oauthAudienceArray.optional(),
 	uri: z.string().url().optional(),

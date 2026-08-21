@@ -514,6 +514,9 @@ export const oauthClient = pgTable(
     enableEndSession: boolean("enable_end_session"),
     subjectType: text("subject_type"),
     scopes: text("scopes").array(),
+    // Only these requested scopes may be removed by a user during consent.
+    // All other client scopes remain required by default.
+    optionalScopes: text("optional_scopes").array(),
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),

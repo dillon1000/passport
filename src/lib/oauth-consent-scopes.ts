@@ -1,21 +1,18 @@
 /**
- * Consent presentation policy. Inputs are requested OAuth scope strings;
- * outputs are ordered, plain-language capability groups and the scopes that a
- * user can omit. Grant decisions still send the original scope strings to the
- * OAuth provider, so this file changes presentation without changing claims.
+ * Consent presentation policy. Inputs are requested and client-declared
+ * optional OAuth scopes; outputs are ordered, plain-language capability groups.
+ * Scopes are required unless the reviewed client explicitly marks them optional.
  */
-import {
-	OAUTH_SCOPE_DEFINITIONS,
-	isSupportedOAuthScope,
-} from "./oauth-scopes";
+import { OAUTH_SCOPE_DEFINITIONS, isSupportedOAuthScope } from "./oauth-scopes";
 
 export type ConsentScopeGroup = {
-	id: "write" | "organization" | "account" | "billing";
+	id: "write" | "identity" | "phone" | "organization" | "security" | "billing";
 	title: string;
-	description: string;
+	description?: string;
 	scopes: string[];
 	visibleScopes: string[];
-	optional: boolean;
+	optionalScopes: string[];
+	requiredScopes: string[];
 };
 
 const WRITE_SCOPES = new Set([
@@ -27,6 +24,13 @@ const WRITE_SCOPES = new Set([
 	"team-members:write",
 	"billing:checkout",
 	"billing:manage",
+]);
+const IDENTITY_SCOPES = new Set([
+	"openid",
+	"profile",
+	"email",
+	"profile:picture",
+	"profile:username",
 ]);
 const ORGANIZATION_SCOPES = new Set([
 	"organizations",
@@ -45,11 +49,12 @@ const BILLING_SCOPES = new Set([
 	"billing:entitlements",
 	"billing:limits",
 ]);
-const REQUIRED_IDENTITY_SCOPES = new Set(["openid", "profile", "email"]);
 
-/** Baseline identity stays required; elevated and extended access can be omitted. */
-export function isOptionalConsentScope(scope: string) {
-	return !REQUIRED_IDENTITY_SCOPES.has(scope);
+export function isOptionalConsentScope(
+	scope: string,
+	optionalScopes: readonly string[] = [],
+) {
+	return optionalScopes.includes(scope);
 }
 
 function visibleScopes(scopes: string[]) {
@@ -66,8 +71,9 @@ function visibleScopes(scopes: string[]) {
 function group(
 	id: ConsentScopeGroup["id"],
 	title: string,
-	description: string,
+	description: string | undefined,
 	scopes: string[],
+	optionalScopeSet: Set<string>,
 ): ConsentScopeGroup | null {
 	if (scopes.length === 0) return null;
 	return {
@@ -76,43 +82,62 @@ function group(
 		description,
 		scopes,
 		visibleScopes: visibleScopes(scopes),
-		optional: scopes.every(isOptionalConsentScope),
+		optionalScopes: scopes.filter((scope) => optionalScopeSet.has(scope)),
+		requiredScopes: scopes.filter((scope) => !optionalScopeSet.has(scope)),
 	};
 }
 
-/** Groups scopes by blast radius, with write access first and identity last. */
-export function consentScopeGroups(requestedScopes: readonly string[]) {
+/** Groups requested access into the short capability rows shown on consent. */
+export function consentScopeGroups(
+	requestedScopes: readonly string[],
+	optionalScopes: readonly string[] = [],
+) {
 	const scopes = [...new Set(requestedScopes)].filter((scope) => scope !== "offline_access");
+	const optionalScopeSet = new Set(optionalScopes.filter((scope) => scopes.includes(scope)));
 	const writes = scopes.filter((scope) => WRITE_SCOPES.has(scope));
+	const identity = scopes.filter((scope) => IDENTITY_SCOPES.has(scope));
+	const phone = scopes.filter((scope) => scope === "phone");
 	const organizations = scopes.filter((scope) => ORGANIZATION_SCOPES.has(scope));
 	const billing = scopes.filter((scope) => BILLING_SCOPES.has(scope));
-	const assigned = new Set([...writes, ...organizations, ...billing]);
-	const account = scopes.filter((scope) => !assigned.has(scope));
+	const assigned = new Set([...writes, ...identity, ...phone, ...organizations, ...billing]);
+	const security = scopes.filter((scope) => !assigned.has(scope));
 
 	return [
 		group(
 			"write",
-			"Change data in your account",
-			"This can change existing profile, organization, team, member, invitation, or billing data.",
+			"Create, edit, and delete data",
+			"Including data created before this connection",
 			writes,
+			optionalScopeSet,
 		),
 		group(
+			"identity",
+			"See who you are",
+			"Name, email, username, picture",
+			identity.sort((left, right) => (left === "openid" ? 1 : right === "openid" ? -1 : 0)),
+			optionalScopeSet,
+		),
+		group("phone", "See your phone number", undefined, phone, optionalScopeSet),
+		group(
 			"organization",
-			"See your organizations and teams",
-			"This includes memberships, roles, invitations, and people in resources you can access.",
+			"See your orgs, teams, and roles",
+			"Memberships and permissions, not contents",
 			organizations,
+			optionalScopeSet,
+		),
+		group(
+			"security",
+			"See your other connected apps and security setup",
+			"Which apps you’ve linked, whether 2FA is on",
+			security,
+			optionalScopeSet,
 		),
 		group(
 			"billing",
 			"See your billing access",
-			"This includes subscriptions, purchases, entitlements, and product limits.",
+			"Subscriptions, purchases, entitlements, and limits",
 			billing,
-		),
-		group(
-			"account",
-			"See your account and profile information",
-			"This can include contact details, security setup, permissions, and connected accounts.",
-			account.sort((left, right) => (left === "openid" ? 1 : right === "openid" ? -1 : 0)),
+			optionalScopeSet,
 		),
 	].filter((item): item is ConsentScopeGroup => item !== null);
 }

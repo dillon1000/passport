@@ -188,6 +188,7 @@ function mapDatabaseClient(client: typeof schema.oauthClient.$inferSelect): OAut
 		redirectUris: client.redirectUris,
 		postLogoutRedirectUris: client.postLogoutRedirectUris ?? undefined,
 		scopes: client.scopes ?? undefined,
+		optionalScopes: client.optionalScopes ?? undefined,
 		uri: client.uri,
 		icon: client.icon,
 		tos: client.tos,
@@ -211,6 +212,7 @@ function redactClientSecret(client: OAuthClientWithSecret): OAuthClientSummary {
 		redirectUris: client.redirectUris,
 		postLogoutRedirectUris: client.postLogoutRedirectUris,
 		scopes: client.scopes,
+		optionalScopes: client.optionalScopes,
 		uri: client.uri,
 		icon: client.icon,
 		tos: client.tos,
@@ -272,6 +274,7 @@ async function createMachineOAuthClient(
 			redirectUris: [],
 			postLogoutRedirectUris: input.postLogoutRedirectUris,
 			scopes: input.scopes,
+			optionalScopes: input.optionalScopes,
 			grantTypes: [...MACHINE_OAUTH_GRANT_TYPES],
 			responseTypes: [],
 			tokenEndpointAuthMethod: "client_secret_basic",
@@ -315,6 +318,7 @@ async function updateMachineOAuthClient(
 		update.postLogoutRedirectUris = input.postLogoutRedirectUris;
 	}
 	if (input.scopes !== undefined) update.scopes = input.scopes;
+	if (input.optionalScopes !== undefined) update.optionalScopes = input.optionalScopes;
 	if (input.skipConsent !== undefined) update.skipConsent = input.skipConsent;
 	if (input.platformAdminOnly !== undefined) {
 		update.platformAdminOnly = input.platformAdminOnly;
@@ -350,6 +354,7 @@ async function persistOAuthClientPassportFields(
 		backchannelLogoutUri?: string | null;
 		grantTypes?: OAuthGrantType[];
 		allowedAudiences?: string[];
+		optionalScopes?: string[];
 		platformAdminOnly?: boolean;
 		verified?: boolean;
 	},
@@ -364,6 +369,7 @@ async function persistOAuthClientPassportFields(
 	if (input.allowedAudiences !== undefined) {
 		update.metadata = oauthClientMetadata(input.allowedAudiences);
 	}
+	if (input.optionalScopes !== undefined) update.optionalScopes = input.optionalScopes;
 	if (input.platformAdminOnly !== undefined) {
 		update.platformAdminOnly = input.platformAdminOnly;
 	}
@@ -1057,6 +1063,7 @@ const app = createWorkerApp({
 					backchannelLogoutUri: schema.oauthClient.backchannelLogoutUri,
 					grantTypes: schema.oauthClient.grantTypes,
 					allowedAudiences: schema.oauthClient.metadata,
+					optionalScopes: schema.oauthClient.optionalScopes,
 					platformAdminOnly: schema.oauthClient.platformAdminOnly,
 					verified: schema.oauthClient.verified,
 				})
@@ -1076,6 +1083,7 @@ const app = createWorkerApp({
 						backchannelLogoutUri: field.backchannelLogoutUri,
 						grantTypes: oauthGrantTypesFromDatabase(field.grantTypes),
 						allowedAudiences: allowedAudiencesFromMetadata(field.allowedAudiences),
+						optionalScopes: field.optionalScopes,
 						platformAdminOnly: field.platformAdminOnly,
 						verified: field.verified,
 					})),
@@ -1109,6 +1117,7 @@ const app = createWorkerApp({
 				backchannelLogoutUri: input.backchannelLogoutUri,
 				grantTypes: input.grantTypes,
 				allowedAudiences: input.allowedAudiences,
+				optionalScopes: input.optionalScopes,
 				platformAdminOnly: input.platformAdminOnly,
 				verified: input.verified,
 			});
@@ -1143,6 +1152,7 @@ const app = createWorkerApp({
 				backchannelLogoutUri: input.backchannelLogoutUri,
 				grantTypes: input.grantTypes,
 				allowedAudiences: input.allowedAudiences,
+				optionalScopes: input.optionalScopes,
 				platformAdminOnly: input.platformAdminOnly,
 				verified: input.verified,
 			});

@@ -20,16 +20,18 @@ describe("OAuth consent scope presentation", () => {
 			"teams:write",
 		]);
 
-		expect(groups.map((group) => group.id)).toEqual(["write", "organization", "account"]);
-		expect(groups[1]?.visibleScopes).toEqual(["organizations", "teams"]);
-		expect(groups[2]?.visibleScopes).toEqual(["profile", "openid"]);
+		expect(groups.map((group) => group.id)).toEqual(["write", "identity", "organization"]);
+		expect(groups[1]?.visibleScopes).toEqual(["profile", "openid"]);
+		expect(groups[2]?.visibleScopes).toEqual(["organizations", "teams"]);
 	});
 
-	it("keeps baseline identity required and makes elevated access optional", () => {
-		expect(isOptionalConsentScope("openid")).toBe(false);
-		expect(isOptionalConsentScope("profile")).toBe(false);
-		expect(isOptionalConsentScope("teams:write")).toBe(true);
-		expect(isOptionalConsentScope("offline_access")).toBe(true);
+	it("keeps scopes required unless the client explicitly marks them optional", () => {
+		expect(isOptionalConsentScope("phone")).toBe(false);
+		expect(isOptionalConsentScope("phone", ["phone"])).toBe(true);
+
+		const [phone] = consentScopeGroups(["phone"], ["phone"]);
+		expect(phone?.optionalScopes).toEqual(["phone"]);
+		expect(phone?.requiredScopes).toEqual([]);
 	});
 
 	it("sanitizes hostile names and parses redirect hosts", () => {

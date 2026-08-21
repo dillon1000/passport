@@ -14,6 +14,7 @@ export type ConsentClientMetadata = {
 	redirectUris: string[];
 	postLogoutRedirectUris?: string[];
 	scopes?: string[];
+	optionalScopes?: string[];
 	uri?: string | null;
 	icon?: string | null;
 	tos?: string | null;
@@ -32,6 +33,7 @@ export type RegisteredClientForConsent = {
 	redirectUris?: string[] | null;
 	postLogoutRedirectUris?: string[] | null;
 	scopes?: string[] | null;
+	optionalScopes?: string[] | null;
 	uri?: string | null;
 	icon?: string | null;
 	tos?: string | null;
@@ -59,6 +61,9 @@ export function consentMetadataFromRegisteredClient(
 		redirectUris: client.redirectUris ?? [],
 		...(optionalArray(client.postLogoutRedirectUris) ? { postLogoutRedirectUris: client.postLogoutRedirectUris ?? [] } : {}),
 		...(optionalArray(client.scopes) ? { scopes: client.scopes ?? [] } : {}),
+		...(optionalArray(client.optionalScopes)
+			? { optionalScopes: client.optionalScopes ?? [] }
+			: {}),
 		uri: client.uri,
 		icon: client.icon,
 		tos: client.tos,
@@ -80,6 +85,9 @@ export function consentMetadataFromSeedClient(
 		redirectUris: client.redirectUris,
 		...(optionalArray(client.postLogoutRedirectUris) ? { postLogoutRedirectUris: client.postLogoutRedirectUris ?? [] } : {}),
 		...(optionalArray(client.scopes) ? { scopes: client.scopes ?? [] } : {}),
+		...(optionalArray(client.optionalScopes)
+			? { optionalScopes: client.optionalScopes ?? [] }
+			: {}),
 		public: optionalBoolean(client.public),
 		disabled: false,
 		verified: true,

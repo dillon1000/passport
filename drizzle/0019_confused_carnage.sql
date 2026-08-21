@@ -1,0 +1,1 @@
+ALTER TABLE "oauth_client" ADD COLUMN "optional_scopes" text[];
