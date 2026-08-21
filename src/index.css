@@ -225,6 +225,53 @@ time,
 	animation-duration: 160ms;
 }
 
+/* Identifier-first auth uses the same short directional flick as page tabs.
+   The old and new card snapshots move as one surface, so changing content and
+   card height reads as one spatial step. Only transform and opacity animate. */
+@keyframes auth-step-exit-forward {
+	to {
+		opacity: 0;
+		transform: translate3d(-14px, 0, 0);
+	}
+}
+
+@keyframes auth-step-enter-forward {
+	from {
+		opacity: 0;
+		transform: translate3d(14px, 0, 0);
+	}
+}
+
+@keyframes auth-step-exit-backward {
+	to {
+		opacity: 0;
+		transform: translate3d(14px, 0, 0);
+	}
+}
+
+@keyframes auth-step-enter-backward {
+	from {
+		opacity: 0;
+		transform: translate3d(-14px, 0, 0);
+	}
+}
+
+html[data-view-transition-direction="forward"]::view-transition-old(auth-step) {
+	animation: auth-step-exit-forward 180ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+html[data-view-transition-direction="forward"]::view-transition-new(auth-step) {
+	animation: auth-step-enter-forward 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+html[data-view-transition-direction="backward"]::view-transition-old(auth-step) {
+	animation: auth-step-exit-backward 180ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+html[data-view-transition-direction="backward"]::view-transition-new(auth-step) {
+	animation: auth-step-enter-backward 220ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
 /* Switching pages swipes the content well in from the side the new page sits
    on, so the movement matches the direction along the tab strip. Short offset,
    decelerating curve: it should register as a flick, not a slide. The header
