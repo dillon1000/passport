@@ -11,4 +11,5 @@ export const CAPTCHA_ENDPOINTS = [
 	"/sign-in/magic-link",
 	"/sign-in/social",
 	"/passkey/verify-authentication",
+	"/passkey/verify-registration",
 ] as const;
