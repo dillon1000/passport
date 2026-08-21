@@ -138,6 +138,15 @@ describe("createWorkerApp", () => {
 		expect(authHandler).not.toHaveBeenCalled();
 	});
 
+	it("blocks consent pages from being embedded", async () => {
+		const requestEnv = createEnv();
+		const app = createWorkerApp({ authHandler: vi.fn(() => new Response("auth")) });
+		const response = await app.fetch(new Request("https://passport.test/consent"), requestEnv);
+
+		expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+		expect(response.headers.get("x-frame-options")).toBe("DENY");
+	});
+
 	it("serves agent auth discovery from the root well-known path", async () => {
 		const requestEnv = createEnv();
 		const authHandler = vi.fn(() => new Response("auth"));

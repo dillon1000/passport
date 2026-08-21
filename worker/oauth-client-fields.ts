@@ -13,6 +13,7 @@ export type OAuthClientPassportFields = {
 	grantTypes?: OAuthGrantType[] | null;
 	allowedAudiences?: string[] | null;
 	platformAdminOnly?: boolean;
+	verified?: boolean;
 };
 
 export function mergeOAuthClientPassportFields(
@@ -36,6 +37,9 @@ export function mergeOAuthClientPassportFields(
 			grantTypes: field?.grantTypes ?? client.grantTypes,
 			allowedAudiences: field?.allowedAudiences ?? client.allowedAudiences,
 			platformAdminOnly: field?.platformAdminOnly ?? client.platformAdminOnly,
+			...(field?.verified !== undefined || client.verified !== undefined
+				? { verified: field?.verified ?? client.verified }
+				: {}),
 		};
 	});
 }

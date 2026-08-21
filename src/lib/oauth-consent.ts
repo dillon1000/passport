@@ -8,6 +8,7 @@
 export type OAuthConsentRequestBody = {
 	accept: boolean;
 	oauth_query: string;
+	scope?: string;
 };
 
 export type OAuthConsentResponseBody = {
@@ -23,13 +24,18 @@ export function oauthQueryFromLocationSearch(search: string) {
 	return search.startsWith("?") ? search.slice(1) : search;
 }
 
-export function oauthConsentRequestBody(search: string, accept: boolean) {
+export function oauthConsentRequestBody(
+	search: string,
+	accept: boolean,
+	selectedScopes?: readonly string[],
+) {
 	const oauthQuery = oauthQueryFromLocationSearch(search);
 	if (!oauthQuery) return null;
 
 	return {
 		accept,
 		oauth_query: oauthQuery,
+		...(accept && selectedScopes ? { scope: selectedScopes.join(" ") } : {}),
 	} satisfies OAuthConsentRequestBody;
 }
 

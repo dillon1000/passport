@@ -195,6 +195,7 @@ function mapDatabaseClient(client: typeof schema.oauthClient.$inferSelect): OAut
 		public: client.public ?? undefined,
 		disabled: client.disabled ?? undefined,
 		platformAdminOnly: client.platformAdminOnly,
+		verified: client.verified,
 		skipConsent: client.skipConsent ?? undefined,
 		enableEndSession: client.enableEndSession ?? undefined,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
@@ -217,6 +218,7 @@ function redactClientSecret(client: OAuthClientWithSecret): OAuthClientSummary {
 		public: client.public,
 		disabled: client.disabled,
 		platformAdminOnly: client.platformAdminOnly,
+		verified: client.verified,
 		skipConsent: client.skipConsent,
 		enableEndSession: client.enableEndSession,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
@@ -276,6 +278,7 @@ async function createMachineOAuthClient(
 			public: false,
 			disabled: false,
 			platformAdminOnly: input.platformAdminOnly ?? false,
+			verified: input.verified ?? false,
 			skipConsent: input.skipConsent,
 			enableEndSession: false,
 			userId: session.user.id,
@@ -316,6 +319,7 @@ async function updateMachineOAuthClient(
 	if (input.platformAdminOnly !== undefined) {
 		update.platformAdminOnly = input.platformAdminOnly;
 	}
+	if (input.verified !== undefined) update.verified = input.verified;
 	if (input.enableEndSession !== undefined) update.enableEndSession = input.enableEndSession;
 	if (input.grantTypes !== undefined) update.grantTypes = input.grantTypes;
 	if (input.allowedAudiences !== undefined) {
@@ -347,6 +351,7 @@ async function persistOAuthClientPassportFields(
 		grantTypes?: OAuthGrantType[];
 		allowedAudiences?: string[];
 		platformAdminOnly?: boolean;
+		verified?: boolean;
 	},
 ) {
 	const update: Partial<typeof schema.oauthClient.$inferInsert> = {};
@@ -362,6 +367,7 @@ async function persistOAuthClientPassportFields(
 	if (input.platformAdminOnly !== undefined) {
 		update.platformAdminOnly = input.platformAdminOnly;
 	}
+	if (input.verified !== undefined) update.verified = input.verified;
 	if (Object.keys(update).length === 0) return undefined;
 	await createDb(env as AuthEnv)
 		.update(schema.oauthClient)
@@ -1052,6 +1058,7 @@ const app = createWorkerApp({
 					grantTypes: schema.oauthClient.grantTypes,
 					allowedAudiences: schema.oauthClient.metadata,
 					platformAdminOnly: schema.oauthClient.platformAdminOnly,
+					verified: schema.oauthClient.verified,
 				})
 				.from(schema.oauthClient)
 				.where(
@@ -1070,6 +1077,7 @@ const app = createWorkerApp({
 						grantTypes: oauthGrantTypesFromDatabase(field.grantTypes),
 						allowedAudiences: allowedAudiencesFromMetadata(field.allowedAudiences),
 						platformAdminOnly: field.platformAdminOnly,
+						verified: field.verified,
 					})),
 				),
 			};
@@ -1102,6 +1110,7 @@ const app = createWorkerApp({
 				grantTypes: input.grantTypes,
 				allowedAudiences: input.allowedAudiences,
 				platformAdminOnly: input.platformAdminOnly,
+				verified: input.verified,
 			});
 			return storedFields === undefined ? created : { ...created, ...storedFields };
 		},
@@ -1135,6 +1144,7 @@ const app = createWorkerApp({
 				grantTypes: input.grantTypes,
 				allowedAudiences: input.allowedAudiences,
 				platformAdminOnly: input.platformAdminOnly,
+				verified: input.verified,
 			});
 			return storedFields === undefined ? updated : { ...updated, ...storedFields };
 		},
