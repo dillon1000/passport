@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { captchaFetchOptions, captchaRequirementMessage, type CaptchaConfig } from "./captcha-config";
+import {
+	captchaFetchOptions,
+	captchaRequirementMessage,
+	resolveCaptchaFetchOptions,
+	type CaptchaConfig,
+} from "./captcha-config";
 
 describe("captchaRequirementMessage", () => {
 	it("waits for runtime captcha settings before protected auth actions continue", () => {
@@ -31,5 +36,33 @@ describe("captchaFetchOptions", () => {
 			},
 		});
 		expect(captchaFetchOptions({ loaded: true, enabled: false }, "")).toBeUndefined();
+	});
+
+	it("waits for the invisible widget before building protected request headers", async () => {
+		const config = { loaded: true, enabled: true } satisfies CaptchaConfig;
+		const solve = vi.fn(async () => "solved-token");
+
+		await expect(resolveCaptchaFetchOptions(config, "", solve)).resolves.toEqual({
+			headers: { "x-captcha-response": "solved-token" },
+		});
+		expect(solve).toHaveBeenCalledOnce();
+	});
+
+	it("uses an existing token without starting another solve", async () => {
+		const solve = vi.fn(async () => "replacement-token");
+
+		await expect(
+			resolveCaptchaFetchOptions({ loaded: true, enabled: true }, "existing-token", solve),
+		).resolves.toEqual({ headers: { "x-captcha-response": "existing-token" } });
+		expect(solve).not.toHaveBeenCalled();
+	});
+
+	it("pauses when configuration or a challenge token is unavailable", async () => {
+		await expect(
+			resolveCaptchaFetchOptions({ loaded: false, enabled: false }, "", null),
+		).resolves.toBeNull();
+		await expect(
+			resolveCaptchaFetchOptions({ loaded: true, enabled: true }, "", async () => ""),
+		).resolves.toBeNull();
 	});
 });

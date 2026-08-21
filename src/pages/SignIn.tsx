@@ -35,6 +35,8 @@ import { CaptchaChallenge } from "@/lib/captcha";
 import {
 	captchaFetchOptions,
 	captchaRequirementMessage,
+	resolveCaptchaFetchOptions,
+	type CaptchaSolver,
 	useCaptchaConfig,
 } from "@/lib/captcha-config";
 import {
@@ -128,6 +130,7 @@ export function SignIn() {
 	const formRef = useRef<HTMLFormElement>(null);
 	const conditionalPasskeyStarted = useRef(false);
 	const skipNextStepTransition = useRef(false);
+	const captchaSolverRef = useRef<CaptchaSolver | null>(null);
 	const [mode, setMode] = useState<Mode>(
 		resetToken ? "reset" : searchParams.get("flow") === "reset-password" ? "recovery" : "signin",
 	);
@@ -257,13 +260,22 @@ export function SignIn() {
 		setCaptchaResetKey((current) => current + 1);
 	}
 
-	function requireCaptcha() {
-		const message = captchaRequirementMessage(captchaConfig, captchaToken);
-		if (message) {
-			setStatus({ tone: "error", message });
-			return null;
+	async function requireCaptcha() {
+		setLoading(true);
+		const fetchOptions = await resolveCaptchaFetchOptions(
+			captchaConfig,
+			captchaToken,
+			captchaSolverRef.current,
+		);
+		setLoading(false);
+		if (fetchOptions === null) {
+			setCaptchaEscalated(captchaConfig.loaded && captchaConfig.enabled);
+			setStatus({
+				tone: "error",
+				message: captchaRequirementMessage(captchaConfig, "") ?? "Complete the captcha challenge.",
+			});
 		}
-		return captchaFetchOptions(captchaConfig, captchaToken);
+		return fetchOptions;
 	}
 
 	async function continueToMethods() {
@@ -325,7 +337,7 @@ export function SignIn() {
 			}
 		}
 
-		const authFetchOptions = requireCaptcha();
+		const authFetchOptions = await requireCaptcha();
 		if (authFetchOptions === null) {
 			return;
 		}
@@ -416,7 +428,7 @@ export function SignIn() {
 			return;
 		}
 
-		const authFetchOptions = requireCaptcha();
+		const authFetchOptions = await requireCaptcha();
 		if (authFetchOptions === null) return;
 
 		setExistingAccountEmail(null);
@@ -466,7 +478,7 @@ export function SignIn() {
 		setFieldError(null);
 		setStatus(null);
 
-		const authFetchOptions = requireCaptcha();
+		const authFetchOptions = await requireCaptcha();
 		if (authFetchOptions === null) {
 			return;
 		}
@@ -497,7 +509,7 @@ export function SignIn() {
 			return;
 		}
 
-		const authFetchOptions = requireCaptcha();
+		const authFetchOptions = await requireCaptcha();
 		if (authFetchOptions === null) {
 			return;
 		}
@@ -561,7 +573,7 @@ export function SignIn() {
 		setFieldError(null);
 		setStatus(null);
 
-		const authFetchOptions = requireCaptcha();
+		const authFetchOptions = await requireCaptcha();
 		if (authFetchOptions === null) {
 			return;
 		}
@@ -583,7 +595,7 @@ export function SignIn() {
 		setFieldError(null);
 		setStatus(null);
 
-		const authFetchOptions = requireCaptcha();
+		const authFetchOptions = await requireCaptcha();
 		if (authFetchOptions === null) {
 			return;
 		}
@@ -834,9 +846,9 @@ export function SignIn() {
 										config={captchaConfig}
 										resetKey={captchaResetKey}
 										onTokenChange={setCaptchaToken}
+										solverRef={captchaSolverRef}
 										invisible={mode === "signin" || mode === "signup"}
 										escalated={captchaEscalated}
-										reserveSpace={isMethodStep || mode === "signup"}
 									/>
 								</>
 							)}
