@@ -119,7 +119,7 @@ function tokenRequestValues(value: unknown) {
 }
 
 function oauthTokenRequestBody(value: unknown) {
-	return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+	return value && typeof value === "object" ? (value as { [key: string]: unknown }) : {};
 }
 
 async function oauthClientIdFromInteraction(context: OAuthInteractionContext) {

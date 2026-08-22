@@ -484,7 +484,7 @@ export function useBilling() {
 
 	async function createRegistryEntry(
 		kind: "entitlements" | "limits",
-		input: Record<string, unknown>,
+		input: { [key: string]: unknown },
 	) {
 		const response = await fetch(`/api/admin/billing/${kind}`, {
 			method: "POST",
@@ -500,7 +500,7 @@ export function useBilling() {
 	async function updateRegistryEntry(
 		kind: "entitlements" | "limits",
 		id: string,
-		input: Record<string, unknown>,
+		input: { [key: string]: unknown },
 	) {
 		const response = await fetch(`/api/admin/billing/${kind}/${encodeURIComponent(id)}`, {
 			method: "PATCH",

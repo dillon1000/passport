@@ -96,12 +96,12 @@ function ISODate(value: Date | string | null | undefined) {
 	return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function parseMetadata(value: string | null | undefined): Record<string, unknown> | null {
+function parseMetadata(value: string | null | undefined): { [key: string]: unknown } | null {
 	if (!value) return null;
 	try {
 		const parsed: unknown = JSON.parse(value);
 		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
+			? (parsed as { [key: string]: unknown })
 			: null;
 	} catch {
 		return null;

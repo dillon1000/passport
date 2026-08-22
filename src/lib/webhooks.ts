@@ -41,7 +41,7 @@ export type WebhookEventPayload = {
 	/** ISO-8601 creation time of the event. */
 	createdAt: string;
 	/** Event-specific, secret-free data. */
-	data: Record<string, unknown>;
+	data: { [key: string]: unknown };
 };
 
 const HEX = Array.from({ length: 256 }, (_, index) =>
@@ -149,7 +149,7 @@ export async function emitWebhookEvent(
 	env: AuthEnv,
 	db: WebhookDb,
 	type: WebhookEventType,
-	data: Record<string, unknown>,
+	data: { [key: string]: unknown },
 ) {
 	try {
 		const endpoints = await db

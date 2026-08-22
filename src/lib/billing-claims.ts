@@ -192,7 +192,7 @@ function billingLimits(
 	catalog: BillingPlanCatalog,
 	planNames: readonly string[],
 ) {
-	const merged: Record<string, unknown> = {};
+	const merged: { [key: string]: unknown } = {};
 	for (const plan of planNames) {
 		const limits = catalog[plan.toLowerCase()]?.limits;
 		if (!limits) continue;
@@ -220,7 +220,7 @@ export function buildBillingScopeClaims(
 	subscriptions: readonly BillingSubscriptionClaimSource[],
 	catalog: BillingPlanCatalog,
 	purchases: readonly BillingPurchaseClaimSource[] = [],
-): Record<string, unknown> {
+): { [key: string]: unknown } {
 	const planNames = entitledPlanNames(subscriptions, purchases);
 	return {
 		...(hasScope(scopes, "billing:status")

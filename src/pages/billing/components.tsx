@@ -835,12 +835,12 @@ export function PlanWorkspaceDrawer({
 	onReorder: (ids: string[]) => void;
 	onCreateRegistry: (
 		kind: "entitlements" | "limits",
-		input: Record<string, unknown>,
+		input: { [key: string]: unknown },
 	) => Promise<EntitlementEntry | LimitEntry>;
 	onUpdateRegistry: (
 		kind: "entitlements" | "limits",
 		id: string,
-		input: Record<string, unknown>,
+		input: { [key: string]: unknown },
 	) => Promise<EntitlementEntry | LimitEntry>;
 	onDeleteRegistry: (kind: "entitlements" | "limits", id: string) => Promise<void>;
 }) {
@@ -1319,8 +1319,8 @@ export function EntitlementsDrawer({
 	entitlements: EntitlementEntry[];
 	selected: string[];
 	onToggle: (key: string, on: boolean) => void;
-	onCreate: (input: Record<string, unknown>) => Promise<EntitlementEntry | LimitEntry>;
-	onUpdate: (id: string, input: Record<string, unknown>) => Promise<EntitlementEntry | LimitEntry>;
+	onCreate: (input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
+	onUpdate: (id: string, input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
 	onDelete: (id: string, key: string) => Promise<void>;
 }) {
 	const [name, setName] = useState("");
@@ -1412,8 +1412,8 @@ export function LimitsDrawer({
 	values: Record<string, string>;
 	onToggle: (key: string, on: boolean) => void;
 	onValue: (key: string, value: string) => void;
-	onCreate: (input: Record<string, unknown>) => Promise<EntitlementEntry | LimitEntry>;
-	onUpdate: (id: string, input: Record<string, unknown>) => Promise<EntitlementEntry | LimitEntry>;
+	onCreate: (input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
+	onUpdate: (id: string, input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
 	onDelete: (id: string, key: string) => Promise<void>;
 }) {
 	const [name, setName] = useState("");

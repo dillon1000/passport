@@ -9,7 +9,7 @@ import {
 describe("request location helpers", () => {
 	it("builds a coarse location snapshot from Cloudflare request metadata", () => {
 		const request = new Request("https://passport.test") as Request & {
-			cf?: Record<string, unknown>;
+			cf?: { [key: string]: unknown };
 		};
 		request.cf = {
 			asn: 395747,

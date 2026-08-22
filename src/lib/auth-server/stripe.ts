@@ -189,8 +189,8 @@ async function createStripeProductWithPrices(
 export async function applyStripeProvisioning(
 	env: AuthEnv,
 	input: unknown,
-): Promise<Record<string, unknown>> {
-	const value = (input ?? {}) as Record<string, unknown>;
+): Promise<{ [key: string]: unknown }> {
+	const value = (input ?? {}) as { [key: string]: unknown };
 	if (value.stripe === undefined || value.stripe === null) return value;
 
 	const secrets = stripeSecretConfig(env);
@@ -311,7 +311,7 @@ async function emitBillingWebhook(
 	env: AuthEnv,
 	db: AuthDatabase,
 	type: (typeof WEBHOOK_EVENT_TYPES)[keyof typeof WEBHOOK_EVENT_TYPES],
-	data: Record<string, unknown>,
+	data: { [key: string]: unknown },
 ) {
 	await emitWebhookEvent(env, db, type, data);
 }

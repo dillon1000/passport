@@ -207,7 +207,7 @@ function formatDate(value?: string | Date | null) {
 	return new Date(value).toLocaleDateString();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is { [key: string]: unknown } {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 

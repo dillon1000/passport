@@ -43,7 +43,7 @@ export type PricingPlanInput = {
 	label?: string | null;
 	priceId?: string | null;
 	entitlements?: string[] | null;
-	limits?: Record<string, unknown> | null;
+	limits?: { [key: string]: unknown } | null;
 	freeTrialDays?: number | null;
 };
 

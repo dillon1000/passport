@@ -279,9 +279,9 @@ export type BillingPlanRecord = {
 	personalOnly: boolean;
 	hidden: boolean;
 	displayOrder: number;
-	limits: Record<string, unknown> | null;
+	limits: { [key: string]: unknown } | null;
 	entitlements: string[] | null;
-	lineItems: Record<string, unknown>[] | null;
+	lineItems: { [key: string]: unknown }[] | null;
 };
 
 export type BillingPriceInfo = {
@@ -1542,7 +1542,7 @@ async function handleBillingCheckout(
 	if ("response" in sessionResult) return sessionResult.response;
 	if (!billingCheckout) return jsonError("Billing checkout is not configured.", 501);
 
-	const body = (await readJSON(request)) as Record<string, unknown>;
+	const body = (await readJSON(request)) as { [key: string]: unknown };
 	const plan = typeof body.plan === "string" ? body.plan.trim() : "";
 	if (!plan) return jsonError("A plan is required.", 400);
 
@@ -1608,9 +1608,9 @@ async function enforceSubscriptionPersonalOnly(
 	billingPlans: BillingPlanService | undefined,
 ) {
 	if (request.method !== "POST" || !billingPlans) return undefined;
-	let body: Record<string, unknown>;
+	let body: { [key: string]: unknown };
 	try {
-		body = (await request.clone().json()) as Record<string, unknown>;
+		body = (await request.clone().json()) as { [key: string]: unknown };
 	} catch {
 		return undefined;
 	}

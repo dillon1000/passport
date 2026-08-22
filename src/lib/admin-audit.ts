@@ -52,7 +52,7 @@ const REDACTED_KEY_FRAGMENTS = [
 	"token",
 ];
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+function isPlainObject(value: unknown): value is { [key: string]: unknown } {
 	return Object.prototype.toString.call(value) === "[object Object]";
 }
 

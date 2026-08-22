@@ -142,7 +142,7 @@ export function validateBillingReturnURLs(
 function sortedJSON(value: unknown): string {
 	if (Array.isArray(value)) return `[${value.map(sortedJSON).join(",")}]`;
 	if (value && typeof value === "object") {
-		const record = value as Record<string, unknown>;
+		const record = value as { [key: string]: unknown };
 		return `{${Object.keys(record)
 			.sort()
 			.map((key) => `${JSON.stringify(key)}:${sortedJSON(record[key])}`)

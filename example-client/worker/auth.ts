@@ -19,7 +19,7 @@ export type ClientEnv = Env & {
 	REDIRECT_URI?: string;
 };
 
-export type OAuthClaimGroup = Record<string, unknown>;
+export type OAuthClaimGroup = { [key: string]: unknown };
 
 export type PassportConnectionClaim = {
 	provider: string;
@@ -212,7 +212,7 @@ function connectionClaims(value: unknown): PassportConnectionClaim[] {
 	return value.flatMap((item) => {
 		if (!item || typeof item !== "object" || Array.isArray(item)) return [];
 
-		const record = item as Record<string, unknown>;
+		const record = item as { [key: string]: unknown };
 		const provider = stringClaim(record.provider);
 		const accountId = stringClaim(record.accountId);
 		if (!provider || !accountId) return [];

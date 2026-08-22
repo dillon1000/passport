@@ -23,7 +23,7 @@ export async function readJSON<T>(response: Response): Promise<T> {
 	return (await response.json()) as T;
 }
 
-export async function postSubscriptionAction<T>(path: string, body: Record<string, unknown>) {
+export async function postSubscriptionAction<T>(path: string, body: { [key: string]: unknown }) {
 	const response = await fetch(`/api/auth${path}`, {
 		method: "POST",
 		credentials: "same-origin",
@@ -64,7 +64,7 @@ export async function fetchProduct(id: string) {
 	return payload.product;
 }
 
-export async function requestOneTimeCheckout(body: Record<string, unknown>) {
+export async function requestOneTimeCheckout(body: { [key: string]: unknown }) {
 	const response = await fetch("/api/billing/checkout", {
 		method: "POST",
 		credentials: "same-origin",

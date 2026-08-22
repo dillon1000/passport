@@ -71,7 +71,7 @@ export function allowedAudiencesFromMetadata(
 	metadata: unknown,
 ): string[] | undefined {
 	if (!metadata || typeof metadata !== "object") return undefined;
-	const value = (metadata as Record<string, unknown>)[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY];
+	const value = (metadata as { [key: string]: unknown })[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY];
 	if (!Array.isArray(value)) return undefined;
 	const audiences = value
 		.filter((item): item is string => typeof item === "string")

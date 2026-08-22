@@ -113,21 +113,21 @@ async function hmacSHA256Base64(value: string, base64Key: string) {
 	return bytesToBase64(signature);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is { [key: string]: unknown } {
 	return typeof value === "object" && value !== null;
 }
 
-function stringField(record: Record<string, unknown>, key: string) {
+function stringField(record: { [key: string]: unknown }, key: string) {
 	const value = record[key];
 	return typeof value === "string" ? value : undefined;
 }
 
-function numberField(record: Record<string, unknown>, key: string) {
+function numberField(record: { [key: string]: unknown }, key: string) {
 	const value = record[key];
 	return typeof value === "number" ? value : undefined;
 }
 
-function booleanField(record: Record<string, unknown>, key: string) {
+function booleanField(record: { [key: string]: unknown }, key: string) {
 	const value = record[key];
 	return typeof value === "boolean" ? value : undefined;
 }
