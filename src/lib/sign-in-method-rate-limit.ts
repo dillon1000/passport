@@ -12,6 +12,11 @@ type SignInMethodRateLimitState = {
 	resetAt: number;
 };
 
+type SignInMethodRateLimitKV = {
+	get(key: string, type: "json"): Promise<SignInMethodRateLimitState | null>;
+	put(key: string, value: string, options: { expirationTtl: number }): Promise<void>;
+};
+
 function base64URL(bytes: Uint8Array) {
 	let binary = "";
 	for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -35,7 +40,7 @@ function rateLimitHeaders(remaining: number, resetAt: number) {
 }
 
 export async function enforceSignInMethodRateLimit(
-	kv: KVNamespace,
+	kv: SignInMethodRateLimitKV,
 	clientAddress: string,
 	now = new Date(),
 ) {
@@ -44,7 +49,7 @@ export async function enforceSignInMethodRateLimit(
 		(Math.floor(nowSeconds / SIGN_IN_METHOD_RATE_LIMIT_WINDOW_SECONDS) + 1) *
 		SIGN_IN_METHOD_RATE_LIMIT_WINDOW_SECONDS;
 	const key = await rateLimitKey(clientAddress);
-	const stored = await kv.get<SignInMethodRateLimitState>(key, "json");
+	const stored = await kv.get(key, "json");
 	const count = stored?.resetAt === resetAt ? stored.count : 0;
 
 	if (count >= SIGN_IN_METHOD_RATE_LIMIT) {
