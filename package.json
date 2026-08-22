@@ -1,7 +1,7 @@
 {
 	"name": "passport",
 	"private": true,
-	"version": "0.0.180",
+	"version": "0.0.181",
 	"description": "Standalone identity provider for Cloudflare Workers.",
 	"author": "Dillon Ring <dillon@dillonring.com>",
 	"license": "MIT",
@@ -75,6 +75,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.53.1",
+		"@oxlint/plugins": "1.79.0",
 		"@types/node": "^26.2.0",
 		"@types/pg": "^8.23.1",
 		"@types/react": "^19.2.18",
@@ -82,7 +83,7 @@
 		"@vitejs/plugin-react": "^6.1.0",
 		"drizzle-kit": "^0.31.10",
 		"eslint-plugin-react-you-might-not-need-an-effect": "1.0.2",
-		"oxlint": "^1.79.0",
+		"oxlint": "1.79.0",
 		"oxlint-tsgolint": "^7.0.2001",
 		"typescript": "~6.0.3",
 		"vite": "^8.2.2",
