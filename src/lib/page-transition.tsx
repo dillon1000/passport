@@ -15,7 +15,7 @@ import {
 export function PageTransitionProvider({ children }: { children: ReactNode }) {
 	const { pathname } = useLocation();
 	const navigationType = useNavigationType();
-	const [entry, setEntry] = useState(() => ({ pathname, direction: "none" as PageDirection }));
+	const [entry, setEntry] = useState<{ pathname: string; direction: PageDirection }>(() => ({ pathname, direction: "none" }));
 
 	// Derived from the location during render rather than in an effect: the
 	// direction has to be on the element for its very first painted frame.

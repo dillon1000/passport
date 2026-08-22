@@ -23,8 +23,9 @@ type EmailMessage = {
 	text: string;
 	html: string;
 };
+type EmailEnv = Pick<AuthEnv, "EMAIL" | "EMAIL_FROM">;
 
-export async function sendAuthEmail(env: AuthEnv, message: EmailMessage) {
+export async function sendAuthEmail(env: EmailEnv, message: EmailMessage) {
 	await env.EMAIL.send({
 		from: env.EMAIL_FROM,
 		to: message.to,
@@ -34,7 +35,7 @@ export async function sendAuthEmail(env: AuthEnv, message: EmailMessage) {
 	});
 }
 
-export async function sendMagicLinkEmail(env: AuthEnv, email: string, url: string) {
+export async function sendMagicLinkEmail(env: EmailEnv, email: string, url: string) {
 	await sendAuthEmail(env, {
 		to: email,
 		subject: "Your Passport sign-in link",
@@ -50,7 +51,7 @@ export async function sendMagicLinkEmail(env: AuthEnv, email: string, url: strin
 	});
 }
 
-export async function sendVerificationEmail(env: AuthEnv, email: string, url: string) {
+export async function sendVerificationEmail(env: EmailEnv, email: string, url: string) {
 	await sendAuthEmail(env, {
 		to: email,
 		subject: "Verify your email address for Passport",
@@ -66,7 +67,7 @@ export async function sendVerificationEmail(env: AuthEnv, email: string, url: st
 	});
 }
 
-export async function sendPasswordResetEmail(env: AuthEnv, email: string, url: string) {
+export async function sendPasswordResetEmail(env: EmailEnv, email: string, url: string) {
 	await sendAuthEmail(env, {
 		to: email,
 		subject: "Reset your Passport password",
@@ -82,7 +83,7 @@ export async function sendPasswordResetEmail(env: AuthEnv, email: string, url: s
 	});
 }
 
-export async function sendDeleteAccountEmail(env: AuthEnv, email: string, url: string) {
+export async function sendDeleteAccountEmail(env: EmailEnv, email: string, url: string) {
 	await sendAuthEmail(env, {
 		to: email,
 		subject: "Confirm deletion of your Passport account",
@@ -100,7 +101,7 @@ export async function sendDeleteAccountEmail(env: AuthEnv, email: string, url: s
 }
 
 export async function sendOrganizationInvitationEmail(
-	env: AuthEnv,
+	env: EmailEnv,
 	email: string,
 	organizationName: string,
 	inviterName: string,
@@ -116,7 +117,7 @@ export async function sendOrganizationInvitationEmail(
 	});
 }
 
-export async function sendTwoFactorOTPEmail(env: AuthEnv, email: string, otp: string) {
+export async function sendTwoFactorOTPEmail(env: EmailEnv, email: string, otp: string) {
 	await sendAuthEmail(env, {
 		to: email,
 		subject: "Your Passport sign-in code",
@@ -126,7 +127,7 @@ export async function sendTwoFactorOTPEmail(env: AuthEnv, email: string, otp: st
 }
 
 export async function sendSecurityAlertEmail(
-	env: AuthEnv,
+	env: EmailEnv,
 	email: string,
 	event: string,
 	metadata: RequestMetadata,
@@ -140,7 +141,7 @@ export async function sendSecurityAlertEmail(
 }
 
 export async function sendDataExportRequestedEmail(
-	env: AuthEnv,
+	env: EmailEnv,
 	email: string,
 	cancelURL: string,
 	metadata: RequestMetadata,
@@ -161,7 +162,7 @@ export async function sendDataExportRequestedEmail(
 }
 
 export async function sendDataExportReadyEmail(
-	env: AuthEnv,
+	env: EmailEnv,
 	email: string,
 	downloadURL: string,
 	expiresAt: string,

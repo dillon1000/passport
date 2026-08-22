@@ -21,6 +21,18 @@ export const BACKCHANNEL_LOGOUT_EVENT =
 /** Logout tokens are single-use and short-lived. */
 export const LOGOUT_TOKEN_TTL_SECONDS = 120;
 
+type LogoutEvent = { event?: never };
+export type LogoutTokenClaims = {
+	iss: string;
+	aud: string;
+	sub: string;
+	iat: number;
+	exp: number;
+	jti: string;
+	events: { [BACKCHANNEL_LOGOUT_EVENT]: LogoutEvent };
+	sid?: string;
+};
+
 export function backchannelLogoutIssuer(betterAuthURL: string) {
 	return new URL("/api/auth", betterAuthURL).toString();
 }
@@ -30,9 +42,9 @@ export function buildLogoutTokenClaims(input: {
 	audience: string;
 	subject: string;
 	sessionId?: string;
-}): { [key: string]: unknown } {
+}): LogoutTokenClaims {
 	const iat = Math.floor(Date.now() / 1000);
-	const claims: { [key: string]: unknown } = {
+	const claims: LogoutTokenClaims = {
 		iss: input.issuer,
 		aud: input.audience,
 		sub: input.subject,

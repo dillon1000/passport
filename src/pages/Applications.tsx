@@ -1633,13 +1633,14 @@ function OIDCConfigurationButton({ onClick }: { onClick: () => void }) {
 
 /** Keeps optional field guidance available without permanently expanding dense forms. */
 function TipLabel({ children, tip }: { children: ReactNode; tip: string }) {
+	const label = z.string().safeParse(children).data ?? "this field";
 	return (
 		<span className="inline-flex items-center gap-1">
 			{children}
 			<Tooltip content={tip} render={
 					<button
 						type="button"
-						aria-label={`About ${typeof children === "string" ? children : "this field"}`}
+						aria-label={`About ${label}`}
 						onClick={(event) => event.preventDefault()}
 						className="grid size-5 place-items-center text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
 					>

@@ -94,9 +94,8 @@ type CaptchaProvider = (typeof CAPTCHA_PROVIDERS)[number];
 
 function captchaProvider(value: string | undefined): CaptchaProvider {
 	const provider = optionalEnv(value) ?? "cloudflare-turnstile";
-	if (CAPTCHA_PROVIDERS.includes(provider as CaptchaProvider)) {
-		return provider as CaptchaProvider;
-	}
+	const configuredProvider = CAPTCHA_PROVIDERS.find((candidate) => candidate === provider);
+	if (configuredProvider) return configuredProvider;
 	throw new TypeError(
 		`CAPTCHA_PROVIDER must be one of: ${CAPTCHA_PROVIDERS.join(", ")}.`,
 	);

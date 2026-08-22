@@ -8,6 +8,7 @@ import {
 } from "react";
 import { ChevronDown, LogOut, Plus, Settings, UserRound } from "@/lib/icons";
 import { Link } from "react-router";
+import { z } from "zod";
 
 import { authClient } from "@/auth-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/kumo/primitives/avatar";
@@ -162,7 +163,7 @@ function formatDateTime(): string {
  * provider-aware quips ("Back via GitHub."). Unknown methods are skipped so a
  * quip never surfaces a raw internal id.
  */
-const PROVIDER_LABELS: Record<string, string> = {
+const PROVIDER_LABELS = {
 	github: "GitHub",
 	discord: "Discord",
 	twitter: "X",
@@ -177,7 +178,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 	passkey: "a passkey",
 	phone: "your phone",
 	"phone-number": "your phone",
-};
+} satisfies Record<string, string>;
 
 function capitalize(value: string): string {
 	return value.charAt(0).toUpperCase() + value.slice(1);
@@ -185,7 +186,7 @@ function capitalize(value: string): string {
 
 function providerLabel(method: string | null | undefined): string | null {
 	if (!method) return null;
-	return PROVIDER_LABELS[method.toLowerCase()] ?? null;
+	return Object.entries(PROVIDER_LABELS).find(([name]) => name === method.toLowerCase())?.[1] ?? null;
 }
 
 /**
@@ -249,10 +250,10 @@ const ROTATION_ORDER: readonly FlairField[] = ["name", "email", "datetime", "gre
 function ProfileFlair({ name, email }: { name: string; email: string }) {
 	const { mode } = useFlairMode();
 	const { data } = authClient.useSession();
-	const location =
-		(data?.session as { location?: RequestLocation | null } | undefined)?.location ?? null;
-	const provider =
-		(data?.user as { lastLoginMethod?: string | null } | undefined)?.lastLoginMethod ?? null;
+	const location = z.object({ location: z.custom<RequestLocation>().nullable().optional() })
+		.safeParse(data?.session).data?.location ?? null;
+	const provider = z.object({ lastLoginMethod: z.string().nullable().optional() })
+		.safeParse(data?.user).data?.lastLoginMethod ?? null;
 	const hasQuip = quipPool(location, provider).length > 0;
 
 	const contentFor = (field: FlairField): string => {
@@ -324,10 +325,13 @@ function ProfileFlair({ name, email }: { name: string; email: string }) {
 	}, [text]);
 
 	const scrolling = overflow > 0;
-	const marqueeStyle: CSSProperties = {
+	const marqueeStyle: CSSProperties & {
+		"--flair-shift": string;
+		"--flair-duration": string;
+	} = {
 		"--flair-shift": `-${overflow}px`,
 		"--flair-duration": `${(overflow / 22 + 3).toFixed(2)}s`,
-	} as CSSProperties;
+	};
 
 	return (
 		<span
@@ -371,7 +375,11 @@ async function loadDeviceAccounts(): Promise<DeviceAccount[]> {
 	if (result.error) return [];
 
 	const accounts = new Map<string, DeviceAccount>();
-	for (const account of (result.data ?? []) as DeviceAccount[]) {
+	const deviceAccounts = z.array(z.object({
+		session: z.object({ token: z.string() }),
+		user: z.object({ id: z.string(), name: z.string(), email: z.string(), image: z.string().nullable().optional() }),
+	})).parse(result.data ?? []);
+	for (const account of deviceAccounts) {
 		if (!accounts.has(account.user.id)) accounts.set(account.user.id, account);
 	}
 	return [...accounts.values()];

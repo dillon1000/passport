@@ -1,21 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
-import type { AuthEnv } from "./env";
 import {
 	sendMagicLinkEmail,
 	sendOrganizationInvitationEmail,
 	sendTwoFactorOTPEmail,
 } from "./email";
 
-type SentEmail = {
-	from: string;
-	to: string;
-	subject: string;
-	text: string;
-	html: string;
-};
-
 type EmailSendMock = ReturnType<typeof vi.fn>;
+const sentEmailSchema = z.object({
+	from: z.string(),
+	to: z.string(),
+	subject: z.string(),
+	text: z.string(),
+	html: z.string(),
+});
 
 function createEmailEnv() {
 	const send = vi.fn(async () => undefined);
@@ -24,17 +23,17 @@ function createEmailEnv() {
 		EMAIL: {
 			send,
 		},
-	} as unknown as AuthEnv;
+	} satisfies Parameters<typeof sendMagicLinkEmail>[0];
 
 	return { env, send };
 }
 
 function sentMessage(send: EmailSendMock) {
-	const message = send.mock.calls[0]?.[0] as SentEmail | undefined;
-	if (!message) {
+	const parsed = sentEmailSchema.safeParse(send.mock.calls[0]?.[0]);
+	if (!parsed.success) {
 		throw new Error("Expected email to be sent.");
 	}
-	return message;
+	return parsed.data;
 }
 
 describe("transactional emails", () => {

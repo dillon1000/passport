@@ -48,6 +48,7 @@ const sizeClasses = {
 
 // Kumo's icon-only overload requires a title even when Passport supplies a
 // visible child at runtime, so this local view exposes the shared button API.
+// SAFETY: Kumo renders a native button for these props; the wrapper removes only its overly narrow icon-only overload.
 const KumoButtonCompat = KumoButton as React.ComponentType<
 	React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }
 >;
@@ -68,7 +69,8 @@ const Button = React.forwardRef<HTMLButtonElement, PassportButtonProps>(
 				className,
 			),
 			variant: variantMap[variant],
-			size: sizeMap[size] as React.ComponentProps<typeof KumoButton>["size"],
+				// SAFETY: sizeMap values are the Kumo size literals selected by the public Passport size map above.
+				size: sizeMap[size] as React.ComponentProps<typeof KumoButton>["size"],
 		};
 
 		if (asChild && React.isValidElement(children)) {

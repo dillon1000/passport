@@ -5,6 +5,7 @@
  * actor-owned billing target; outputs are replay-safe public intent summaries.
  */
 import { and, eq, gt, lte, or } from "drizzle-orm";
+import { z } from "zod";
 
 import * as schema from "../db/schema";
 import type { AuthDatabase } from "./auth-server/types";
@@ -139,19 +140,23 @@ export function validateBillingReturnURLs(
 	return accepted;
 }
 
-function sortedJSON(value: unknown): string {
-	if (Array.isArray(value)) return `[${value.map(sortedJSON).join(",")}]`;
-	if (value && typeof value === "object") {
-		const record = value as { [key: string]: unknown };
-		return `{${Object.keys(record)
+const jsonValueSchema = z.json();
+type JSONInput = z.input<typeof jsonValueSchema>;
+
+function sortedJSON(value: JSONInput): string {
+	const parsed = jsonValueSchema.parse(value);
+	if (Array.isArray(parsed)) return `[${parsed.map(sortedJSON).join(",")}]`;
+	const record = z.record(z.string(), jsonValueSchema).safeParse(parsed);
+	if (record.success) {
+		return `{${Object.keys(record.data)
 			.sort()
-			.map((key) => `${JSON.stringify(key)}:${sortedJSON(record[key])}`)
+			.map((key) => `${JSON.stringify(key)}:${sortedJSON(record.data[key])}`)
 			.join(",")}}`;
 	}
-	return JSON.stringify(value) ?? "null";
+	return JSON.stringify(parsed) ?? "null";
 }
 
-export async function billingIntentRequestHash(value: unknown) {
+export async function billingIntentRequestHash(value: JSONInput) {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(sortedJSON(value)),
@@ -189,7 +194,7 @@ function summary(
 ): BillingActionIntentSummary {
 	return {
 		id: intent.id,
-		action: intent.action as BillingAction,
+		action: z.enum(BILLING_ACTIONS).parse(intent.action),
 		status: intent.status,
 		expiresAt: intent.expiresAt.toISOString(),
 		handoffUrl: new URL(`/billing/action/${encodeURIComponent(intent.id)}`, passportOrigin).toString(),

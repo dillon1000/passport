@@ -5,6 +5,7 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
+import { z } from "zod";
 import {
 	Bell,
 	ChevronDown,
@@ -53,12 +54,12 @@ const SECTIONS: Section[] = [
 	{ id: "legal", label: "Legal" },
 ];
 
-type SettingsUser = {
-	name?: string | null;
-	email: string;
-	image?: string | null;
-	role?: string | null;
-};
+const settingsUserSchema = z.object({
+	name: z.string().nullable().optional(),
+	email: z.string(),
+	image: z.string().nullable().optional(),
+	role: z.string().nullable().optional(),
+});
 
 type LegalDrawer = "privacy" | "terms" | null;
 
@@ -89,7 +90,7 @@ export function Settings() {
 	const [busy, setBusy] = useState<string | null>(null);
 	const [preferenceDraft, setPreferenceDraft] = useState<EmailNotificationPreferences | null>(null);
 	const [drawer, setDrawer] = useState<LegalDrawer>(null);
-	const user = session?.user as SettingsUser | undefined;
+	const user = settingsUserSchema.optional().parse(session?.user);
 	const settingsQuery = useQuery({
 		queryKey: queryKeys.settings(user?.email),
 		queryFn: fetchSettingsPayload,
@@ -388,11 +389,12 @@ function ProfileFlairSetting() {
 						id={selectId}
 						value={choice}
 						disabled={!isStatic}
-						onChange={(event) => {
-							const next = event.target.value as Exclude<FlairMode, "rotate">;
-							setChoice(next);
-							setMode(next);
-						}}
+							onChange={(event) => {
+								const next = FLAIR_STATIC_OPTIONS.find((option) => option.value === event.target.value);
+								if (!next) return;
+								setChoice(next.value);
+								setMode(next.value);
+							}}
 						className="h-9 w-full appearance-none rounded-lg border border-input bg-background pr-9 pl-3 text-sm shadow-xs transition-[color,box-shadow,border-color] outline-none hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 dark:bg-input/30"
 					>
 						{FLAIR_STATIC_OPTIONS.map((option) => (

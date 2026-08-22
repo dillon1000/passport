@@ -71,7 +71,7 @@ function parseDynamicRoleStatements(value: string): DynamicRoleStatements | null
 }
 
 function staticStatements(role: string): DynamicRoleStatements {
-	const configuredRole = organizationRoles[role as keyof typeof organizationRoles];
+	const configuredRole = Object.entries(organizationRoles).find(([name]) => name === role)?.[1];
 	return configuredRole
 		? Object.fromEntries(
 				Object.entries(configuredRole.statements).map(([resource, actions]) => [

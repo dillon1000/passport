@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { z } from "zod";
 import {
 	AppWindow,
 	Building2,
@@ -172,7 +173,12 @@ export function Consent() {
 			setStatus({ tone: "error", message: await response.text() });
 			return;
 		}
-		const redirect = oauthConsentRedirect((await response.json()) as Record<string, string>);
+			const redirect = oauthConsentRedirect(z.object({
+				redirect_uri: z.string().optional(),
+				redirectURI: z.string().optional(),
+				redirectTo: z.string().optional(),
+				url: z.string().optional(),
+			}).parse(await response.json()));
 		if (redirect) {
 			setRedirecting(true);
 			requestAnimationFrame(() => window.location.assign(redirect));

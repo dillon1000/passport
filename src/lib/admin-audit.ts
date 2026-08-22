@@ -4,6 +4,8 @@
  * Safe configuration point: add new action/target constants as privileged
  * worker routes are introduced.
  */
+import { z } from "zod";
+
 export const ADMIN_AUDIT_ACTIONS = {
 	OAUTH_CLIENT_CREATE: "oauth_client.create",
 	OAUTH_CLIENT_UPDATE: "oauth_client.update",
@@ -33,6 +35,7 @@ export type AdminAuditMetadata =
 	| boolean
 	| AdminAuditMetadata[]
 	| { [key: string]: AdminAuditMetadata };
+type AuditMetadataInput = z.input<ReturnType<typeof z.unknown>>;
 
 export type AdminAuditEventInput = {
 	action: AdminAuditAction;
@@ -40,7 +43,7 @@ export type AdminAuditEventInput = {
 	targetId?: string | null;
 	targetLabel?: string | null;
 	organizationId?: string | null;
-	metadata?: unknown;
+	metadata?: AuditMetadataInput;
 };
 
 const REDACTED_KEY_FRAGMENTS = [
@@ -52,35 +55,26 @@ const REDACTED_KEY_FRAGMENTS = [
 	"token",
 ];
 
-function isPlainObject(value: unknown): value is { [key: string]: unknown } {
-	return Object.prototype.toString.call(value) === "[object Object]";
-}
-
 function isSecretLikeKey(key: string) {
 	const normalized = key.toLowerCase();
 	return REDACTED_KEY_FRAGMENTS.some((fragment) => normalized.includes(fragment));
 }
 
-export function sanitizeAuditMetadata(value: unknown): AdminAuditMetadata {
-	if (value === null || value === undefined) return null;
-	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-		return value;
+export function sanitizeAuditMetadata(value: AuditMetadataInput): AdminAuditMetadata {
+	const parsed = z.json().safeParse(value);
+	if (!parsed.success || parsed.data === null) return null;
+	const scalar = z.union([z.string(), z.number(), z.boolean()]).safeParse(parsed.data);
+	if (scalar.success) return scalar.data;
+	if (Array.isArray(parsed.data)) return parsed.data.map((item) => sanitizeAuditMetadata(item));
+	const object = z.record(z.string(), z.json()).parse(parsed.data);
+	const sanitized: { [key: string]: AdminAuditMetadata } = {};
+	for (const [key, item] of Object.entries(object)) {
+		if (!isSecretLikeKey(key)) sanitized[key] = sanitizeAuditMetadata(item);
 	}
-	if (Array.isArray(value)) {
-		return value.map((item) => sanitizeAuditMetadata(item));
-	}
-	if (!isPlainObject(value)) {
-		return String(value);
-	}
-
-	return Object.fromEntries(
-		Object.entries(value)
-			.filter(([key]) => !isSecretLikeKey(key))
-			.map(([key, item]) => [key, sanitizeAuditMetadata(item)]),
-	) as AdminAuditMetadata;
+	return sanitized;
 }
 
-export function auditMetadataJSON(value: unknown) {
+export function auditMetadataJSON(value: AuditMetadataInput) {
 	const sanitized = sanitizeAuditMetadata(value);
 	if (sanitized === null) return null;
 	return JSON.stringify(sanitized);
