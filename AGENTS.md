@@ -34,6 +34,8 @@ When a page has multiple similarly named sections, place requested UI actions in
 
 When an authentication loading surface replaces a form, every recoverable error must reverse the same transition and return to the populated form. Transition declarations must include the CSS property changed by the movement utility.
 
+Drawer and sheet surfaces must animate on both enter and exit. Use the transition attributes emitted by the active component library, verify the movement property is included in `transition-property`, and preserve the reduced-motion behavior.
+
 ### Fight for the "obvious" solution
 
 We should avoid being clever and doing things because they seem smart. We want everything we build to be so obvious it feels kind of stupid.
