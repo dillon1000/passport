@@ -66,15 +66,15 @@ type SessionIconAsset = {
 	label: string;
 };
 
-const BROWSER_ICONS: Record<string, SessionIconAsset> = {
+const BROWSER_ICONS = {
 	"Chrome or Chromium based browser": { label: "Chrome", src: "/icons/chrome.svg" },
 	Edge: { label: "Edge", src: "/icons/edge.svg" },
 	Firefox: { label: "Firefox", src: "/icons/firefox.svg" },
 	Opera: { label: "Opera", src: "/icons/opera.svg" },
 	Safari: { label: "Safari", src: "/icons/safari.svg" },
-};
+} satisfies Record<string, SessionIconAsset>;
 
-const PLATFORM_ICONS: Record<string, SessionIconAsset> = {
+const PLATFORM_ICONS = {
 	Android: { label: "Android", src: "/icons/android.svg" },
 	ChromeOS: { label: "ChromeOS", src: "/icons/chrome.svg" },
 	iOS: { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } },
@@ -82,7 +82,7 @@ const PLATFORM_ICONS: Record<string, SessionIconAsset> = {
 	Linux: { label: "Linux", src: "/icons/linux.svg" },
 	macOS: { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } },
 	Windows: { label: "Windows", src: "/icons/windows.svg" },
-};
+} satisfies Record<string, SessionIconAsset>;
 
 type ListedSession = {
 	id: string;

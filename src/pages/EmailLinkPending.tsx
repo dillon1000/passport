@@ -13,13 +13,7 @@ import { Card, CardContent } from "@/components/kumo/primitives/card";
 
 type PendingEmailLinkKind = "magic-link" | "password-reset";
 
-const COPY: Record<PendingEmailLinkKind, {
-	description: (email: string) => string;
-	waiting: string;
-	resend: string;
-	back: string;
-	loading: string;
-}> = {
+const COPY = {
 	"magic-link": {
 		description: (email) => `Open the magic link sent to ${email}. This page will continue when the link opens.`,
 		waiting: "Waiting for your magic link…",
@@ -34,7 +28,13 @@ const COPY: Record<PendingEmailLinkKind, {
 		back: "Back to account recovery",
 		loading: "Sending password reset link",
 	},
-};
+} satisfies Record<PendingEmailLinkKind, {
+	description: (email: string) => string;
+	waiting: string;
+	resend: string;
+	back: string;
+	loading: string;
+}>;
 
 export function EmailLinkPending({
 	kind,

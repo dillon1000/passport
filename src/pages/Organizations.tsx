@@ -84,11 +84,11 @@ function initials(value: string) {
 	);
 }
 
-const ROLE_TONE: Record<string, "default" | "secondary" | "outline"> = {
+const ROLE_TONE = {
 	owner: "default",
 	admin: "secondary",
 	member: "outline",
-};
+} satisfies Record<string, "default" | "secondary" | "outline">;
 
 function RoleBadge({ role }: { role: string }) {
 	return (

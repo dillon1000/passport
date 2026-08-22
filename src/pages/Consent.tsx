@@ -62,14 +62,14 @@ type ConsentClientMetadata = {
 	source: "database" | "seed";
 };
 
-const GROUP_ICONS: Record<ConsentScopeGroup["id"], ComponentType<{ className?: string }>> = {
+const GROUP_ICONS = {
 	write: Pencil,
 	identity: UserRound,
 	phone: Phone,
 	organization: Building2,
 	security: Link2,
 	billing: CreditCard,
-};
+} satisfies Record<ConsentScopeGroup["id"], ComponentType<{ className?: string }>>;
 
 export function Consent() {
 	const brand = useBrand();
