@@ -54,12 +54,15 @@ export const queryKeys = {
 
 export async function readAPIJSON<T>(response: Response): Promise<T> {
 	if (!response.ok) {
+		// SAFETY: error JSON is only read through the two optional fields used to form an Error.
 		const payload = (await response.json().catch(() => null)) as
 			| { error?: string; message?: string }
 			| null;
 		throw new Error(payload?.error ?? payload?.message ?? response.statusText);
 	}
+	// SAFETY: callers choose T to match the documented successful response for their endpoint.
 	if (response.status === 204) return undefined as T;
+	// SAFETY: callers choose T to match the documented successful response for their endpoint.
 	return (await response.json()) as T;
 }
 
