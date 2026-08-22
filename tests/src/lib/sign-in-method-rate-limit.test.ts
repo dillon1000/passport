@@ -10,9 +10,9 @@ function createKV(initialCount = 0) {
 	return {
 		get: vi.fn(async () => stored ?? (initialCount ? { count: initialCount, resetAt: 60 } : null)),
 		put: vi.fn(async (_key: string, value: string) => {
-			stored = JSON.parse(value) as { count: number; resetAt: number };
+			stored = JSON.parse(value);
 		}),
-	} as unknown as KVNamespace;
+	};
 }
 
 describe("enforceSignInMethodRateLimit", () => {

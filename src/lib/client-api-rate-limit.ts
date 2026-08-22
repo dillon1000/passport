@@ -17,6 +17,11 @@ type ClientAPIRateLimitState = {
 	resetAt: number;
 };
 
+type ClientAPIRateLimitKV = {
+	get(key: string, type: "json"): Promise<ClientAPIRateLimitState | null>;
+	put(key: string, value: string, options: { expirationTtl: number }): Promise<void>;
+};
+
 export type ClientAPIRateLimitResult = {
 	limit: number;
 	remaining: number;
@@ -42,7 +47,7 @@ function rateLimitHeaders(limit: number, remaining: number, resetAt: number) {
 }
 
 export async function enforceClientAPIRateLimit(
-	kv: KVNamespace,
+	kv: ClientAPIRateLimitKV,
 	actor: Pick<DelegatedClientActor, "clientId" | "userId">,
 	{
 		sensitive = false,
@@ -61,7 +66,7 @@ export async function enforceClientAPIRateLimit(
 	const resetAt =
 		(Math.floor(nowSeconds / CLIENT_API_RATE_LIMIT_WINDOW_SECONDS) + 1) *
 		CLIENT_API_RATE_LIMIT_WINDOW_SECONDS;
-	const stored = await kv.get<ClientAPIRateLimitState>(key, "json");
+	const stored = await kv.get(key, "json");
 	const count = stored?.resetAt === resetAt ? stored.count : 0;
 
 	if (count >= limit) {

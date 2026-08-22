@@ -15,7 +15,7 @@ function memoryKV() {
 		put: vi.fn(async (key: string, value: string) => {
 			values.set(key, value);
 		}),
-	} as unknown as KVNamespace;
+	};
 }
 
 describe("delegated client API rate limits", () => {
