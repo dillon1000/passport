@@ -45,6 +45,13 @@ import {
 import { createPasskeySignupContext } from "@/lib/passkey-signup";
 import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import {
+	cancelEmailLinkFlow,
+	emailLinkPollDelay,
+	pollEmailLinkFlow,
+	startEmailLinkFlow,
+	type EmailLinkFlow,
+} from "@/lib/email-link-continuity";
+import {
 	withDirectionalViewTransition,
 	withViewTransition,
 } from "@/lib/view-transition";
@@ -68,6 +75,7 @@ interface FieldError {
 interface VerificationState {
 	email: string | null;
 	resendWithUsername: boolean;
+	flow: EmailLinkFlow;
 }
 
 /** A same-browser session that can become the active Passport account. */
@@ -168,11 +176,15 @@ export function SignIn() {
 	const [signupStep, setSignupStep] = useState<SignupStep>("details");
 	const [signupUsername, setSignupUsername] = useState("");
 	const [verification, setVerification] = useState<VerificationState | null>(null);
+	const [waitingEmailLink, setWaitingEmailLink] = useState<EmailLinkFlow | null>(null);
 	const [fieldError, setFieldError] = useState<FieldError | null>(null);
 	const [captchaToken, setCaptchaToken] = useState("");
 	const [captchaResetKey, setCaptchaResetKey] = useState(0);
 	const [captchaEscalated, setCaptchaEscalated] = useState(false);
 	const [status, setStatus] = useState<Status | null>(() => {
+		if (searchParams.get("emailLinkConsumed") === "1") {
+			return { tone: "success", message: "Link confirmed. Your original tab will continue." };
+		}
 		if (searchParams.get("flow") === "reset-password" && searchParams.get("error")) {
 			return {
 				tone: "error",
@@ -225,6 +237,48 @@ export function SignIn() {
 			: undefined;
 
 	useEffect(() => {
+		const activeFlow = verification?.flow ?? waitingEmailLink;
+		if (!activeFlow) return;
+		const flowToken = activeFlow.flow;
+
+		const controller = new AbortController();
+		const startedAt = Date.now();
+		let timeout: number | undefined;
+		async function checkFlow() {
+			try {
+				const result = await pollEmailLinkFlow(flowToken, controller.signal);
+				if (result.status === "complete") {
+					setStatus({ tone: "success", message: "Link opened — continuing…" });
+					window.location.assign(result.destination);
+					return;
+				}
+				if (result.status === "expired") {
+					setVerification(null);
+					setWaitingEmailLink(null);
+					setStatus({ tone: "error", message: "That email link expired. Send a new one." });
+					return;
+				}
+			} catch (error) {
+				if (controller.signal.aborted) return;
+				setStatus({
+					tone: "error",
+					message: error instanceof Error ? error.message : "Could not check the email link.",
+				});
+			}
+			timeout = window.setTimeout(
+				() => void checkFlow(),
+				emailLinkPollDelay(Date.now() - startedAt),
+			);
+		}
+
+		void checkFlow();
+		return () => {
+			controller.abort();
+			if (timeout !== undefined) window.clearTimeout(timeout);
+		};
+	}, [verification?.flow, waitingEmailLink]);
+
+	useEffect(() => {
 		if (
 			mode !== "signin" ||
 			signInStep !== "identifier" ||
@@ -255,6 +309,7 @@ export function SignIn() {
 		setSignInMethods(null);
 		setSignupStep("details");
 		setVerification(null);
+		setWaitingEmailLink(null);
 		withViewTransition(() => setMode(nextMode));
 	}
 
@@ -398,6 +453,17 @@ export function SignIn() {
 		}
 
 		setLoading(true);
+		let verificationFlow: EmailLinkFlow;
+		try {
+			verificationFlow = await startEmailLinkFlow("verification", callbackURL);
+		} catch (error) {
+			setLoading(false);
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not prepare email verification.",
+			});
+			return;
+		}
 
 		const result =
 			mode === "signin"
@@ -405,13 +471,13 @@ export function SignIn() {
 					? await authClient.signIn.email({
 							email: credentialValue,
 							password,
-							callbackURL,
+							callbackURL: verificationFlow.callbackURL,
 							...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 						})
 					: await authClient.signIn.username({
 							username: credentialValue,
 							password,
-							callbackURL,
+							callbackURL: verificationFlow.callbackURL,
 							...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 						})
 					: await authClient.signUp.email({
@@ -420,7 +486,7 @@ export function SignIn() {
 							name: name.trim(),
 							username: signupUsername.trim(),
 							displayUsername: signupUsername.trim(),
-							callbackURL,
+							callbackURL: verificationFlow.callbackURL,
 							...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 					});
 
@@ -433,15 +499,18 @@ export function SignIn() {
 					setVerification({
 						email: credentialLooksLikeEmail(credentialValue) ? credentialValue : null,
 						resendWithUsername: !credentialLooksLikeEmail(credentialValue),
+						flow: verificationFlow,
 					});
 					return;
 				}
+				void cancelEmailLinkFlow(verificationFlow.flow);
 				setCaptchaEscalated(true);
 				setFieldError({
 					target: "password",
 					message: "The email, username, or password is incorrect.",
 				});
 			} else {
+				void cancelEmailLinkFlow(verificationFlow.flow);
 				const requestError = usernameRequestError(result.error);
 				if (requestError) {
 					setFieldError({ target: "username", message: requestError });
@@ -453,6 +522,7 @@ export function SignIn() {
 		}
 
 		if (mode === "signin") {
+			void cancelEmailLinkFlow(verificationFlow.flow);
 			if (!shouldCompletePasswordSignIn(result)) {
 				setLoading(false);
 				setStatus({ tone: "success", message: "Confirm your second factor to finish signing in." });
@@ -464,7 +534,7 @@ export function SignIn() {
 			return;
 		}
 		setLoading(false);
-		setVerification({ email: credentialValue, resendWithUsername: false });
+		setVerification({ email: credentialValue, resendWithUsername: false, flow: verificationFlow });
 	}
 
 	async function signUpWithPasskey() {
@@ -478,17 +548,29 @@ export function SignIn() {
 		if (authFetchOptions === null) return;
 
 		setLoading(true);
+		let verificationFlow: EmailLinkFlow;
+		try {
+			verificationFlow = await startEmailLinkFlow("verification", callbackURL);
+		} catch (error) {
+			setLoading(false);
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not prepare email verification.",
+			});
+			return;
+		}
 		const result = await authClient.passkey.addPasskey({
 			name: "Passkey",
 			context: createPasskeySignupContext({
 				name: name.trim(),
 				email,
 				username: signupUsername.trim(),
-				callbackURL,
+				callbackURL: verificationFlow.callbackURL,
 			}),
 			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 		});
 		if (result.error) {
+			void cancelEmailLinkFlow(verificationFlow.flow);
 			setLoading(false);
 			resetCaptcha();
 			const requestError = usernameRequestError(result.error);
@@ -503,7 +585,7 @@ export function SignIn() {
 		}
 
 		setLoading(false);
-		setVerification({ email, resendWithUsername: false });
+		setVerification({ email, resendWithUsername: false, flow: verificationFlow });
 	}
 
 	/** Sends another verification link without leaving the active auth card. */
@@ -516,7 +598,7 @@ export function SignIn() {
 			const result = await authClient.signIn.username({
 				username: credential.trim(),
 				password,
-				callbackURL,
+				callbackURL: verification.flow.callbackURL,
 				...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 			});
 			resetCaptcha();
@@ -533,7 +615,7 @@ export function SignIn() {
 			setLoading(true);
 			const result = await authClient.sendVerificationEmail({
 				email: verification.email,
-				callbackURL,
+				callbackURL: verification.flow.callbackURL,
 			});
 			setLoading(false);
 			if (result.error) {
@@ -571,17 +653,30 @@ export function SignIn() {
 		}
 
 		setLoading(true);
+		let emailLinkFlow: EmailLinkFlow;
+		try {
+			emailLinkFlow = await startEmailLinkFlow("magic-link", callbackURL);
+		} catch (error) {
+			setLoading(false);
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not prepare the magic link.",
+			});
+			return;
+		}
 		const result = await authClient.signIn.magicLink({
 			email,
-			callbackURL,
+			callbackURL: emailLinkFlow.callbackURL,
 			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 		});
 		setLoading(false);
 		resetCaptcha();
+		if (result.error) void cancelEmailLinkFlow(emailLinkFlow.flow);
+		setWaitingEmailLink(result.error ? null : emailLinkFlow);
 		setStatus(
 			result.error
 				? { tone: "error", message: result.error.message ?? "Could not send magic link." }
-				: { tone: "success", message: "Magic link sent. Check your email." },
+				: { tone: "success", message: "Magic link sent. This tab will continue when you open it." },
 		);
 	}
 
@@ -602,20 +697,36 @@ export function SignIn() {
 		}
 
 		setLoading(true);
+		let emailLinkFlow: EmailLinkFlow;
+		try {
+			emailLinkFlow = await startEmailLinkFlow(
+				"password-reset",
+				resolvePasswordResetRedirectURL(searchParams, window.location.origin),
+			);
+		} catch (error) {
+			setLoading(false);
+			setStatus({
+				tone: "error",
+				message: error instanceof Error ? error.message : "Could not prepare the reset link.",
+			});
+			return;
+		}
 		const result = await authClient.requestPasswordReset({
 			email,
-			redirectTo: resolvePasswordResetRedirectURL(searchParams, window.location.origin),
+			redirectTo: emailLinkFlow.callbackURL,
 			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 		});
 		setLoading(false);
 		resetCaptcha();
+		if (result.error) void cancelEmailLinkFlow(emailLinkFlow.flow);
+		setWaitingEmailLink(result.error ? null : emailLinkFlow);
 
 		setStatus(
 			result.error
 				? { tone: "error", message: result.error.message ?? "Could not send reset link." }
 				: {
 						tone: "success",
-						message: "If an account matches that email, a reset link will arrive shortly.",
+						message: "If an account matches, this tab will continue when you open the reset link.",
 					},
 		);
 	}
