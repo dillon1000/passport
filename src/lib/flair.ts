@@ -12,13 +12,13 @@ const EVENT = "profile-flair-change";
 type FlairStorage = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
 /** Static choices offered in Settings, in display order. */
-export const FLAIR_STATIC_OPTIONS: { value: Exclude<FlairMode, "rotate">; label: string }[] = [
+export const FLAIR_STATIC_OPTIONS = [
 	{ value: "name", label: "Name" },
 	{ value: "email", label: "Email" },
 	{ value: "datetime", label: "Date & time" },
 	{ value: "greeting", label: "Greeting" },
 	{ value: "quip", label: "Quip" },
-];
+] satisfies { value: Exclude<FlairMode, "rotate">; label: string }[];
 
 export function normalizeFlairMode(value: string | null): FlairMode {
 	if (
@@ -60,7 +60,7 @@ export function writeStoredFlairMode(
 }
 
 function storage() {
-	return typeof localStorage === "undefined" ? undefined : localStorage;
+	return globalThis.localStorage;
 }
 
 function read(): FlairMode {
@@ -81,7 +81,7 @@ function subscribe(callback: () => void) {
  * subscriber in the tab so the header flair and the Settings control stay in sync.
  */
 export function useFlairMode() {
-	const mode = useSyncExternalStore(subscribe, read, () => "rotate" as FlairMode);
+	const mode = useSyncExternalStore(subscribe, read, (): FlairMode => "rotate");
 
 	function setMode(next: FlairMode) {
 		writeStoredFlairMode(next, storage());

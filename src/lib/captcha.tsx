@@ -12,6 +12,24 @@ type CapWidgetElement = HTMLElement & {
 	readonly tokenValue?: string | null;
 };
 
+type CapWidgetStyle = CSSProperties & { [property: `--cap-${string}`]: string };
+
+const capWidgetStyle: CapWidgetStyle = {
+	display: "block",
+	width: "100%",
+	"--cap-background": "var(--card)",
+	"--cap-border-color": "var(--border)",
+	"--cap-border-radius": "var(--radius)",
+	"--cap-widget-width": "100%",
+	"--cap-color": "var(--foreground)",
+	"--cap-checkbox-background": "var(--background)",
+	"--cap-checkbox-border": "1px solid var(--input)",
+	"--cap-checkbox-border-radius": "calc(var(--radius) - 2px)",
+	"--cap-font": "var(--font-sans)",
+	"--cap-spinner-color": "var(--foreground)",
+	"--cap-spinner-background-color": "var(--muted)",
+};
+
 declare module "react" {
 	// React exposes custom element typing through this declaration namespace.
 	// oxlint-disable-next-line typescript/no-namespace
@@ -70,9 +88,8 @@ export function CaptchaChallenge({
 		}
 		solverRef.current = solveChallenge;
 
-		function handleSolve(event: Event) {
-			const token = (event as CustomEvent<{ token: string }>).detail.token;
-			onTokenChange(token);
+		function handleSolve(event: Event & { detail?: { token?: string } }) {
+			onTokenChange(event.detail?.token ?? "");
 		}
 		function clearToken() {
 			onTokenChange("");
@@ -114,21 +131,7 @@ export function CaptchaChallenge({
 				data-cap-i18n-verifying-label="Verifying sign-in…"
 				data-cap-i18n-solved-label="Sign-in verified"
 				data-cap-i18n-error-label="Verification failed"
-				style={{
-					display: invisible && !escalated ? "none" : "block",
-					width: "100%",
-					"--cap-background": "var(--card)",
-					"--cap-border-color": "var(--border)",
-					"--cap-border-radius": "var(--radius)",
-					"--cap-widget-width": "100%",
-					"--cap-color": "var(--foreground)",
-					"--cap-checkbox-background": "var(--background)",
-					"--cap-checkbox-border": "1px solid var(--input)",
-					"--cap-checkbox-border-radius": "calc(var(--radius) - 2px)",
-					"--cap-font": "var(--font-sans)",
-					"--cap-spinner-color": "var(--foreground)",
-					"--cap-spinner-background-color": "var(--muted)",
-				} as CSSProperties}
+				style={{ ...capWidgetStyle, display: invisible && !escalated ? "none" : "block" }}
 			/>
 		</div>
 	);

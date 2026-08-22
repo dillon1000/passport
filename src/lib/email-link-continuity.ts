@@ -14,6 +14,13 @@ type EmailLinkPollResult =
 	| { status: "complete"; destination: string }
 	| { status: "expired" };
 
+const emailLinkFlowSchema = z.object({ flow: z.string(), callbackURL: z.string() });
+const emailLinkPollResultSchema = z.discriminatedUnion("status", [
+	z.object({ status: z.literal("pending") }),
+	z.object({ status: z.literal("complete"), destination: z.string() }),
+	z.object({ status: z.literal("expired") }),
+]);
+
 /** Keeps fresh links responsive, then reduces idle database traffic. */
 export function emailLinkPollDelay(elapsedMilliseconds: number) {
 	if (elapsedMilliseconds < 2 * 60 * 1_000) return 1_000;
@@ -33,7 +40,7 @@ export async function startEmailLinkFlow(
 		body: JSON.stringify({ kind, destination }),
 	});
 	if (!response.ok) throw new Error("Could not prepare the email link.");
-	return (await response.json()) as EmailLinkFlow;
+	return emailLinkFlowSchema.parse(await response.json());
 }
 
 /** Checks whether an email link was consumed on any device. */
@@ -49,7 +56,7 @@ export async function pollEmailLinkFlow(
 	if (!response.ok && response.status !== 202) {
 		throw new Error("Could not check the email link.");
 	}
-	return (await response.json()) as EmailLinkPollResult;
+	return emailLinkPollResultSchema.parse(await response.json());
 }
 
 /** Removes a flow when the auth request does not send an email link. */
@@ -59,3 +66,4 @@ export async function cancelEmailLinkFlow(flow: string) {
 		credentials: "same-origin",
 	});
 }
+import * as z from "zod";

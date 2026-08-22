@@ -27,15 +27,14 @@ export const WEBHOOK_EVENT_TYPES = {
 export type WebhookEventType =
 	(typeof WEBHOOK_EVENT_TYPES)[keyof typeof WEBHOOK_EVENT_TYPES];
 
-export const WEBHOOK_EVENT_TYPE_VALUES = Object.values(
-	WEBHOOK_EVENT_TYPES,
-) as WebhookEventType[];
+export const WEBHOOK_EVENT_TYPE_VALUES = Object.values(WEBHOOK_EVENT_TYPES);
+const webhookEventTypes = new Set<string>(WEBHOOK_EVENT_TYPE_VALUES);
 
 export function isWebhookEventType(value: string): value is WebhookEventType {
-	return (WEBHOOK_EVENT_TYPE_VALUES as string[]).includes(value);
+	return webhookEventTypes.has(value);
 }
 
-export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
+export const WEBHOOK_EVENT_LABELS = {
 	"user.created": "User created",
 	"user.deleted": "User deleted",
 	"user.banned": "User banned",
@@ -52,8 +51,10 @@ export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
 	"billing.trial_started": "Billing trial started",
 	"billing.trial_ended": "Billing trial ended",
 	"billing.trial_expired": "Billing trial expired",
-};
+} satisfies Record<WebhookEventType, string>;
+
+const webhookEventLabels = new Map<string, string>(Object.entries(WEBHOOK_EVENT_LABELS));
 
 export function webhookEventLabel(type: string): string {
-	return WEBHOOK_EVENT_LABELS[type as WebhookEventType] ?? type;
+	return webhookEventLabels.get(type) ?? type;
 }

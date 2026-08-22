@@ -11,9 +11,15 @@ type ImageUploadResponse = {
 	error?: string;
 };
 
+const imageUploadResponseSchema = z.object({
+	image: z.string().optional(),
+	url: z.string().optional(),
+	error: z.string().optional(),
+});
+
 async function readImageUploadResponse(response: Response): Promise<ImageUploadResponse> {
 	try {
-		return (await response.json()) as ImageUploadResponse;
+		return imageUploadResponseSchema.parse(await response.json());
 	} catch {
 		return {};
 	}
@@ -43,7 +49,7 @@ async function uploadImageFile(
 	}
 	// The Worker can return a same-origin path. OAuth client metadata is consumed
 	// outside this page, so store the fully qualified Passport URL instead.
-	const origin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+	const origin = globalThis.location?.origin ?? "http://localhost";
 	return new URL(image, origin).toString();
 }
 
@@ -54,3 +60,4 @@ export async function uploadImageAsset(file: File, purpose: ImageUploadPurpose) 
 export async function uploadProfileImageAsset(file: File) {
 	return uploadImageFile(file, undefined, "Could not upload profile picture.");
 }
+import * as z from "zod";
