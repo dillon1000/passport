@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { createCliAuthEnv } from "./env";
+import { createDb } from "../../db/client";
 import {
 	buildAuthPlugins,
 	MULTI_SESSION_MAXIMUM_SESSIONS,
 } from "./plugins";
-import type { AuthDatabase } from "./types";
+
+const testDb = createDb(createCliAuthEnv());
 
 type AuthPlugin = ReturnType<typeof buildAuthPlugins>[number];
 type MultiSessionPlugin = AuthPlugin & {
@@ -13,11 +15,11 @@ type MultiSessionPlugin = AuthPlugin & {
 	options: {
 		maximumSessions: number;
 	};
-	endpoints: { [key: string]: unknown };
+	endpoints: object;
 };
 type StripePlugin = AuthPlugin & {
 	id: "stripe";
-	endpoints: { [key: string]: unknown };
+	endpoints: object;
 };
 
 function isMultiSessionPlugin(plugin: AuthPlugin): plugin is MultiSessionPlugin {
@@ -30,7 +32,7 @@ function isStripePlugin(plugin: AuthPlugin): plugin is StripePlugin {
 
 describe("buildAuthPlugins", () => {
 	it("enables cross-device completion endpoints for email links", () => {
-		const plugins = buildAuthPlugins(createCliAuthEnv(), {} as AuthDatabase);
+		const plugins = buildAuthPlugins(createCliAuthEnv(), testDb);
 		const plugin = plugins.find((candidate) => candidate.id === "email-link-continuity");
 
 		expect(plugin).toBeDefined();
@@ -45,7 +47,7 @@ describe("buildAuthPlugins", () => {
 	});
 
 	it("enables Better Auth multi-session endpoints with the documented device limit", () => {
-		const plugins = buildAuthPlugins(createCliAuthEnv(), {} as AuthDatabase);
+		const plugins = buildAuthPlugins(createCliAuthEnv(), testDb);
 		const plugin = plugins.find(isMultiSessionPlugin);
 
 		expect(MULTI_SESSION_MAXIMUM_SESSIONS).toBe(5);
@@ -72,7 +74,7 @@ describe("buildAuthPlugins", () => {
 					},
 				]),
 			}),
-			{} as AuthDatabase,
+			testDb,
 		);
 		const plugin = plugins.find(isStripePlugin);
 
@@ -90,7 +92,7 @@ describe("buildAuthPlugins", () => {
 	});
 
 	it("does not enable Stripe when secrets are absent", () => {
-		const plugins = buildAuthPlugins(createCliAuthEnv(), {} as AuthDatabase);
+		const plugins = buildAuthPlugins(createCliAuthEnv(), testDb);
 
 		expect(plugins.some((plugin) => plugin.id === "stripe")).toBe(false);
 	});

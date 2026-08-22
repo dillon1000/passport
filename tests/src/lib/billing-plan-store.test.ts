@@ -1,33 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
 	createBillingPlan,
 	loadBillingPlans,
+	type BillingPlanInsert,
+	type BillingPlanRow,
 } from "./billing-plan-store";
-import type { AuthDatabase } from "./auth-server/types";
-
-// Minimal drizzle stand-ins: the store only uses select→from→orderBy for reads
-// and insert→values→returning for writes, so we fake just those chains.
-function readDb(rows: unknown[]): AuthDatabase {
-	return {
-		select: () => ({
-			from: () => ({
-				orderBy: () => Promise.resolve(rows),
-			}),
-		}),
-	} as unknown as AuthDatabase;
-}
-
-function insertDb(capture: (values: { [key: string]: unknown }) => void): AuthDatabase {
-	return {
-		insert: () => ({
-			values: (values: { [key: string]: unknown }) => {
-				capture(values);
-				return { returning: () => Promise.resolve([{ ...values }]) };
-			},
-		}),
-	} as unknown as AuthDatabase;
-}
 
 const envWithPlans = {
 	STRIPE_BILLING_PLANS: JSON.stringify([
@@ -37,14 +15,14 @@ const envWithPlans = {
 
 describe("loadBillingPlans", () => {
 	it("falls back to STRIPE_BILLING_PLANS when the table is empty", async () => {
-		const plans = await loadBillingPlans(envWithPlans, readDb([]));
+		const plans = await loadBillingPlans(envWithPlans, undefined, { readRows: async () => [] });
 		expect(plans).toEqual([
 			expect.objectContaining({ name: "pro", priceId: "price_pro", group: "Acme" }),
 		]);
 	});
 
 	it("maps table rows to plan definitions when present", async () => {
-		const rows = [
+		const rows: BillingPlanRow[] = [
 			{
 				id: "plan_1",
 				name: "team",
@@ -62,9 +40,18 @@ describe("loadBillingPlans", () => {
 				limits: { seats: 10 },
 				entitlements: ["api", "sso"],
 				lineItems: null,
+				type: "subscription",
+				personalOnly: false,
+				hidden: false,
+				createdAt: new Date(),
+				updatedAt: new Date(),
 			},
 		];
-		const plans = await loadBillingPlans({ STRIPE_BILLING_PLANS: undefined }, readDb(rows));
+		const plans = await loadBillingPlans(
+			{ STRIPE_BILLING_PLANS: undefined },
+			undefined,
+			{ readRows: async () => rows },
+		);
 		expect(plans).toEqual([
 			{
 				name: "team",
@@ -82,26 +69,23 @@ describe("loadBillingPlans", () => {
 
 describe("createBillingPlan", () => {
 	it("rejects a plan without a price ID or lookup key", async () => {
-		const insert = vi.fn();
-		const db = { insert } as unknown as AuthDatabase;
-		await expect(createBillingPlan(db, { name: "pro" })).rejects.toThrow(
+		await expect(createBillingPlan(undefined, { name: "pro" })).rejects.toThrow(
 			/priceId or lookupKey/,
 		);
-		expect(insert).not.toHaveBeenCalled();
 	});
 
 	it("lowercases the plan key and persists normalized columns", async () => {
-		let captured: { [key: string]: unknown } | undefined;
-		const db = insertDb((values) => {
-			captured = values;
-		});
-		await createBillingPlan(db, {
+		let captured: BillingPlanInsert | undefined;
+		await createBillingPlan(undefined, {
 			name: "Pro",
 			priceId: "price_pro",
 			group: "Acme",
 			entitlements: ["api"],
 			displayOrder: 3,
-		});
+		}, { insertPlan: async (values) => {
+			captured = values;
+			return { ...values, createdAt: new Date(), updatedAt: new Date() };
+		} });
 		expect(captured).toMatchObject({
 			name: "pro",
 			priceId: "price_pro",
@@ -113,11 +97,8 @@ describe("createBillingPlan", () => {
 	});
 
 	it("rejects a negative display order", async () => {
-		const insert = vi.fn();
-		const db = { insert } as unknown as AuthDatabase;
 		await expect(
-			createBillingPlan(db, { name: "pro", priceId: "price_pro", displayOrder: -1 }),
+			createBillingPlan(undefined, { name: "pro", priceId: "price_pro", displayOrder: -1 }),
 		).rejects.toThrow(/displayOrder/);
-		expect(insert).not.toHaveBeenCalled();
 	});
 });

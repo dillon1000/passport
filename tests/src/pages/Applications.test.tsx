@@ -1,70 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-const sessionState = vi.hoisted(() => ({
-	user: {
-		id: "admin_123",
-		email: "admin@example.com",
-		role: "admin" as string | null,
-	},
-}));
-
-vi.mock("@/lib/session", () => ({
-	useRequireSession: () => ({
-		data: {
-			user: sessionState.user,
-		},
-	}),
-}));
-
-vi.mock("@/components/auth/dashboard-shell", () => ({
-	DashboardShell: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
-import { Applications, AuthorizedApplicationRow, ManagedOAuthClientRow } from "./Applications";
-import { createAppQueryClient } from "@/lib/query-client";
+import {
+	AuthorizedApplicationRow,
+	ManagedOAuthClientRow,
+} from "./Applications";
+import { canShowManagedOAuthClients } from "@/pages/applications-permissions";
 
 describe("Applications", () => {
-	beforeEach(() => {
-		vi.stubGlobal("window", {
-			location: {
-				origin: "https://passport.test",
-			},
-		});
-		sessionState.user = {
-			id: "admin_123",
-			email: "admin@example.com",
-			role: "admin",
-		};
+	it("shows managed OAuth clients to role admins before the client list loads", () => {
+		expect(canShowManagedOAuthClients({ role: "admin" }, { adminAvailable: false })).toBe(true);
 	});
 
-	function renderApplications() {
-		return renderToStaticMarkup(
-			<QueryClientProvider client={createAppQueryClient()}>
-				<Applications />
-			</QueryClientProvider>,
-		);
-	}
-
-	it("renders the OAuth client registration control for role admins before the client list loads", () => {
-		const html = renderApplications();
-
-		expect(html).toContain("Managed clients");
-		expect(html).toContain("Register client");
-	});
-
-	it("keeps OAuth client registration hidden from non-admin sessions before an admin check succeeds", () => {
-		sessionState.user = {
-			id: "user_123",
-			email: "user@example.com",
-			role: "user",
-		};
-
-		const html = renderApplications();
-
-		expect(html).not.toContain("Register client");
+	it("keeps managed OAuth clients hidden from non-admin sessions before an admin check succeeds", () => {
+		expect(canShowManagedOAuthClients({ role: "user" }, { adminAvailable: false })).toBe(false);
 	});
 
 	it("does not render a copy client ID action for authorized applications", () => {

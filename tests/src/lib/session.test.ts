@@ -1,16 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
 	signOut: vi.fn(),
 	assign: vi.fn(),
-}));
-
-vi.mock("@/auth-client", () => ({
-	authClient: {
-		signOut: mocks.signOut,
-		useSession: vi.fn(),
-	},
-}));
+};
 
 import { signOut } from "./session";
 
@@ -26,7 +19,7 @@ describe("signOut", () => {
 	});
 
 	it("signs out and returns to sign-in without a browser confirmation", async () => {
-		await signOut();
+		await signOut({ signOut: mocks.signOut, redirect: mocks.assign });
 
 		expect(mocks.signOut).toHaveBeenCalledOnce();
 		expect(mocks.assign).toHaveBeenCalledWith("/sign-in?signedOut=1");

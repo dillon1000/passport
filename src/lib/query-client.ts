@@ -60,8 +60,10 @@ export async function readAPIJSON<T>(response: Response): Promise<T> {
 			| null;
 		throw new Error(payload?.error ?? payload?.message ?? response.statusText);
 	}
-	// SAFETY: callers choose T to match the documented successful response for their endpoint.
-	if (response.status === 204) return undefined as T;
+	if (response.status === 204) {
+		// SAFETY: callers use T = undefined for documented 204 endpoints.
+		return undefined as T;
+	}
 	// SAFETY: callers choose T to match the documented successful response for their endpoint.
 	return (await response.json()) as T;
 }

@@ -1,18 +1,17 @@
 /** Public-contract tests for the delegated resource API metadata and OpenAPI surface. */
 import { describe, expect, it } from "vitest";
 
+import { createCliAuthEnv } from "../../src/lib/auth-server/env";
 import { createClientAPI } from "./client-api";
 
-const contractEnv = {
-	BETTER_AUTH_URL: "https://passport.test",
-};
+const contractEnv = createCliAuthEnv({ BETTER_AUTH_URL: "https://passport.test" });
 
 describe("delegated client API contract", () => {
 	it("publishes RFC 9728 protected-resource metadata without CORS", async () => {
 		const response = await createClientAPI().request(
 			"https://passport.test/.well-known/oauth-protected-resource/api/v1",
 			{},
-			contractEnv as Env,
+			contractEnv,
 		);
 		expect(response.status).toBe(200);
 		expect(response.headers.get("access-control-allow-origin")).toBeNull();
@@ -28,10 +27,11 @@ describe("delegated client API contract", () => {
 		const response = await createClientAPI().request(
 			"https://passport.test/api/v1/openapi.json",
 			{},
-			contractEnv as Env,
+			contractEnv,
 		);
 		expect(response.status).toBe(200);
-		const document = (await response.json()) as { paths?: { [key: string]: unknown } };
+		// SAFETY: the OpenAPI route returns an object with path keys used by this contract assertion.
+		const document = (await response.json()) as { paths?: object };
 		const paths = Object.keys(document.paths ?? {});
 		expect(paths).toEqual(
 			expect.arrayContaining([

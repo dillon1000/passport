@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { AuthEnv } from "../../env";
+import { createDb } from "../../db/client";
+import { createCliAuthEnv } from "./env";
 import { oauthProviderPlugin } from "./oauth";
 
 describe("OAuth provider configuration", () => {
 	it("advertises standard grants plus introspection and revocation metadata through the provider", () => {
 		const plugin = oauthProviderPlugin(
-			{
+			createCliAuthEnv({
 				BETTER_AUTH_URL: "https://passport.test",
 				OAUTH_RESOURCES: JSON.stringify([
 					{
@@ -15,8 +16,8 @@ describe("OAuth provider configuration", () => {
 						scopes: ["permissions"],
 					},
 				]),
-			} as unknown as AuthEnv,
-			{} as never,
+			}),
+			createDb(createCliAuthEnv()),
 		);
 
 		expect(plugin.options.grantTypes).toEqual([

@@ -140,6 +140,5 @@ export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGl
 		PRIMARY_FOREGROUND_COLOR: processEnv.PRIMARY_FOREGROUND_COLOR,
 		RING_COLOR: processEnv.RING_COLOR,
 	};
-	// SAFETY: Better Auth CLI only accesses bindings initialized above; deployment-only bindings are unused.
-	return cliEnv as AuthEnv;
+	return Object.setPrototypeOf(cliEnv, null);
 }

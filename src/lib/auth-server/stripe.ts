@@ -470,6 +470,42 @@ export type OneTimeCheckoutInput = {
 	cancelUrl: string;
 };
 
+export type OneTimePurchaseCheckoutSession = {
+	id: string;
+	mode: string | null;
+	payment_status: string;
+	metadata: { [key: string]: string } | null;
+	client_reference_id: string | null;
+	customer: string | { id: string } | null;
+	payment_intent: string | { id: string } | null;
+	amount_total: number | null;
+	currency: string | null;
+};
+
+export type OneTimePurchaseInsert = {
+	id: string;
+	plan: string;
+	referenceId: string;
+	stripeCustomerId: string | null;
+	stripeCheckoutSessionId: string;
+	stripePaymentIntentId: string | null;
+	status: "completed";
+	quantity: number;
+	amountTotal: number | null;
+	currency: string | null;
+	purchasedAt: Date;
+};
+
+export type OneTimePurchaseRow = Pick<
+	OneTimePurchaseInsert,
+	"id" | "plan" | "referenceId" | "quantity" | "amountTotal" | "currency" | "purchasedAt"
+>;
+
+export type OneTimePurchaseDependencies = {
+	insert?: (input: OneTimePurchaseInsert) => Promise<OneTimePurchaseRow | undefined>;
+	emit?: (data: WebhookData) => Promise<void>;
+};
+
 async function resolveOneTimePriceId(client: Stripe, plan: BillingPlanDefinition) {
 	if (plan.priceId) return plan.priceId;
 	if (plan.lookupKey) {
@@ -590,9 +626,10 @@ export async function createOneTimeCheckout(
  */
 export async function recordOneTimePurchase(
 	env: AuthEnv,
-	db: AuthDatabase,
-	session: Stripe.Checkout.Session,
+	db: AuthDatabase | undefined,
+	session: OneTimePurchaseCheckoutSession,
 	emit = emitBillingWebhook,
+	dependencies: OneTimePurchaseDependencies = {},
 ) {
 	if (session.mode !== "payment" || session.payment_status !== "paid") return;
 
@@ -612,32 +649,34 @@ export async function recordOneTimePurchase(
 			? paymentIntentObject.data.id
 			: null;
 
-	const [row] = await db
-		.insert(schema.oneTimePurchase)
-		.values({
-			id: crypto.randomUUID(),
-			plan: plan.toLowerCase(),
-			referenceId,
-			stripeCustomerId: customerId,
-			stripeCheckoutSessionId: session.id,
-			stripePaymentIntentId: paymentIntentId,
-			status: "completed",
-			quantity: 1,
-			amountTotal: session.amount_total ?? null,
-			currency: session.currency ?? null,
-			purchasedAt: new Date(),
-		})
-		.onConflictDoNothing({ target: schema.oneTimePurchase.stripeCheckoutSessionId })
-		.returning();
+	const purchase: OneTimePurchaseInsert = {
+		id: crypto.randomUUID(),
+		plan: plan.toLowerCase(),
+		referenceId,
+		stripeCustomerId: customerId,
+		stripeCheckoutSessionId: session.id,
+		stripePaymentIntentId: paymentIntentId,
+		status: "completed",
+		quantity: 1,
+		amountTotal: session.amount_total ?? null,
+		currency: session.currency ?? null,
+		purchasedAt: new Date(),
+	};
+	const row = dependencies.insert
+		? await dependencies.insert(purchase)
+		: await (async () => {
+			if (!db) throw new TypeError("A database is required when no purchase writer is supplied.");
+			const [inserted] = await db
+				.insert(schema.oneTimePurchase)
+				.values(purchase)
+				.onConflictDoNothing({ target: schema.oneTimePurchase.stripeCheckoutSessionId })
+				.returning();
+			return inserted;
+		})();
 
 	// Conflict: an earlier delivery already fulfilled this checkout — don't re-emit.
 	if (!row) return;
-
-	await emit(
-		env,
-		db,
-		WEBHOOK_EVENT_TYPES.BILLING_ONE_TIME_PURCHASE_COMPLETED,
-		{
+	const data: WebhookData = {
 			purchaseId: row.id,
 			plan: row.plan,
 			referenceId: row.referenceId,
@@ -647,8 +686,13 @@ export async function recordOneTimePurchase(
 			amountTotal: row.amountTotal ?? null,
 			currency: row.currency ?? null,
 			purchasedAt: row.purchasedAt?.toISOString() ?? null,
-		},
-	);
+	};
+	if (dependencies.emit) {
+		await dependencies.emit(data);
+		return;
+	}
+	if (!db) throw new TypeError("A database is required when no purchase emitter is supplied.");
+	await emit(env, db, WEBHOOK_EVENT_TYPES.BILLING_ONE_TIME_PURCHASE_COMPLETED, data);
 }
 
 export type OneTimePurchaseSummary = {
