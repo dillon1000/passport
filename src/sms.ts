@@ -25,8 +25,9 @@ export type AzureSMSSendResult = {
 	errorMessage?: string;
 };
 
+type SMSEnv = Pick<AuthEnv, "AZURE_COMMUNICATION_CONNECTION_STRING" | "COMMUNICATION_SERVICES_CONNECTION_STRING" | "AZURE_COMMUNICATION_SMS_FROM">;
 type SendSMSOptions = {
-	fetcher?: typeof fetch;
+	fetcher?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 	now?: () => Date;
 };
 
@@ -66,7 +67,7 @@ function parseAzureConnectionString(connectionString: string): AzureConnection {
 	return { endpoint, accessKey };
 }
 
-function getAzureConnectionString(env: AuthEnv) {
+function getAzureConnectionString(env: SMSEnv) {
 	return (
 		optionalEnv(env.AZURE_COMMUNICATION_CONNECTION_STRING) ??
 		optionalEnv(env.COMMUNICATION_SERVICES_CONNECTION_STRING)
@@ -151,7 +152,7 @@ function responseErrorMessage(responseText: string) {
  * number, short code, or alphanumeric sender ID depending on the ACS resource.
  */
 export async function sendPhoneVerificationSMS(
-	env: AuthEnv,
+	env: SMSEnv,
 	phoneNumber: string,
 	code: string,
 	options: SendSMSOptions = {},
