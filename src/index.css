@@ -410,27 +410,66 @@ html[data-view-transition-direction="backward"]::view-transition-new(auth-step) 
 	}
 }
 
-/* Sheets use Base UI's transition attributes. The panel enters from the bottom
-   on compact screens and from the right on wider screens. Stacked sheets use
-   translate and scale so their depth transition composes with the panel slide. */
-[data-slot="sheet-content"] {
-	transform: translateY(0);
-}
-[data-slot="sheet-content"][data-starting-style],
-[data-slot="sheet-content"][data-ending-style] {
-	transform: translateY(calc(100% + 1rem));
-}
-[data-slot="sheet-content"][data-ending-style] {
-	transition-duration: 180ms !important;
-}
-@media (min-width: 40rem) {
-	[data-slot="sheet-content"] {
-		transform: translateX(0);
+/* Right-anchored drawer (Sheet) motion. A soft scrim fade plus a slide that
+   uses the iOS/vaul easing curve so the panel settles rather than snapping. */
+@keyframes sheet-scrim-in {
+	from {
+		opacity: 0;
 	}
-	[data-slot="sheet-content"][data-starting-style],
-	[data-slot="sheet-content"][data-ending-style] {
+	to {
+		opacity: 1;
+	}
+}
+@keyframes sheet-scrim-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+@keyframes sheet-slide-in {
+	from {
 		transform: translateX(calc(100% + 1rem));
 	}
+	to {
+		transform: translateX(0);
+	}
+}
+@keyframes sheet-slide-out {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(calc(100% + 1rem));
+	}
+}
+
+[data-slot="sheet-overlay"][data-state="open"] {
+	animation: sheet-scrim-in 0.3s ease both;
+}
+[data-slot="sheet-overlay"][data-state="closed"] {
+	animation: sheet-scrim-out 0.25s ease both;
+}
+[data-slot="sheet-content"][data-state="open"] {
+	animation: sheet-slide-in 0.42s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+[data-slot="sheet-content"][data-state="closed"] {
+	animation: sheet-slide-out 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* Stacked drawers: when a second sheet slides over this one, push it back and
+   scale it down. These use the standalone translate/scale properties (not
+   transform) so they compose with the slide keyframes above instead of
+   fighting them. */
+[data-slot="sheet-content"] {
+	transition:
+		translate 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+		scale 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+[data-slot="sheet-content"][data-pushed="true"] {
+	translate: -1.75rem 0;
+	scale: 0.965;
 }
 
 /* Account-flair marquee: when the rotating text outgrows its track we scroll it
