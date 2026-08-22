@@ -6,6 +6,7 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { z } from "zod";
 import { Ban, RefreshCw, Search, ShieldCheck, Unlock, UserCog } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
@@ -62,6 +63,15 @@ type AdminUsersPayload = {
 	users: AdminUser[];
 	total: number;
 };
+const adminUsersPayloadSchema = z.object({
+	users: z.array(z.object({
+		id: z.string(), name: z.string(), email: z.string(), emailVerified: z.boolean(),
+		image: z.string().nullable().optional(), role: z.string().nullable().optional(),
+		banned: z.boolean().nullable().optional(), banReason: z.string().nullable().optional(),
+		banExpires: z.union([z.string(), z.date()]).nullable().optional(),
+	})),
+	total: z.number(),
+});
 
 async function fetchAdminUsers(input: {
 	offset: number;
@@ -87,17 +97,17 @@ async function fetchAdminUsers(input: {
 	if (result.error) {
 		throw new Error(result.error.message ?? "No access to user administration.");
 	}
-	return (result.data ?? { users: [], total: 0 }) as AdminUsersPayload;
+	return adminUsersPayloadSchema.parse(result.data ?? { users: [], total: 0 });
 }
 
-async function postAdminUserAction(path: string, body?: { [key: string]: unknown }) {
+async function postAdminUserAction(path: string, body?: Record<string, string | number | boolean | null | undefined>) {
 	const response = await fetch(path, {
 		method: "POST",
 		headers: body ? { "content-type": "application/json" } : undefined,
 		body: body ? JSON.stringify(body) : undefined,
 	});
 	if (response.ok) return { ok: true, message: "" };
-	const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+	const payload = z.object({ error: z.string().optional() }).nullable().catch(null).parse(await response.json().catch(() => null));
 	return {
 		ok: false,
 		message: payload?.error ?? "Admin user action failed.",
@@ -197,7 +207,7 @@ export function AdminUsers() {
 			return;
 		}
 
-		const payload = (lookup.data ?? { users: [], total: 0 }) as AdminUsersPayload;
+		const payload = adminUsersPayloadSchema.parse(lookup.data ?? { users: [], total: 0 });
 		const user = payload.users[0] ?? null;
 		const promotion = checkAdminPromotionTarget({
 			currentUserId: session?.user.id,
@@ -411,7 +421,10 @@ export function AdminUsers() {
 										<div className="flex flex-wrap items-center gap-2">
 											<select
 												value={user.role === "admin" ? "admin" : "user"}
-												onChange={(event) => void updateRole(user, event.target.value as AdminRole)}
+							onChange={(event) => {
+								const role = ADMIN_ROLES.find((role) => role === event.target.value);
+								if (role) void updateRole(user, role);
+							}}
 												disabled={selfAction || busy === `role:${user.id}`}
 												className="h-7 rounded-lg border border-input bg-background px-2 text-[0.8rem] shadow-xs outline-none hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30"
 											>
