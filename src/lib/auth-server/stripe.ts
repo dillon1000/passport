@@ -106,6 +106,11 @@ export type StripeProvisionResult = {
 
 type StripeProvisioningInput = BillingPlanInput & { stripe?: StripeProductInput };
 
+export type StripeProvisioningClient = Pick<Stripe, "products" | "prices">;
+export type StripeProvisioningDependencies = {
+	createClient?: (env: AuthEnv, secretKey: string) => StripeProvisioningClient;
+};
+
 /**
  * Create a Stripe Product plus its primary Price, and optionally an annual price
  * and a per-seat price, from validated admin input. Subscription plans get
@@ -113,7 +118,7 @@ type StripeProvisioningInput = BillingPlanInput & { stripe?: StripeProductInput 
  * created identifiers so the caller can persist them on the plan row.
  */
 async function createStripeProductWithPrices(
-	client: Stripe,
+	client: StripeProvisioningClient,
 	input: StripeProductProvisionInput,
 	context: { planType: BillingPlanType; productName: string; description?: string },
 ): Promise<StripeProvisionResult> {
@@ -191,6 +196,7 @@ async function createStripeProductWithPrices(
 export async function applyStripeProvisioning(
 	env: AuthEnv,
 	input: StripeProvisioningInput,
+	dependencies: StripeProvisioningDependencies = {},
 ): Promise<BillingPlanInput> {
 	if (!input.stripe) return input;
 
@@ -213,7 +219,7 @@ export async function applyStripeProvisioning(
 		provision.description ??
 		input.description?.trim();
 
-	const client = createStripeClient(env, secrets.secretKey);
+	const client = (dependencies.createClient ?? createStripeClient)(env, secrets.secretKey);
 	const result = await createStripeProductWithPrices(client, provision, {
 		planType,
 		productName,
@@ -578,6 +584,7 @@ export async function recordOneTimePurchase(
 	env: AuthEnv,
 	db: AuthDatabase,
 	session: Stripe.Checkout.Session,
+	emit = emitBillingWebhook,
 ) {
 	if (session.mode !== "payment" || session.payment_status !== "paid") return;
 
@@ -618,7 +625,7 @@ export async function recordOneTimePurchase(
 	// Conflict: an earlier delivery already fulfilled this checkout — don't re-emit.
 	if (!row) return;
 
-	await emitBillingWebhook(
+	await emit(
 		env,
 		db,
 		WEBHOOK_EVENT_TYPES.BILLING_ONE_TIME_PURCHASE_COMPLETED,
