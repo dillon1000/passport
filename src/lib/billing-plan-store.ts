@@ -83,7 +83,7 @@ function definitionToColumns(plan: BillingPlanDefinition) {
 		hidden: plan.hidden ?? false,
 		limits: plan.limits ?? null,
 		entitlements: plan.entitlements ?? null,
-		lineItems: (plan.lineItems as Record<string, unknown>[] | undefined) ?? null,
+		lineItems: (plan.lineItems as { [key: string]: unknown }[] | undefined) ?? null,
 	};
 }
 
@@ -131,7 +131,7 @@ function newPlanId() {
 
 export type BillingPlanWriteInput = {
 	displayOrder?: number;
-} & Record<string, unknown>;
+} & { [key: string]: unknown };
 
 function normalizeDisplayOrder(value: unknown) {
 	if (value === undefined || value === null) return undefined;
@@ -142,7 +142,7 @@ function normalizeDisplayOrder(value: unknown) {
 }
 
 export async function createBillingPlan(db: AuthDatabase, input: unknown) {
-	const value = (input ?? {}) as Record<string, unknown>;
+	const value = (input ?? {}) as { [key: string]: unknown };
 	const plan = validateBillingPlanInput(value, "plan");
 	const displayOrder = normalizeDisplayOrder(value.displayOrder) ?? 0;
 	const [row] = await db
@@ -157,7 +157,7 @@ export async function createBillingPlan(db: AuthDatabase, input: unknown) {
 }
 
 export async function updateBillingPlan(db: AuthDatabase, id: string, input: unknown) {
-	const value = (input ?? {}) as Record<string, unknown>;
+	const value = (input ?? {}) as { [key: string]: unknown };
 	const plan = validateBillingPlanInput(value, "plan");
 	const displayOrder = normalizeDisplayOrder(value.displayOrder);
 	const [row] = await db

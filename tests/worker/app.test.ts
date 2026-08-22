@@ -2391,7 +2391,7 @@ describe("createWorkerApp", () => {
 		]);
 	});
 
-	function billingPlanService(overrides: Record<string, unknown> = {}) {
+	function billingPlanService(overrides: { [key: string]: unknown } = {}) {
 		return {
 			catalog: vi.fn(() => []),
 			product: vi.fn(() => null),

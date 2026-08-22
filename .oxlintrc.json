@@ -2,7 +2,8 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": [],
   "jsPlugins": [
-    "eslint-plugin-react-you-might-not-need-an-effect"
+    "eslint-plugin-react-you-might-not-need-an-effect",
+    "./lint/oxlint-plugin.mjs"
   ],
   "categories": {
     "correctness": "off"
@@ -131,7 +132,8 @@
         "react-you-might-not-need-an-effect/no-pass-live-state-to-parent": "error",
         "react-you-might-not-need-an-effect/no-pass-data-to-parent": "error",
         "react-you-might-not-need-an-effect/no-external-store-subscription": "error",
-        "react-you-might-not-need-an-effect/no-initialize-state": "error"
+        "react-you-might-not-need-an-effect/no-initialize-state": "error",
+        "passport/no-record-string-unknown": "error"
       },
       "plugins": [
         "typescript",

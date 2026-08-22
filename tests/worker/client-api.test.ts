@@ -31,7 +31,7 @@ describe("delegated client API contract", () => {
 			contractEnv as Env,
 		);
 		expect(response.status).toBe(200);
-		const document = (await response.json()) as { paths?: Record<string, unknown> };
+		const document = (await response.json()) as { paths?: { [key: string]: unknown } };
 		const paths = Object.keys(document.paths ?? {});
 		expect(paths).toEqual(
 			expect.arrayContaining([

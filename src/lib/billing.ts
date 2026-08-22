@@ -86,7 +86,7 @@ export type BillingPlanDefinition = {
 	lookupKey?: string;
 	annualDiscountPriceId?: string;
 	annualDiscountLookupKey?: string;
-	limits?: Record<string, unknown>;
+	limits?: { [key: string]: unknown };
 	entitlements?: string[];
 	group?: string;
 	seatPriceId?: string;
@@ -117,7 +117,7 @@ export type BillingPlanCatalogEntry = {
 	label?: string;
 	description?: string;
 	group?: string;
-	limits?: Record<string, unknown>;
+	limits?: { [key: string]: unknown };
 	entitlements: string[];
 	hasFreeTrial: boolean;
 	hasAnnualDiscount: boolean;
@@ -132,7 +132,7 @@ export type BillingPlanCatalogEntry = {
 
 export type BillingPlanCatalog = Record<string, BillingPlanCatalogEntry>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is { [key: string]: unknown } {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 

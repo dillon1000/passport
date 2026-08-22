@@ -60,7 +60,7 @@ type LiveClient = {
 	confidential: boolean;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is { [key: string]: unknown } {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 

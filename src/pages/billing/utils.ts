@@ -71,7 +71,7 @@ export function activeSubscription(subscriptions: readonly SubscriptionSummary[]
 	);
 }
 
-export function limitEntries(limits: Record<string, unknown> | undefined) {
+export function limitEntries(limits: { [key: string]: unknown } | undefined) {
 	if (!limits) return [];
 	return Object.entries(limits).map(([key, value]) => ({ key, value: String(value) }));
 }
@@ -168,7 +168,7 @@ function trimmed(value: string) {
 
 export function planDraftToPayload(
 	draft: PlanDraft,
-): { value: Record<string, unknown> } | { error: string } {
+): { value: { [key: string]: unknown } } | { error: string } {
 	const oneTime = draft.type === "one_time";
 	const freeTrialDays =
 		!oneTime && draft.freeTrialDays.trim() ? Number(draft.freeTrialDays) : undefined;
@@ -176,7 +176,7 @@ export function planDraftToPayload(
 		return { error: "Free trial days must be a non-negative integer." };
 	}
 
-	const limits: Record<string, unknown> = {};
+	const limits: { [key: string]: unknown } = {};
 	for (const [key, raw] of Object.entries(draft.limits)) {
 		const value = raw.trim();
 		if (!value) continue;
@@ -229,7 +229,7 @@ function optionalTrimmed(value: string) {
 // can surface it before hitting the server.
 function buildStripePayload(
 	draft: PlanDraft,
-): { value: Record<string, unknown> } | { error: string } {
+): { value: { [key: string]: unknown } } | { error: string } {
 	const oneTime = draft.type === "one_time";
 	const stripe = draft.stripe;
 

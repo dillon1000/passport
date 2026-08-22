@@ -31,9 +31,9 @@ export type AdminBillingPlan = {
 	personalOnly: boolean;
 	hidden: boolean;
 	displayOrder: number;
-	limits: Record<string, unknown> | null;
+	limits: { [key: string]: unknown } | null;
 	entitlements: string[] | null;
-	lineItems: Record<string, unknown>[] | null;
+	lineItems: { [key: string]: unknown }[] | null;
 };
 
 export type EntitlementEntry = { id: string; key: string; name: string; description: string | null };
@@ -57,7 +57,7 @@ export type SubscriptionSummary = {
 	seats?: number | null;
 	billingInterval?: string | null;
 	stripeScheduleId?: string | null;
-	limits?: Record<string, unknown>;
+	limits?: { [key: string]: unknown };
 };
 
 export type PurchaseSummary = {

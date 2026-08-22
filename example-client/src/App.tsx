@@ -25,7 +25,7 @@ import { Separator } from "@/components/kumo/primitives/separator";
 
 import "./App.css";
 
-type ClaimGroup = Record<string, unknown>;
+type ClaimGroup = { [key: string]: unknown };
 
 type PassportConnectionClaim = {
 	provider: string;

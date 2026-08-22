@@ -37,10 +37,10 @@ const env = { BETTER_AUTH_URL: "https://passport.test" } as unknown as AuthEnv;
 // `returning` controls the conflict outcome: a row means inserted, [] means a
 // redelivery hit the unique constraint.
 function purchaseDb(returning: unknown[]) {
-	const captured: { values?: Record<string, unknown> } = {};
+	const captured: { values?: { [key: string]: unknown } } = {};
 	const db = {
 		insert: () => ({
-			values: (values: Record<string, unknown>) => {
+			values: (values: { [key: string]: unknown }) => {
 				captured.values = values;
 				return {
 					onConflictDoNothing: () => ({

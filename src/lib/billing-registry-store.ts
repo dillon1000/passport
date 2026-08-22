@@ -48,7 +48,7 @@ export async function listEntitlements(db: AuthDatabase) {
 }
 
 export async function createEntitlement(db: AuthDatabase, input: unknown) {
-	const value = (input ?? {}) as Record<string, unknown>;
+	const value = (input ?? {}) as { [key: string]: unknown };
 	const [row] = await db
 		.insert(schema.billingEntitlement)
 		.values({
@@ -62,7 +62,7 @@ export async function createEntitlement(db: AuthDatabase, input: unknown) {
 }
 
 export async function updateEntitlement(db: AuthDatabase, id: string, input: unknown) {
-	const value = (input ?? {}) as Record<string, unknown>;
+	const value = (input ?? {}) as { [key: string]: unknown };
 	const [row] = await db
 		.update(schema.billingEntitlement)
 		.set({
@@ -90,7 +90,7 @@ export async function listLimits(db: AuthDatabase) {
 }
 
 export async function createLimit(db: AuthDatabase, input: unknown) {
-	const value = (input ?? {}) as Record<string, unknown>;
+	const value = (input ?? {}) as { [key: string]: unknown };
 	const [row] = await db
 		.insert(schema.billingLimit)
 		.values({
@@ -104,7 +104,7 @@ export async function createLimit(db: AuthDatabase, input: unknown) {
 }
 
 export async function updateLimit(db: AuthDatabase, id: string, input: unknown) {
-	const value = (input ?? {}) as Record<string, unknown>;
+	const value = (input ?? {}) as { [key: string]: unknown };
 	const [row] = await db
 		.update(schema.billingLimit)
 		.set({

@@ -18,10 +18,10 @@ function readDb(rows: unknown[]): AuthDatabase {
 	} as unknown as AuthDatabase;
 }
 
-function insertDb(capture: (values: Record<string, unknown>) => void): AuthDatabase {
+function insertDb(capture: (values: { [key: string]: unknown }) => void): AuthDatabase {
 	return {
 		insert: () => ({
-			values: (values: Record<string, unknown>) => {
+			values: (values: { [key: string]: unknown }) => {
 				capture(values);
 				return { returning: () => Promise.resolve([{ ...values }]) };
 			},
@@ -91,7 +91,7 @@ describe("createBillingPlan", () => {
 	});
 
 	it("lowercases the plan key and persists normalized columns", async () => {
-		let captured: Record<string, unknown> | undefined;
+		let captured: { [key: string]: unknown } | undefined;
 		const db = insertDb((values) => {
 			captured = values;
 		});

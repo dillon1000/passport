@@ -50,7 +50,7 @@ function actionLabel(action: string) {
 
 function metadataSummary(value: unknown) {
 	if (!value || typeof value !== "object") return "";
-	const entries = Object.entries(value as Record<string, unknown>);
+	const entries = Object.entries(value as { [key: string]: unknown });
 	return entries
 		.slice(0, 3)
 		.map(([key, item]) => `${key}: ${typeof item === "string" ? item : JSON.stringify(item)}`)

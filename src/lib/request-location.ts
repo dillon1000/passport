@@ -32,21 +32,21 @@ const STRING_FIELDS = [
 	"timezone",
 ] as const satisfies readonly (keyof RequestLocation)[];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is { [key: string]: unknown } {
 	return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function stringField(source: Record<string, unknown>, key: (typeof STRING_FIELDS)[number]) {
+function stringField(source: { [key: string]: unknown }, key: (typeof STRING_FIELDS)[number]) {
 	const value = source[key];
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function numberField(source: Record<string, unknown>, key: "asn") {
+function numberField(source: { [key: string]: unknown }, key: "asn") {
 	const value = source[key];
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function booleanEUField(source: Record<string, unknown>) {
+function booleanEUField(source: { [key: string]: unknown }) {
 	const value = source.isEUCountry;
 	if (value === true || value === "1") return true;
 	return undefined;

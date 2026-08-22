@@ -338,7 +338,7 @@ export function buildIDTokenScopeClaims(
 	env: ClaimEnv,
 	user: OAuthClaimUser,
 	scopes: readonly string[],
-): Record<string, unknown> {
+): { [key: string]: unknown } {
 	return {
 		...buildAuthContextClaims(user),
 		...pictureClaim(env, user, scopes),
@@ -353,7 +353,7 @@ export function buildUserInfoScopeClaims(
 	user: OAuthClaimUser,
 	scopes: readonly string[],
 	context: OAuthClaimContext,
-): Record<string, unknown> {
+): { [key: string]: unknown } {
 	return {
 		...pictureClaim(env, user, scopes),
 		...usernameClaim(user, scopes),
@@ -376,7 +376,7 @@ export function buildAccessTokenScopeClaims(
 	user: OAuthClaimUser | null | undefined,
 	scopes: readonly string[],
 	context: OAuthClaimContext,
-): Record<string, unknown> {
+): { [key: string]: unknown } {
 	if (!user) return {};
 
 	return {

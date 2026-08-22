@@ -13,11 +13,11 @@ type MultiSessionPlugin = AuthPlugin & {
 	options: {
 		maximumSessions: number;
 	};
-	endpoints: Record<string, unknown>;
+	endpoints: { [key: string]: unknown };
 };
 type StripePlugin = AuthPlugin & {
 	id: "stripe";
-	endpoints: Record<string, unknown>;
+	endpoints: { [key: string]: unknown };
 };
 
 function isMultiSessionPlugin(plugin: AuthPlugin): plugin is MultiSessionPlugin {

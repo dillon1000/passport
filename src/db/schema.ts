@@ -817,9 +817,9 @@ export const billingPlan = pgTable(
     // by anyone who has the direct /billing/product/:id deeplink.
     hidden: boolean("hidden").default(false).notNull(),
     displayOrder: integer("display_order").default(0).notNull(),
-    limits: jsonb("limits").$type<Record<string, unknown>>(),
+    limits: jsonb("limits").$type<{ [key: string]: unknown }>(),
     entitlements: jsonb("entitlements").$type<string[]>(),
-    lineItems: jsonb("line_items").$type<Record<string, unknown>[]>(),
+    lineItems: jsonb("line_items").$type<{ [key: string]: unknown }[]>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()

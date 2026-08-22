@@ -88,7 +88,7 @@ async function fetchAdminUsers(input: {
 	return (result.data ?? { users: [], total: 0 }) as AdminUsersPayload;
 }
 
-async function postAdminUserAction(path: string, body?: Record<string, unknown>) {
+async function postAdminUserAction(path: string, body?: { [key: string]: unknown }) {
 	const response = await fetch(path, {
 		method: "POST",
 		headers: body ? { "content-type": "application/json" } : undefined,

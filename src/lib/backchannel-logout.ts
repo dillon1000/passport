@@ -30,9 +30,9 @@ export function buildLogoutTokenClaims(input: {
 	audience: string;
 	subject: string;
 	sessionId?: string;
-}): Record<string, unknown> {
+}): { [key: string]: unknown } {
 	const iat = Math.floor(Date.now() / 1000);
-	const claims: Record<string, unknown> = {
+	const claims: { [key: string]: unknown } = {
 		iss: input.issuer,
 		aud: input.audience,
 		sub: input.subject,

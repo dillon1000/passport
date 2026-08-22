@@ -25,7 +25,7 @@ function tokenWithAlgorithm(algorithm: string) {
 	return `${encodedJSON({ alg: algorithm, kid: "key_1" })}.${encodedJSON({})}.signature`;
 }
 
-function delegatedPayload(overrides: Record<string, unknown> = {}) {
+function delegatedPayload(overrides: { [key: string]: unknown } = {}) {
 	return {
 		sub: "user_1",
 		azp: "client_1",
@@ -67,7 +67,7 @@ function databaseWithSelectResults(...results: unknown[][]) {
 	return { select } as unknown as AuthDatabase;
 }
 
-function currentDatabaseClient(overrides: Record<string, unknown> = {}) {
+function currentDatabaseClient(overrides: { [key: string]: unknown } = {}) {
 	return {
 		clientId: "client_1",
 		clientSecret: "encrypted-secret",

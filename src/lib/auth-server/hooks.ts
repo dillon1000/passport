@@ -78,7 +78,7 @@ function normalizeIPAddress(value: string | null | undefined) {
 
 function credentialIdentifierFromBody(value: unknown) {
 	if (!value || typeof value !== "object") return null;
-	const body = value as Record<string, unknown>;
+	const body = value as { [key: string]: unknown };
 	const identifier = body.email ?? body.username ?? body.phoneNumber;
 	return typeof identifier === "string" ? identifier : null;
 }
@@ -277,7 +277,7 @@ export function accountSecurityEmailPlugin(env: AuthEnv, db: AuthDatabase) {
 							await maybeSendNewIPAddressNotification(env, db, newSession, ctx.request);
 						}
 
-						const updateBody = ctx.body as Record<string, unknown> | null | undefined;
+						const updateBody = ctx.body as { [key: string]: unknown } | null | undefined;
 						const phoneRemoved =
 							ctx.path === "/update-user" && updateBody && "phoneNumber" in updateBody;
 						const activityType: AccountActivityType | null = phoneRemoved
