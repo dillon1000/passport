@@ -6,7 +6,6 @@
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Fingerprint, LogIn, Mail, Pencil } from "@/lib/icons";
-import { Loader } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -44,7 +43,6 @@ import {
 } from "@/lib/password-confirmation";
 import { createPasskeySignupContext } from "@/lib/passkey-signup";
 import { checkPwnedPassword } from "@/lib/pwned-passwords";
-import { useAccountSwitch } from "@/lib/account-switch";
 import {
 	withDirectionalViewTransition,
 	withViewTransition,
@@ -170,9 +168,7 @@ export function SignIn() {
 	});
 	const [loading, setLoading] = useState(false);
 	const captchaConfig = useCaptchaConfig();
-	const { data: session } = authClient.useSession();
-	const beginAccountSwitch = useAccountSwitch((state) => state.begin);
-	const clearAccountSwitch = useAccountSwitch((state) => state.clear);
+	const { data: session, isPending: sessionPending } = authClient.useSession();
 	const lastUsedSignInMethod = authClient.getLastUsedLoginMethod();
 
 	const callbackURL = resolveAuthCallbackURL(searchParams);
@@ -188,7 +184,8 @@ export function SignIn() {
 	);
 	const verificationCallbackURL = "/account?verified=1";
 	const copy = copyFor(mode);
-	const authActionsDisabled = loading;
+	const showLoading = loading || sessionPending || (canChooseExistingAccount && accountsQuery.isPending);
+	const authActionsDisabled = showLoading;
 	const credentialError = fieldError?.target === "credential" ? fieldError.message : undefined;
 	const nameError = fieldError?.target === "name" ? fieldError.message : undefined;
 	const passwordError = fieldError?.target === "password" ? fieldError.message : undefined;
@@ -237,16 +234,14 @@ export function SignIn() {
 	}
 
 	/** Activates the selected local session, then resumes the original destination. */
-	async function continueSession(sessionToken: string, account: DeviceAccount["user"]) {
+	async function continueSession(sessionToken: string) {
 		setStatus(null);
 		setLoading(true);
-		beginAccountSwitch(account);
 
 		if (sessionToken !== session?.session.token) {
 			const result = await authClient.multiSession.setActive({ sessionToken });
 			if (result.error) {
 				setLoading(false);
-				clearAccountSwitch();
 				setStatus({ tone: "error", message: result.error.message ?? "Could not switch accounts." });
 				return;
 			}
@@ -267,8 +262,8 @@ export function SignIn() {
 			captchaToken,
 			captchaSolverRef.current,
 		);
-		setLoading(false);
 		if (fetchOptions === null) {
+			setLoading(false);
 			setCaptchaEscalated(captchaConfig.loaded && captchaConfig.enabled);
 			setStatus({
 				tone: "error",
@@ -381,9 +376,8 @@ export function SignIn() {
 						...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 					});
 
-		setLoading(false);
-
 		if (result.error) {
+			setLoading(false);
 			resetCaptcha();
 			if (mode === "signin") {
 				setCaptchaEscalated(true);
@@ -407,6 +401,7 @@ export function SignIn() {
 
 		if (mode === "signin") {
 			if (!shouldCompletePasswordSignIn(result)) {
+				setLoading(false);
 				setStatus({ tone: "success", message: "Confirm your second factor to finish signing in." });
 				return;
 			}
@@ -415,6 +410,7 @@ export function SignIn() {
 			window.location.assign(callbackURL);
 			return;
 		}
+		setLoading(false);
 		setStatus({
 			tone: "success",
 			message: "Account created. Check your email if verification is required.",
@@ -442,9 +438,8 @@ export function SignIn() {
 			}),
 			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 		});
-		setLoading(false);
-
 		if (result.error) {
+			setLoading(false);
 			resetCaptcha();
 			if (isExistingAccountError(result.error)) {
 				setExistingAccountEmail(email);
@@ -582,8 +577,8 @@ export function SignIn() {
 		const result = await authClient.signIn.passkey(
 			authFetchOptions ? { fetchOptions: authFetchOptions } : undefined,
 		);
-		setLoading(false);
 		if (result.error) {
+			setLoading(false);
 			resetCaptcha();
 			setStatus({ tone: "error", message: result.error.message ?? "Passkey sign-in failed." });
 			return;
@@ -606,9 +601,8 @@ export function SignIn() {
 			callbackURL,
 			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
 		});
-		setLoading(false);
-
 		if (result.error) {
+			setLoading(false);
 			resetCaptcha();
 			setStatus({ tone: "error", message: result.error.message ?? "Social sign-in failed." });
 		}
@@ -633,8 +627,18 @@ export function SignIn() {
 	return (
 		<AuthShell focused>
 			<div className="flex flex-col items-center gap-6">
-				<Card className="w-full [view-transition-name:auth-step]">
-					<CardContent className="space-y-5 p-7">
+				<Card
+					aria-busy={showLoading}
+					className="relative w-full overflow-hidden [view-transition-name:auth-step]"
+				>
+					<div
+						aria-hidden={showLoading}
+						className={`transition-[transform,opacity] duration-150 ease-out ${
+							showLoading ? "pointer-events-none -translate-x-6 opacity-0" : "translate-x-0 opacity-100"
+						}`}
+						inert={showLoading ? true : undefined}
+					>
+						<CardContent className="space-y-5 p-7">
 						<div className="space-y-7">
 							<Wordmark className="h-7" />
 							<h1 className="text-2xl font-semibold tracking-tight">{signInTitle}</h1>
@@ -644,10 +648,9 @@ export function SignIn() {
 							<ExistingSessionChoice
 								account={session.user}
 								otherAccounts={otherAccounts}
-								accountsLoading={accountsQuery.isPending}
 								callbackURL={callbackURL}
-								disabled={loading}
-									onChoose={continueSession}
+								disabled={authActionsDisabled}
+								onChoose={continueSession}
 								currentSessionToken={session.session.token}
 							/>
 						) : (
@@ -936,21 +939,35 @@ export function SignIn() {
 								) : null}
 							</>
 						)}
-					</CardContent>
-					{!canChooseExistingAccount ? (
-						<CardFooter className="border-t bg-muted/35 text-sm text-muted-foreground">
-							<p>
-								{copy.toggle}{" "}
-								<button
-									type="button"
-									className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
-									onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
-								>
-									{copy.switchTo}
-								</button>
-							</p>
-						</CardFooter>
-					) : null}
+						</CardContent>
+						{!canChooseExistingAccount ? (
+							<CardFooter className="border-t bg-muted/35 text-sm text-muted-foreground">
+								<p>
+									{copy.toggle}{" "}
+									<button
+										type="button"
+										className="inline-flex min-h-10 cursor-pointer appearance-none items-center border-0 bg-transparent p-0 text-sm font-medium text-foreground underline-offset-4 transition-transform duration-150 ease-out hover:underline active:scale-[0.96] focus-visible:outline-none focus-visible:underline"
+										onClick={mode === "reset" ? () => switchMode("recovery") : toggleMode}
+									>
+										{copy.switchTo}
+									</button>
+								</p>
+							</CardFooter>
+						) : null}
+					</div>
+					<div
+						aria-hidden={!showLoading}
+						aria-label="Loading"
+						aria-live="polite"
+						className={`absolute inset-0 z-10 grid place-items-center bg-card text-muted-foreground transition-[transform,opacity] duration-150 ease-out ${
+							showLoading
+								? "translate-x-0 opacity-100"
+								: "pointer-events-none translate-x-full opacity-0"
+						}`}
+						role="status"
+					>
+						<FastAuthSpinner />
+					</div>
 				</Card>
 			</div>
 		</AuthShell>
@@ -969,7 +986,6 @@ function LastUsedBadge() {
 function ExistingSessionChoice({
 	account,
 	otherAccounts,
-	accountsLoading,
 	callbackURL,
 	disabled,
 	onChoose,
@@ -977,10 +993,9 @@ function ExistingSessionChoice({
 }: {
 	account: DeviceAccount["user"];
 	otherAccounts: DeviceAccount[];
-	accountsLoading: boolean;
 	callbackURL: string;
 	disabled: boolean;
-	onChoose: (sessionToken: string, account: DeviceAccount["user"]) => void;
+	onChoose: (sessionToken: string) => void;
 	currentSessionToken: string;
 }) {
 	return (
@@ -995,20 +1010,15 @@ function ExistingSessionChoice({
 					account={account}
 					label={`Continue as ${account.name}`}
 					disabled={disabled}
-					onChoose={() => onChoose(currentSessionToken, account)}
+					onChoose={() => onChoose(currentSessionToken)}
 				/>
-				{accountsLoading ? (
-					<div aria-label="Loading accounts" className="flex min-h-16 items-center justify-center rounded-lg border bg-background text-muted-foreground" role="status">
-						<Loader size="sm" />
-					</div>
-				) : null}
 				{otherAccounts.map((otherAccount) => (
 					<AccountChoice
 						key={otherAccount.session.token}
 						account={otherAccount.user}
 						label={`Continue as ${otherAccount.user.name}`}
 						disabled={disabled}
-						onChoose={() => onChoose(otherAccount.session.token, otherAccount.user)}
+						onChoose={() => onChoose(otherAccount.session.token)}
 					/>
 				))}
 			</div>
@@ -1017,5 +1027,28 @@ function ExistingSessionChoice({
 				<a href={resolveAddAccountURL(callbackURL)}>Sign in to another account</a>
 			</Button>
 		</div>
+	);
+}
+
+/** Rotates every 550ms so auth progress reads faster than the shared two-second loader. */
+function FastAuthSpinner() {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-8 animate-spin [animation-duration:550ms] motion-reduce:animate-none"
+			viewBox="0 0 24 24"
+		>
+			<circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.1" />
+			<circle
+				cx="12"
+				cy="12"
+				r="9.5"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeDasharray="42 60"
+			/>
+		</svg>
 	);
 }

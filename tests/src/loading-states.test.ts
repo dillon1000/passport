@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 
 /*
  * Guards the app's loading-state contract. Page and auth-component UI should
- * expose skeleton placeholders for loading surfaces; generic component motion
- * such as dialogs and menus lives outside these scanned directories.
+ * expose skeleton placeholders for loading surfaces. The sign-in card uses its
+ * deliberate full-card spinner; generic component motion such as dialogs and
+ * menus lives outside these scanned directories.
  */
 const uiRoots = ["src/pages", "src/components/auth"] as const;
+const spinnerLoadingSurfaceFiles = new Set(["src/pages/SignIn.tsx"]);
 
 const loadingAnimationPattern = /\banimate-(spin|pulse)\b/;
 const visibleLoadingCopyPattern =
@@ -31,21 +33,21 @@ function findNonSkeletonLoadingIndicators() {
 		.flatMap((root) => collectSourceFiles(root))
 		.flatMap((path) => {
 			const file = readFileSync(path, "utf8");
+			const relativePath = relative(process.cwd(), path);
 			return file.split("\n").flatMap((line, index) => {
-				if (
-					!loadingAnimationPattern.test(line) &&
-					!visibleLoadingCopyPattern.test(line)
-				) {
+				const disallowedAnimation =
+					loadingAnimationPattern.test(line) && !spinnerLoadingSurfaceFiles.has(relativePath);
+				if (!disallowedAnimation && !visibleLoadingCopyPattern.test(line)) {
 					return [];
 				}
 
-				return `${relative(process.cwd(), path)}:${index + 1}: ${line.trim()}`;
+				return `${relativePath}:${index + 1}: ${line.trim()}`;
 			});
 		});
 }
 
 describe("loading states", () => {
-	it("uses skeletons instead of visible loading copy or spinner/pulse animations", () => {
+	it("uses skeletons except for the sign-in card spinner and avoids visible loading copy", () => {
 		expect(findNonSkeletonLoadingIndicators()).toEqual([]);
 	});
 });
