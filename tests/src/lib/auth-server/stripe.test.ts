@@ -16,9 +16,9 @@ const stripeMocks = {
 };
 
 const stripeClient = {
-	products: { create: stripeMocks.productsCreate },
-	prices: { create: stripeMocks.pricesCreate },
-} as StripeProvisioningClient;
+	products: { create: async (input: Parameters<Stripe["products"]["create"]>[0]) => stripeMocks.productsCreate(input) },
+	prices: { create: async (input: Parameters<Stripe["prices"]["create"]>[0]) => stripeMocks.pricesCreate(input) },
+} satisfies StripeProvisioningClient;
 
 const emitWebhookEvent = vi.fn();
 
