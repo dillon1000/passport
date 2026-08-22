@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { z } from "zod";
 import {
 	Check,
 	Copy,
@@ -82,17 +83,6 @@ const SECTIONS: Section[] = [
 	{ id: "danger", label: "Danger" },
 ];
 
-type SecurityUser = {
-	id: string;
-	name?: string | null;
-	email: string;
-	emailVerified?: boolean | null;
-	image?: string | null;
-	phoneNumber?: string | null;
-	phoneNumberVerified?: boolean | null;
-	twoFactorEnabled?: boolean | null;
-};
-
 type PasskeySummary = {
 	id: string;
 	name?: string | null;
@@ -124,6 +114,22 @@ type SecurityCredentialsPayload = {
 	accounts: LinkedAccountSummary[];
 	errorMessage: string | null;
 };
+const securityUserSchema = z.object({
+	id: z.string(), name: z.string().nullable().optional(), email: z.string(),
+	emailVerified: z.boolean().nullable().optional(), image: z.string().nullable().optional(),
+	phoneNumber: z.string().nullable().optional(), phoneNumberVerified: z.boolean().nullable().optional(),
+	twoFactorEnabled: z.boolean().nullable().optional(),
+});
+const passkeySummarySchema = z.object({
+	id: z.string(), name: z.string().nullable().optional(), deviceType: z.string().nullable().optional(),
+	backedUp: z.boolean().nullable().optional(), transports: z.string().nullable().optional(),
+	createdAt: z.union([z.string(), z.date()]).nullable().optional(),
+});
+const linkedAccountSummarySchema = z.object({
+	id: z.string(), providerId: z.string(), accountId: z.string(),
+	createdAt: z.union([z.string(), z.date()]).nullable().optional(),
+});
+const twoFactorSetupSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()).optional() });
 
 async function fetchSecurityCredentials(): Promise<SecurityCredentialsPayload> {
 	const [passkeyResult, accountResult] = await Promise.all([
@@ -138,10 +144,10 @@ async function fetchSecurityCredentials(): Promise<SecurityCredentialsPayload> {
 		errors.push(accountResult.error.message ?? "Could not load connected accounts.");
 	}
 	return {
-		passkeys: passkeyResult.error ? [] : ((passkeyResult.data ?? []) as PasskeySummary[]),
+		passkeys: passkeyResult.error ? [] : z.array(passkeySummarySchema).parse(passkeyResult.data ?? []),
 		accounts: accountResult.error
 			? []
-			: ((accountResult.data ?? []) as LinkedAccountSummary[]),
+			: z.array(linkedAccountSummarySchema).parse(accountResult.data ?? []),
 		errorMessage: errors.length ? errors.join(" ") : null,
 	};
 }
@@ -187,7 +193,7 @@ export function Security() {
 	const [passwordRecoveryBusy, setPasswordRecoveryBusy] = useState(false);
 	const [confirmationAction, setConfirmationAction] =
 		useState<SecurityConfirmationAction | null>(null);
-	const user = session?.user as SecurityUser | undefined;
+	const user = securityUserSchema.optional().parse(session?.user);
 	const credentialsQuery = useQuery({
 		queryKey: queryKeys.securityCredentials(user?.id),
 		queryFn: fetchSecurityCredentials,
@@ -289,7 +295,7 @@ export function Security() {
 			setStatus({ tone: "error", message: result.error.message ?? "Could not enable 2FA." });
 			return;
 		}
-		const data = result.data as TwoFactorSetup | null;
+		const data = twoFactorSetupSchema.nullable().parse(result.data ?? null);
 		if (!data?.totpURI) {
 			setStatus({ tone: "error", message: "2FA setup did not return a TOTP URI." });
 			return;
@@ -379,7 +385,7 @@ export function Security() {
 			});
 			return;
 		}
-		const data = result.data as { backupCodes?: string[] } | null;
+		const data = z.object({ backupCodes: z.array(z.string()).optional() }).nullable().parse(result.data ?? null);
 		setBackupCodes(data?.backupCodes ?? []);
 		setBackupPassword("");
 		setStatus({ tone: "success", message: "New backup codes generated." });
@@ -473,7 +479,7 @@ export function Security() {
 			hasCredentialAccount ? { currentPassword, newPassword } : { newPassword },
 		),
 		});
-		const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+		const payload = z.object({ error: z.string().optional() }).nullable().catch(null).parse(await response.json().catch(() => null));
 		setBusy(false);
 		if (!response.ok) {
 			setStatus({
