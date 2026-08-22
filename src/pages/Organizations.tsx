@@ -5,6 +5,7 @@
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
+import { z } from "zod";
 import {
 	Building2,
 	Check,
@@ -151,23 +152,39 @@ type OrganizationTeam = {
 	members?: OrganizationTeamMember[];
 };
 
-type FullOrganization = OrganizationSummary & {
-	members?: OrganizationMember[];
-	invitations?: OrganizationInvitation[];
-	teams?: OrganizationTeam[];
-};
-
 type ConfirmAction =
 	| { type: "remove-member"; member: OrganizationMember }
 	| { type: "cancel-invitation"; invitation: OrganizationInvitation }
 	| { type: "remove-team"; team: OrganizationTeam };
+
+const nullableDateSchema = z.union([z.string(), z.date()]).nullable().optional();
+const organizationSummarySchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	slug: z.string(),
+	logo: z.string().nullable().optional(),
+	createdAt: nullableDateSchema,
+});
+const organizationTeamMemberSchema = z.object({
+	id: z.string().optional(),
+	userId: z.string(),
+	user: z.object({ name: z.string().nullable().optional(), email: z.string().nullable().optional(), image: z.string().nullable().optional() }).optional(),
+});
+const fullOrganizationSchema = organizationSummarySchema.extend({
+	members: z.array(z.object({
+		id: z.string(), role: z.string(), userId: z.string(),
+		user: z.object({ name: z.string().nullable().optional(), email: z.string().nullable().optional(), image: z.string().nullable().optional() }).optional(),
+	})).optional(),
+	invitations: z.array(z.object({ id: z.string(), email: z.string(), role: z.string(), status: z.string(), expiresAt: nullableDateSchema })).optional(),
+	teams: z.array(z.object({ id: z.string(), name: z.string(), logo: z.string().nullable().optional(), createdAt: nullableDateSchema, members: z.array(organizationTeamMemberSchema).optional() })).optional(),
+});
 
 async function fetchOrganizations() {
 	const result = await authClient.organization.list();
 	if (result.error) {
 		throw new Error(result.error.message ?? "Could not load organizations.");
 	}
-	return (result.data ?? []) as OrganizationSummary[];
+	return z.array(organizationSummarySchema).parse(result.data ?? []);
 }
 
 async function fetchFullOrganization(organizationId: string) {
@@ -177,7 +194,7 @@ async function fetchFullOrganization(organizationId: string) {
 	if (result.error) {
 		throw new Error(result.error.message ?? "Could not load organization details.");
 	}
-	const organization = (result.data ?? null) as FullOrganization | null;
+	const organization = fullOrganizationSchema.nullable().parse(result.data ?? null);
 	if (!organization?.teams?.length) return organization;
 
 	const teamsWithMembers = await Promise.all(
@@ -207,20 +224,13 @@ function formatDate(value?: string | Date | null) {
 	return new Date(value).toLocaleDateString();
 }
 
-function isRecord(value: unknown): value is { [key: string]: unknown } {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isTeamMember(value: unknown): value is OrganizationTeamMember {
-	return isRecord(value) && typeof value.userId === "string";
-}
-
-function teamMembersFrom(value: unknown): OrganizationTeamMember[] {
-	if (Array.isArray(value)) return value.filter(isTeamMember);
-	if (isRecord(value) && Array.isArray(value.members)) {
-		return value.members.filter(isTeamMember);
-	}
-	return [];
+function teamMembersFrom(value: z.input<ReturnType<typeof z.unknown>>): OrganizationTeamMember[] {
+	const parsed = z.union([
+		z.array(organizationTeamMemberSchema),
+		z.object({ members: z.array(organizationTeamMemberSchema) }),
+	]).safeParse(value);
+	if (!parsed.success) return [];
+	return Array.isArray(parsed.data) ? parsed.data : parsed.data.members;
 }
 
 function memberDisplay(member: OrganizationMember | OrganizationTeamMember) {
@@ -324,7 +334,7 @@ export function Organizations() {
 		setNewSlug("");
 		setNewLogo("");
 	await loadOrganizations();
-	const organization = result.data as OrganizationSummary | null;
+	const organization = organizationSummarySchema.nullable().parse(result.data ?? null);
 	if (organization?.id) {
 		setActiveOrganizationId(organization.id);
 		await loadFullOrganization(organization.id);
@@ -943,9 +953,10 @@ export function Organizations() {
 										<div className="flex shrink-0 items-center gap-2">
 											<select
 												value={canChangeOrganizationRole(member.role) ? member.role : "member"}
-												onChange={(event) =>
-													void updateMemberRole(member, event.target.value as OrganizationRole)
-												}
+								onChange={(event) => {
+									const role = ORGANIZATION_ROLES.find((role) => role === event.target.value);
+									if (role) void updateMemberRole(member, role);
+								}}
 												disabled={busy === `member-role:${member.id}`}
 												className="h-7 rounded-lg border border-input bg-background px-2 text-[0.8rem] capitalize shadow-xs outline-none hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30"
 											>
@@ -1037,7 +1048,10 @@ export function Organizations() {
 								<Field label="Role">
 									<select
 										value={inviteRole}
-										onChange={(event) => setInviteRole(event.target.value as InviteRole)}
+											onChange={(event) => {
+												const role = ORGANIZATION_ROLES.find((role) => role === event.target.value);
+												if (role) setInviteRole(role);
+											}}
 										disabled={!activeOrganization}
 										className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm capitalize shadow-xs transition-[color,box-shadow,border-color] outline-none hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/35 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-50 dark:bg-input/30"
 									>
