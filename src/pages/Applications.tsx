@@ -7,6 +7,7 @@
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
+import { z } from "zod";
 import {
 	AppWindow,
 	ArrowRight,
@@ -173,9 +174,26 @@ type OIDCConfiguration = {
 	scopes_supported?: string[];
 };
 
+const oauthProxyStatusSchema = z.object({
+	configured: z.boolean(),
+	productionURL: z.string(),
+	currentURL: z.string(),
+	sharedSecretConfigured: z.boolean(),
+	proxyActive: z.boolean(),
+	trustedOrigins: z.array(z.string()),
+	callbackPath: z.string(),
+});
+const oauthClientResultSchema = z.object({
+	error: z.string().optional(),
+	client: z.object({ name: z.string(), clientSecret: z.string().nullable().optional() }).optional(),
+});
+const apiErrorSchema = z.object({ error: z.string().optional() });
+
 // Endpoints shown in the discovery drawer, in the order a client developer
 // typically wires them up. Rows are skipped when the document omits a field.
-const OIDC_ENDPOINT_ROWS: { key: string; label: string }[] = [
+type OIDCEndpointKey = Exclude<keyof OIDCConfiguration, "scopes_supported">;
+
+const OIDC_ENDPOINT_ROWS = [
 	{ key: "issuer", label: "Issuer" },
 	{ key: "authorization_endpoint", label: "Authorization endpoint" },
 	{ key: "token_endpoint", label: "Token endpoint" },
@@ -185,7 +203,7 @@ const OIDC_ENDPOINT_ROWS: { key: string; label: string }[] = [
 	{ key: "revocation_endpoint", label: "Revocation endpoint" },
 	{ key: "introspection_endpoint", label: "Introspection endpoint" },
 	{ key: "end_session_endpoint", label: "End session endpoint" },
-];
+] satisfies { key: OIDCEndpointKey; label: string }[];
 
 // Better Auth serves discovery under its base path, not the bare root.
 const OIDC_DISCOVERY_PATH = "/api/auth/.well-known/openid-configuration";
@@ -269,8 +287,8 @@ async function fetchOAuthProxyStatus() {
 	const response = await fetch("/api/admin/oauth-proxy");
 	if (response.status === 403 || response.status === 401) return null;
 	if (!response.ok) return null;
-	const payload = await response.json();
-	return payload.oauthProxy;
+	const payload = z.object({ oauthProxy: oauthProxyStatusSchema }).safeParse(await response.json());
+	return payload.success ? payload.data.oauthProxy : null;
 }
 
 async function fetchOIDCConfiguration() {
@@ -292,7 +310,7 @@ export function Applications() {
 	const [busy, setBusy] = useState<string | null>(null);
 	const [status, setStatus] = useState<Status | null>(null);
 	const [revokeTarget, setRevokeTarget] = useState<AuthorizedApplication | null>(null);
-	const [oneTimeSecret, setOneTimeSecret] = useState<OAuthClientSummary | null>(null);
+	const [oneTimeSecret, setOneTimeSecret] = useState<z.output<typeof oauthClientResultSchema>["client"] | null>(null);
 	const [editingClientId, setEditingClientId] = useState<string | null>(null);
 	const [secretCopied, setSecretCopied] = useState(false);
 	const [createClientSheetOpen, setCreateClientSheetOpen] = useState(false);
@@ -303,14 +321,14 @@ export function Applications() {
 	const applicationsQuery = useInfiniteQuery({
 		queryKey: queryKeys.applications(),
 		queryFn: ({ pageParam }) => fetchApplicationsPage(pageParam),
-		initialPageParam: null,
+		initialPageParam: "",
 		getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
 		enabled: Boolean(session?.user),
 	});
 	const clientsQuery = useInfiniteQuery({
 		queryKey: queryKeys.managedOAuthClients(),
 		queryFn: ({ pageParam }) => fetchOAuthClientsPage(pageParam),
-		initialPageParam: null,
+		initialPageParam: "",
 		getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
 		enabled: Boolean(session?.user),
 	});
@@ -406,8 +424,9 @@ export function Applications() {
 		setBusy(null);
 		setRevokeTarget(null);
 		if (!response.ok) {
-			const payload = await response.json();
-			setStatus({ tone: "error", message: payload.error ?? "Could not revoke application." });
+			const payload = apiErrorSchema.safeParse(await response.json());
+			const error = payload.success ? payload.data.error : undefined;
+			setStatus({ tone: "error", message: error ?? "Could not revoke application." });
 			return;
 		}
 		setStatus({ tone: "success", message: "Application access revoked." });
@@ -449,14 +468,14 @@ export function Applications() {
 			}),
 		});
 		setBusy(null);
-		const payload = await response.json();
-		if (!response.ok || !payload.client) {
-			setStatus({ tone: "error", message: payload.error ?? "Could not create OAuth client." });
+		const payload = oauthClientResultSchema.safeParse(await response.json());
+		if (!response.ok || !payload.success || !payload.data.client) {
+			setStatus({ tone: "error", message: payload.success ? payload.data.error ?? "Could not create OAuth client." : "Could not create OAuth client." });
 			return;
 		}
 		setStatus({ tone: "success", message: "OAuth client created." });
 		setCreateClientSheetOpen(false);
-		setOneTimeSecret(payload.client.clientSecret ? payload.client : null);
+		setOneTimeSecret(payload.data.client.clientSecret ? payload.data.client : null);
 		setNewClient(clientDraft());
 		setNewClientPublic(false);
 		setCreateClientStep("details");
@@ -495,9 +514,9 @@ export function Applications() {
 			}),
 		});
 		setBusy(null);
-		const payload = await response.json();
+		const payload = apiErrorSchema.safeParse(await response.json());
 		if (!response.ok) {
-			setStatus({ tone: "error", message: payload.error ?? "Could not update OAuth client." });
+			setStatus({ tone: "error", message: payload.success ? payload.data.error ?? "Could not update OAuth client." : "Could not update OAuth client." });
 			return;
 		}
 		setStatus({ tone: "success", message: "OAuth client updated." });
@@ -514,13 +533,13 @@ export function Applications() {
 			{ method: "POST" },
 		);
 		setBusy(null);
-		const payload = await response.json();
-		if (!response.ok || !payload.client) {
-			setStatus({ tone: "error", message: payload.error ?? "Could not rotate client secret." });
+		const payload = oauthClientResultSchema.safeParse(await response.json());
+		if (!response.ok || !payload.success || !payload.data.client) {
+			setStatus({ tone: "error", message: payload.success ? payload.data.error ?? "Could not rotate client secret." : "Could not rotate client secret." });
 			return;
 		}
 		setStatus({ tone: "success", message: "Client secret rotated." });
-		setOneTimeSecret(payload.client.clientSecret ? payload.client : null);
+		setOneTimeSecret(payload.data.client.clientSecret ? payload.data.client : null);
 	}
 
 	async function setClientDisabled(clientId: string, disabled: boolean) {
@@ -531,9 +550,9 @@ export function Applications() {
 			{ method: "POST" },
 		);
 		setBusy(null);
-		const payload = await response.json();
+		const payload = apiErrorSchema.safeParse(await response.json());
 		if (!response.ok) {
-			setStatus({ tone: "error", message: payload.error ?? "Could not update client status." });
+			setStatus({ tone: "error", message: payload.success ? payload.data.error ?? "Could not update client status." : "Could not update client status." });
 			return;
 		}
 		setStatus({
@@ -602,7 +621,7 @@ export function Applications() {
 		SECTIONS[0],
 		...(canManageClients ? [SECTIONS[1]] : []),
 		...(canViewOAuthProxy ? [SECTIONS[2]] : []),
-	].filter((section): section is Section => section !== false);
+	];
 
 	return (
 		<DashboardShell
@@ -1313,7 +1332,7 @@ export function Applications() {
 							<>
 								{OIDC_ENDPOINT_ROWS.map(({ key, label }) => {
 									const value = oidcConfig[key];
-									if (typeof value !== "string" || !value) return null;
+									if (!value) return null;
 									return (
 										<CopyRow
 											key={key}
