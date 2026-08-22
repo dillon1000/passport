@@ -61,7 +61,7 @@ import {
 	discoverSignInMethods,
 	type SignInMethods,
 } from "@/lib/sign-in-methods";
-import { MagicLinkPending } from "@/pages/MagicLinkPending";
+import { EmailLinkPending } from "@/pages/EmailLinkPending";
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
 type SignInStep = "identifier" | "methods";
@@ -687,8 +687,8 @@ export function SignIn() {
 		);
 	}
 
-	async function requestPasswordReset(event: FormEvent<HTMLFormElement>) {
-		event.preventDefault();
+	async function requestPasswordReset(event?: FormEvent<HTMLFormElement>) {
+		event?.preventDefault();
 		setFieldError(null);
 		setStatus(null);
 
@@ -838,16 +838,18 @@ export function SignIn() {
 					: "Choose how to sign in"
 				: titleFor(mode, addingAccount);
 
-	if (waitingEmailLink?.kind === "magic-link") {
+	if (waitingEmailLink) {
 		return (
 			<AuthShell focused>
-				<MagicLinkPending
+				<EmailLinkPending
+					kind={waitingEmailLink.kind}
 					email={waitingEmailLink.email}
 					loading={loading}
 					status={status}
 					onResend={() => {
 						void cancelEmailLinkFlow(waitingEmailLink.flow);
-						void sendMagicLink();
+						if (waitingEmailLink.kind === "magic-link") void sendMagicLink();
+						else void requestPasswordReset();
 					}}
 					onBack={() => {
 						void cancelEmailLinkFlow(waitingEmailLink.flow);
