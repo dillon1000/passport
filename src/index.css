@@ -423,11 +423,6 @@ html[data-view-transition-direction="backward"]::view-transition-new(auth-step) 
 [data-slot="sheet-content"][data-ending-style] {
 	transition-duration: 180ms !important;
 }
-[data-slot="sheet-content"][data-pushed="true"] {
-	translate: -1.75rem 0;
-	scale: 0.965;
-}
-
 @media (min-width: 40rem) {
 	[data-slot="sheet-content"] {
 		transform: translateX(0);
