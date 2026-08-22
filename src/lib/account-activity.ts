@@ -118,7 +118,10 @@ export function parseAccountActivityMetadata(value: string | null | undefined) {
 		return Object.fromEntries(
 			Object.entries(parsed).filter((entry): entry is [string, string | number | boolean | null] => {
 				const item = entry[1];
-				return item === null || ["string", "number", "boolean"].includes(typeof item);
+				return item === null
+					|| typeof item === "string"
+					|| typeof item === "number"
+					|| typeof item === "boolean";
 			}),
 		);
 	} catch {

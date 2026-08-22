@@ -133,7 +133,14 @@
         "react-you-might-not-need-an-effect/no-pass-data-to-parent": "error",
         "react-you-might-not-need-an-effect/no-external-store-subscription": "error",
         "react-you-might-not-need-an-effect/no-initialize-state": "error",
-        "passport/no-record-string-unknown": "error"
+        "passport/no-record-string-unknown": "error",
+        "passport/no-typeof": [
+          "error",
+          {
+            "allowComparisons": true,
+            "allowTypeQueries": true
+          }
+        ]
       },
       "plugins": [
         "typescript",
