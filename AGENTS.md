@@ -32,6 +32,8 @@ When a required artifact fails at scale, do not drop or skip it to keep the pipe
 
 When a page has multiple similarly named sections, place requested UI actions in the specific section the User names or corrects. Do not infer the first matching domain concept from the page title alone.
 
+When an authentication loading surface replaces a form, every recoverable error must reverse the same transition and return to the populated form. Transition declarations must include the CSS property changed by the movement utility.
+
 ### Fight for the "obvious" solution
 
 We should avoid being clever and doing things because they seem smart. We want everything we build to be so obvious it feels kind of stupid.

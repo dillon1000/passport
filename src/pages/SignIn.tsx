@@ -633,7 +633,7 @@ export function SignIn() {
 				>
 					<div
 						aria-hidden={showLoading}
-						className={`transition-[transform,opacity] duration-150 ease-out ${
+						className={`transition-[translate,opacity] duration-150 ease-out ${
 							showLoading ? "pointer-events-none -translate-x-6 opacity-0" : "translate-x-0 opacity-100"
 						}`}
 						inert={showLoading ? true : undefined}
@@ -959,7 +959,7 @@ export function SignIn() {
 						aria-hidden={!showLoading}
 						aria-label="Loading"
 						aria-live="polite"
-						className={`absolute inset-0 z-10 grid place-items-center bg-card text-muted-foreground transition-[transform,opacity] duration-150 ease-out ${
+						className={`absolute inset-0 z-10 grid place-items-center bg-card text-muted-foreground transition-[translate,opacity] duration-150 ease-out ${
 							showLoading
 								? "translate-x-0 opacity-100"
 								: "pointer-events-none translate-x-full opacity-0"
