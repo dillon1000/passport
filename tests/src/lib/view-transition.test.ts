@@ -54,6 +54,10 @@ describe("withDirectionalViewTransition", () => {
 			configurable: true,
 			value: { matchMedia: () => ({ matches: true }) },
 		});
+		Object.defineProperty(globalThis, "matchMedia", {
+			configurable: true,
+			value: () => ({ matches: true }),
+		});
 
 		withDirectionalViewTransition(update, "backward");
 

@@ -10,6 +10,7 @@ describe("appRoutes", () => {
 			"/",
 			"/sign-in",
 			"/about",
+			"/__scratch",
 			"/account",
 			"/billing/product/:productId",
 			"/billing/action/:intentId",

@@ -114,10 +114,11 @@ export type AccountActivitySummary = {
 	metadata?: Record<string, string | number | boolean | null> | null;
 };
 
-const accountActivityMetadataSchema = z.record(
-	z.string(),
-	z.union([z.string(), z.number(), z.boolean(), z.null()]),
-);
+const accountActivityMetadataSchema = z.object({
+	clientId: z.string().optional(),
+	clientName: z.string().optional(),
+	action: z.string().optional(),
+});
 
 /** Parses only primitive metadata values that are safe to show in the activity UI. */
 export function parseAccountActivityMetadata(value: string | null | undefined) {

@@ -1822,13 +1822,13 @@ async function handleAdminOAuthClients(
 				targetLabel: client.name,
 				metadata: {
 					redirectUris: client.redirectUris,
-					scopes: client.scopes,
+					scopes: client.scopes ?? null,
 					public: client.public,
-					platformAdminOnly: client.platformAdminOnly,
-					grantTypes: client.grantTypes,
-					allowedAudiences: client.allowedAudiences,
-					skipConsent: client.skipConsent,
-					enableEndSession: client.enableEndSession,
+					platformAdminOnly: client.platformAdminOnly ?? null,
+					grantTypes: client.grantTypes ?? null,
+					allowedAudiences: client.allowedAudiences ?? null,
+					skipConsent: client.skipConsent ?? null,
+					enableEndSession: client.enableEndSession ?? null,
 				},
 			});
 			return Response.json({ client }, { status: 201 });
