@@ -291,10 +291,10 @@ export function Consent() {
 					) : null}
 
 					<div className="mt-5 grid grid-cols-2 gap-2">
-						<Button size="lg" variant="outline" onClick={() => void decide(false)} disabled={loading !== null}>
+						<Button className="w-full" size="lg" variant="outline" onClick={() => void decide(false)} disabled={loading !== null}>
 							{loading === "deny" ? <Loader size="sm" /> : "Deny"}
 						</Button>
-						<Button size="lg" onClick={() => void decide(true)} disabled={approvalBlocked}>
+						<Button className="w-full" size="lg" onClick={() => void decide(true)} disabled={approvalBlocked}>
 							{loading === "accept" ? <Loader size="sm" className="text-primary-foreground" /> : "Allow access"}
 						</Button>
 					</div>
