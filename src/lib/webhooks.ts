@@ -33,6 +33,16 @@ export type WebhookDeliveryWorkflowPayload = {
 	deliveryId: string;
 };
 
+/** JSON-safe, secret-free values accepted in an outbound webhook payload. */
+export type WebhookDataValue =
+	| string
+	| number
+	| boolean
+	| null
+	| WebhookDataValue[]
+	| { [key: string]: WebhookDataValue };
+export type WebhookData = { [key: string]: WebhookDataValue };
+
 /** The signed JSON envelope delivered to subscribers. */
 export type WebhookEventPayload = {
 	/** Stable per-delivery id; subscribers use it to dedupe retries. */
@@ -41,7 +51,7 @@ export type WebhookEventPayload = {
 	/** ISO-8601 creation time of the event. */
 	createdAt: string;
 	/** Event-specific, secret-free data. */
-	data: { [key: string]: unknown };
+	data: WebhookData;
 };
 
 const HEX = Array.from({ length: 256 }, (_, index) =>
@@ -149,7 +159,7 @@ export async function emitWebhookEvent(
 	env: AuthEnv,
 	db: WebhookDb,
 	type: WebhookEventType,
-	data: { [key: string]: unknown },
+	data: WebhookData,
 ) {
 	try {
 		const endpoints = await db

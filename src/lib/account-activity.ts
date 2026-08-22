@@ -14,6 +14,7 @@
  * codes, tokens, or password material belong in this log.
  */
 import type { RequestLocation } from "./request-location";
+import * as z from "zod";
 
 export const ACCOUNT_ACTIVITY_TYPES = {
 	SIGN_IN: "sign_in",
@@ -42,7 +43,7 @@ export type AccountActivityType =
  * match the strings previously hard-coded in `securityEventForPath` so security
  * alert emails keep their exact subject wording.
  */
-export const ACCOUNT_ACTIVITY_LABELS: Record<AccountActivityType, string> = {
+export const ACCOUNT_ACTIVITY_LABELS = {
 	sign_in: "Signed in",
 	email_change_requested: "Email change requested",
 	password_changed: "Password changed",
@@ -59,7 +60,7 @@ export const ACCOUNT_ACTIVITY_LABELS: Record<AccountActivityType, string> = {
 	two_factor_disabled: "Two-factor authentication disabled",
 	backup_codes_regenerated: "Two-factor backup codes regenerated",
 	connected_app_action: "Connected app action",
-};
+} satisfies Record<AccountActivityType, string>;
 
 /**
  * Maps a Better Auth API path to its activity type. Mirrors the set of paths
@@ -67,7 +68,7 @@ export const ACCOUNT_ACTIVITY_LABELS: Record<AccountActivityType, string> = {
  * dynamic events (account linking, sign-in) are recorded directly by the hook
  * and are not path-based, so they are not resolved here.
  */
-const PATH_TO_ACTIVITY_TYPE: Record<string, AccountActivityType> = {
+const PATH_TO_ACTIVITY_TYPE = {
 	"/change-email": ACCOUNT_ACTIVITY_TYPES.EMAIL_CHANGE_REQUESTED,
 	"/change-password": ACCOUNT_ACTIVITY_TYPES.PASSWORD_CHANGED,
 	"/set-password": ACCOUNT_ACTIVITY_TYPES.PASSWORD_SET,
@@ -79,23 +80,27 @@ const PATH_TO_ACTIVITY_TYPE: Record<string, AccountActivityType> = {
 	"/two-factor/verify-totp": ACCOUNT_ACTIVITY_TYPES.TWO_FACTOR_ENABLED,
 	"/two-factor/disable": ACCOUNT_ACTIVITY_TYPES.TWO_FACTOR_DISABLED,
 	"/two-factor/generate-backup-codes": ACCOUNT_ACTIVITY_TYPES.BACKUP_CODES_REGENERATED,
-};
+} satisfies Record<string, AccountActivityType>;
+
+const accountActivityTypesByPath = new Map<string, AccountActivityType>(
+	Object.entries(PATH_TO_ACTIVITY_TYPE),
+);
+const accountActivityLabelsByType = new Map<string, string>(
+	Object.entries(ACCOUNT_ACTIVITY_LABELS),
+);
 
 export function accountActivityTypeForPath(
 	path: string | null | undefined,
 ): AccountActivityType | null {
 	if (!path) return null;
-	return PATH_TO_ACTIVITY_TYPE[path] ?? null;
+	return accountActivityTypesByPath.get(path) ?? null;
 }
 
 export function accountActivityLabel(type: string): string {
-	return (
-		ACCOUNT_ACTIVITY_LABELS[type as AccountActivityType] ??
-		type
-			.split("_")
-			.map((part) => part.replace(/^\w/, (char) => char.toUpperCase()))
-			.join(" ")
-	);
+	return accountActivityLabelsByType.get(type) ?? type
+		.split("_")
+		.map((part) => part.replace(/^\w/, (char) => char.toUpperCase()))
+		.join(" ");
 }
 
 /** Read DTO for the user-facing activity feed. */
@@ -109,21 +114,17 @@ export type AccountActivitySummary = {
 	metadata?: Record<string, string | number | boolean | null> | null;
 };
 
+const accountActivityMetadataSchema = z.record(
+	z.string(),
+	z.union([z.string(), z.number(), z.boolean(), z.null()]),
+);
+
 /** Parses only primitive metadata values that are safe to show in the activity UI. */
 export function parseAccountActivityMetadata(value: string | null | undefined) {
 	if (!value) return null;
 	try {
-		const parsed: unknown = JSON.parse(value);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-		return Object.fromEntries(
-			Object.entries(parsed).filter((entry): entry is [string, string | number | boolean | null] => {
-				const item = entry[1];
-				return item === null
-					|| typeof item === "string"
-					|| typeof item === "number"
-					|| typeof item === "boolean";
-			}),
-		);
+		const parsed = accountActivityMetadataSchema.safeParse(JSON.parse(value));
+		return parsed.success ? parsed.data : null;
 	} catch {
 		return null;
 	}

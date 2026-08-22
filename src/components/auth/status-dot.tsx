@@ -2,12 +2,12 @@ import { cn } from "@/lib/utils";
 
 export type DotTone = "active" | "warn" | "danger" | "idle";
 
-const TONES: Record<DotTone, string> = {
+const TONES = {
 	active: "bg-success",
 	warn: "bg-muted-foreground",
 	danger: "bg-destructive",
 	idle: "bg-muted-foreground/40",
-};
+} satisfies Record<DotTone, string>;
 
 /**
  * Small status dot with a soft halo. Communicates live/ok/warn/off state at a

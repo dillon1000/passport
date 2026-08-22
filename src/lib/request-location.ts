@@ -18,7 +18,7 @@ export type RequestLocation = {
 };
 
 type RequestWithCloudflareMetadata = Request & {
-	cf?: unknown;
+	cf?: RequestLocationInput;
 };
 
 const STRING_FIELDS = [
@@ -31,22 +31,31 @@ const STRING_FIELDS = [
 	"regionCode",
 	"timezone",
 ] as const satisfies readonly (keyof RequestLocation)[];
+const requestLocationInputSchema = z.object({
+	asn: z.number().finite().optional(),
+	asOrganization: z.string().optional(),
+	city: z.string().optional(),
+	colo: z.string().optional(),
+	continent: z.string().optional(),
+	country: z.string().optional(),
+	isEUCountry: z.union([z.boolean(), z.literal("1")]).optional(),
+	region: z.string().optional(),
+	regionCode: z.string().optional(),
+	timezone: z.string().optional(),
+}).passthrough();
+type RequestLocationInput = z.input<typeof requestLocationInputSchema>;
+type ParsedRequestLocationInput = z.output<typeof requestLocationInputSchema>;
 
-function isRecord(value: unknown): value is { [key: string]: unknown } {
-	return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function stringField(source: { [key: string]: unknown }, key: (typeof STRING_FIELDS)[number]) {
+function stringField(source: ParsedRequestLocationInput, key: (typeof STRING_FIELDS)[number]) {
 	const value = source[key];
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+	return value?.trim() || undefined;
 }
 
-function numberField(source: { [key: string]: unknown }, key: "asn") {
-	const value = source[key];
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function numberField(source: ParsedRequestLocationInput) {
+	return source.asn;
 }
 
-function booleanEUField(source: { [key: string]: unknown }) {
+function booleanEUField(source: ParsedRequestLocationInput) {
 	const value = source.isEUCountry;
 	if (value === true || value === "1") return true;
 	return undefined;
@@ -56,31 +65,33 @@ function hasLocationValue(location: RequestLocation) {
 	return Object.values(location).some((value) => value !== undefined);
 }
 
-export function parseRequestLocation(value: unknown): RequestLocation | null {
-	const source = typeof value === "string" ? parseJSONRecord(value) : value;
-	if (!isRecord(source)) return null;
+export function parseRequestLocation(value: RequestLocationInput): RequestLocation | null {
+	const source = requestLocationInputSchema.safeParse(
+		z.string().safeParse(value).success ? parseJSONRecord(value) : value,
+	);
+	if (!source.success) return null;
 
 	const location: RequestLocation = {};
 	for (const key of STRING_FIELDS) {
-		const fieldValue = stringField(source, key);
+		const fieldValue = stringField(source.data, key);
 		if (fieldValue !== undefined) location[key] = fieldValue;
 	}
 
-	const asn = numberField(source, "asn");
+	const asn = numberField(source.data);
 	if (asn !== undefined) location.asn = asn;
 
-	const isEUCountry = booleanEUField(source);
+	const isEUCountry = booleanEUField(source.data);
 	if (isEUCountry !== undefined) location.isEUCountry = isEUCountry;
 
 	return hasLocationValue(location) ? location : null;
 }
 
-export function requestLocationFromRequest(request?: Request | null): RequestLocation | null {
+export function requestLocationFromRequest(request?: RequestWithCloudflareMetadata | null): RequestLocation | null {
 	if (!request) return null;
-	return parseRequestLocation((request as RequestWithCloudflareMetadata).cf);
+	return parseRequestLocation(request.cf);
 }
 
-export function formatRequestLocation(value: unknown) {
+export function formatRequestLocation(value: RequestLocationInput) {
 	const location = parseRequestLocation(value);
 	if (!location) return null;
 
@@ -92,8 +103,9 @@ export function formatRequestLocation(value: unknown) {
 
 function parseJSONRecord(value: string) {
 	try {
-		return JSON.parse(value) as unknown;
+		return JSON.parse(value);
 	} catch {
 		return null;
 	}
 }
+import { z } from "zod";

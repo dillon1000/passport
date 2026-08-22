@@ -5,15 +5,15 @@ import { brand } from "@/lib/brand";
 import { BrandContext, type BrandConfig, type BrandTheme } from "@/lib/brand-runtime";
 import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 
-const defaultBrand = brand as BrandConfig;
+const defaultBrand: BrandConfig = brand;
 
-const THEME_VARIABLES: Record<keyof BrandTheme, string> = {
-	brand: "--brand",
-	brandForeground: "--brand-foreground",
-	primary: "--primary",
-	primaryForeground: "--primary-foreground",
-	ring: "--ring",
-};
+const THEME_VARIABLES = [
+	["brand", "--brand"],
+	["brandForeground", "--brand-foreground"],
+	["primary", "--primary"],
+	["primaryForeground", "--primary-foreground"],
+	["ring", "--ring"],
+] as const satisfies readonly (readonly [keyof BrandTheme, string])[];
 
 export function BrandProvider({ children }: { children: ReactNode }) {
 	const { data: currentBrand = defaultBrand } = useQuery<BrandConfig>({
@@ -29,10 +29,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
 	});
 
 	useEffect(() => {
-		for (const [key, variable] of Object.entries(THEME_VARIABLES) as [
-			keyof BrandTheme,
-			string,
-		][]) {
+		for (const [key, variable] of THEME_VARIABLES) {
 			const value = currentBrand.theme?.[key];
 			if (value) document.documentElement.style.setProperty(variable, value);
 		}

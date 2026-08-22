@@ -11,6 +11,7 @@ import { betterAuth } from "better-auth/minimal";
 import { customSession } from "better-auth/plugins/custom-session";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { decodeJwt } from "jose";
+import { z } from "zod";
 
 export type ClientEnv = Env & {
 	BETTER_AUTH_SECRET: string;
@@ -19,7 +20,15 @@ export type ClientEnv = Env & {
 	REDIRECT_URI?: string;
 };
 
-export type OAuthClaimGroup = { [key: string]: unknown };
+export type OAuthClaimValue =
+	| string
+	| number
+	| boolean
+	| null
+	| OAuthClaimValue[]
+	| { [key: string]: OAuthClaimValue };
+
+export type OAuthClaimGroup = { [key: string]: OAuthClaimValue };
 
 export type PassportConnectionClaim = {
 	provider: string;
@@ -104,6 +113,33 @@ type DiscoveryMetadata = {
 	jwks_uri?: string;
 };
 
+const oauthClaimValueSchema: z.ZodType<OAuthClaimValue> = z.lazy(() =>
+	z.union([
+		z.string(),
+		z.number(),
+		z.boolean(),
+		z.null(),
+		z.array(oauthClaimValueSchema),
+		z.record(z.string(), oauthClaimValueSchema),
+	]),
+);
+const oauthClaimGroupSchema = z.record(z.string(), oauthClaimValueSchema);
+const discoveryMetadataSchema = z.object({
+	issuer: z.string().url(),
+	authorization_endpoint: z.string().url(),
+	token_endpoint: z.string().url(),
+	userinfo_endpoint: z.string().url().optional(),
+	jwks_uri: z.string().url().optional(),
+});
+const nonEmptyStringSchema = z.string().trim().min(1);
+const connectionClaimSchema = z.object({
+	provider: nonEmptyStringSchema,
+	accountId: nonEmptyStringSchema,
+	scopes: z.array(nonEmptyStringSchema).optional(),
+	connectedAt: nonEmptyStringSchema.optional(),
+	updatedAt: nonEmptyStringSchema.optional(),
+});
+
 function withoutTrailingSlash(value: string) {
 	return value.replace(/\/+$/, "");
 }
@@ -158,13 +194,16 @@ async function loadDiscovery(env: Pick<ClientEnv, "AUTH_ISSUER">) {
 	if (!response.ok) {
 		throw new Error(`Passport discovery failed with ${response.status}.`);
 	}
-	return (await response.json()) as DiscoveryMetadata;
+	const discovery = discoveryMetadataSchema.safeParse(await response.json());
+	if (!discovery.success) throw new Error("Passport discovery returned an invalid document.");
+	return discovery.data satisfies DiscoveryMetadata;
 }
 
 function decodeTokenClaims(token: string | null | undefined) {
 	if (!token) return undefined;
 	try {
-		return decodeJwt(token) as OAuthClaimGroup;
+		const claims = oauthClaimGroupSchema.safeParse(decodeJwt(token));
+		return claims.success ? claims.data : undefined;
 	} catch {
 		return undefined;
 	}
@@ -179,57 +218,38 @@ function splitScopes(scope: string | null | undefined) {
 	);
 }
 
-function stringClaim(value: unknown) {
-	return typeof value === "string" && value.trim() ? value : undefined;
+function stringClaim(value: OAuthClaimValue | undefined) {
+	const claim = nonEmptyStringSchema.safeParse(value);
+	return claim.success ? claim.data : undefined;
 }
 
-function booleanClaim(value: unknown) {
-	return typeof value === "boolean" ? value : undefined;
+function booleanClaim(value: OAuthClaimValue | undefined) {
+	const claim = z.boolean().safeParse(value);
+	return claim.success ? claim.data : undefined;
 }
 
-function stringArrayClaim(value: unknown) {
-	return Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-		: [];
+function stringArrayClaim(value: OAuthClaimValue | undefined) {
+	const claim = z.array(nonEmptyStringSchema).safeParse(value);
+	return claim.success ? claim.data : [];
 }
 
-function stringRecordClaim(value: unknown) {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-
-	return Object.fromEntries(
-		Object.entries(value).filter(
-			(entry): entry is [string, string] =>
-				typeof entry[0] === "string" &&
-				entry[0].trim().length > 0 &&
-				typeof entry[1] === "string",
-		),
-	);
+function stringRecordClaim(value: OAuthClaimValue | undefined) {
+	const claim = z.record(nonEmptyStringSchema, z.string()).safeParse(value);
+	return claim.success ? claim.data : {};
 }
 
-function connectionClaims(value: unknown): PassportConnectionClaim[] {
-	if (!Array.isArray(value)) return [];
-
-	return value.flatMap((item) => {
-		if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-
-		const record = item as { [key: string]: unknown };
-		const provider = stringClaim(record.provider);
-		const accountId = stringClaim(record.accountId);
-		if (!provider || !accountId) return [];
-
-		const scopes = stringArrayClaim(record.scopes);
-		const connectedAt = stringClaim(record.connectedAt);
-		const updatedAt = stringClaim(record.updatedAt);
-
-		return [
-			{
-				provider,
-				accountId,
-				...(scopes.length ? { scopes } : {}),
-				...(connectedAt ? { connectedAt } : {}),
-				...(updatedAt ? { updatedAt } : {}),
-			},
-		];
+function connectionClaims(value: OAuthClaimValue | undefined): PassportConnectionClaim[] {
+	const claims = z.array(connectionClaimSchema).safeParse(value);
+	if (!claims.success) return [];
+	return claims.data.map((claim) => {
+		const connection: PassportConnectionClaim = {
+			provider: claim.provider,
+			accountId: claim.accountId,
+		};
+		if (claim.scopes?.length) connection.scopes = claim.scopes;
+		if (claim.connectedAt) connection.connectedAt = claim.connectedAt;
+		if (claim.updatedAt) connection.updatedAt = claim.updatedAt;
+		return connection;
 	});
 }
 
@@ -290,7 +310,8 @@ async function loadUserInfoClaims(
 		},
 	});
 	if (!response.ok) return undefined;
-	return (await response.json()) as OAuthClaimGroup;
+	const claims = oauthClaimGroupSchema.safeParse(await response.json());
+	return claims.success ? claims.data : undefined;
 }
 
 export function createExampleAuth(env: ClientEnv) {

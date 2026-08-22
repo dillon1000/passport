@@ -8,6 +8,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+import type { auth } from "../src/auth";
 import {
 	ADMIN_AUDIT_ACTIONS,
 	ADMIN_AUDIT_TARGET_TYPES,
@@ -32,7 +33,11 @@ import {
 	billingPlanCatalog,
 	parseStripeBillingPlans,
 	type BillingPlanCatalogEntry,
+	type BillingLimits,
+	type BillingPlanLineItem,
 } from "../src/lib/billing";
+import type { BillingPlanWriteInput } from "../src/lib/billing-plan-store";
+import type { BillingRegistryInput } from "../src/lib/billing-registry-store";
 import type { RequestLocation } from "../src/lib/request-location";
 import { isAdminOperator } from "../src/lib/admin-access";
 import { createClientAPI } from "./client-api";
@@ -87,9 +92,12 @@ type AgentConfigurationContext = {
 	request: Request;
 	env: Env;
 };
+type AgentConfiguration = Awaited<
+	ReturnType<ReturnType<typeof auth>["api"]["getAgentConfiguration"]>
+>;
 type AgentConfigurationResolver = (
 	context: AgentConfigurationContext,
-) => unknown | Promise<unknown>;
+) => AgentConfiguration | Promise<AgentConfiguration>;
 
 type SignInMethodContext = {
 	request: Request;
@@ -279,9 +287,9 @@ export type BillingPlanRecord = {
 	personalOnly: boolean;
 	hidden: boolean;
 	displayOrder: number;
-	limits: { [key: string]: unknown } | null;
+	limits: BillingLimits | null;
 	entitlements: string[] | null;
-	lineItems: { [key: string]: unknown }[] | null;
+	lineItems: BillingPlanLineItem[] | null;
 };
 
 export type BillingPriceInfo = {
@@ -305,11 +313,11 @@ export type BillingPlanService = {
 	) => BillingPlanCatalogEntry | null | Promise<BillingPlanCatalogEntry | null>;
 	labels: (env: Env) => BillingCatalogLabels | Promise<BillingCatalogLabels>;
 	list: (env: Env) => BillingPlanRecord[] | Promise<BillingPlanRecord[]>;
-	create: (env: Env, input: unknown) => BillingPlanRecord | Promise<BillingPlanRecord>;
+	create: (env: Env, input: BillingPlanWriteInput) => BillingPlanRecord | Promise<BillingPlanRecord>;
 	update: (
 		env: Env,
 		id: string,
-		input: unknown,
+		input: BillingPlanWriteInput,
 	) => BillingPlanRecord | null | Promise<BillingPlanRecord | null>;
 	remove: (env: Env, id: string) => boolean | Promise<boolean>;
 	reorder: (env: Env, order: string[]) => number | Promise<number>;
@@ -337,8 +345,8 @@ export type BillingLimitRecord = {
 // handlers are generic over T so both resources share one pair of handlers.
 export type BillingRegistrySlice<T> = {
 	list: (env: Env) => T[] | Promise<T[]>;
-	create: (env: Env, input: unknown) => T | Promise<T>;
-	update: (env: Env, id: string, input: unknown) => T | null | Promise<T | null>;
+	create: (env: Env, input: BillingRegistryInput) => T | Promise<T>;
+	update: (env: Env, id: string, input: BillingRegistryInput) => T | null | Promise<T | null>;
 	remove: (env: Env, id: string) => boolean | Promise<boolean>;
 };
 
@@ -571,6 +579,14 @@ type PublicEnv = Env & {
 	STRIPE_BILLING_PLANS?: string;
 };
 
+type BrandConfiguration = {
+	name: string;
+	descriptor: string;
+	capabilities: string[];
+	logoSrc?: string;
+	theme?: Record<string, string>;
+};
+
 const DEFAULT_BRAND = {
 	name: "Passport",
 	descriptor: "Identity provider",
@@ -610,7 +626,7 @@ function validateOptionalOAuthScopes(
 	});
 }
 
-function validateCreateOAuthClientGrantShape(
+function validateCreateOAuthClientGrantInput(
 	value: {
 		redirectUris?: string[];
 		grantTypes?: OAuthGrantType[];
@@ -657,7 +673,7 @@ function validateCreateOAuthClientGrantShape(
 	}
 }
 
-function validateUpdateOAuthClientGrantShape(
+function validateUpdateOAuthClientGrantInput(
 	value: {
 		redirectUris?: string[];
 		grantTypes?: OAuthGrantType[];
@@ -678,7 +694,7 @@ function validateUpdateOAuthClientGrantShape(
 		}
 		return;
 	}
-	validateCreateOAuthClientGrantShape(
+	validateCreateOAuthClientGrantInput(
 		{
 			redirectUris: value.redirectUris,
 			grantTypes: value.grantTypes,
@@ -709,7 +725,7 @@ const baseCreateOAuthClientSchema = z.object({
 });
 
 const createOAuthClientSchema = baseCreateOAuthClientSchema.superRefine(
-	validateCreateOAuthClientGrantShape,
+	validateCreateOAuthClientGrantInput,
 );
 
 const updateOAuthClientSchema = baseCreateOAuthClientSchema
@@ -722,7 +738,7 @@ const updateOAuthClientSchema = baseCreateOAuthClientSchema
 		redirectUris: optionalOAuthURLArray.optional(),
 	})
 	.partial()
-	.superRefine(validateUpdateOAuthClientGrantShape)
+	.superRefine(validateUpdateOAuthClientGrantInput)
 	.refine((value) => Object.keys(value).length > 0, {
 		message: "Provide at least one field to update.",
 	});
@@ -740,9 +756,7 @@ const accountPasswordSchema = z.object({
 const emailNotificationPreferenceSchema = z.object({
 	securityAlerts: z.boolean(),
 });
-const webhookEventEnum = z.enum(
-	WEBHOOK_EVENT_TYPE_VALUES as [string, ...string[]],
-);
+const webhookEventEnum = z.enum(WEBHOOK_EVENT_TYPE_VALUES);
 const createWebhookSchema = z.object({
 	url: z.string().min(1),
 	events: z.array(webhookEventEnum).min(1),
@@ -811,32 +825,34 @@ function jsonError(message: string, status: number) {
 	return Response.json({ error: message }, { status });
 }
 
-type APIErrorShape = {
-	name?: unknown;
-	statusCode?: unknown;
-	body?: {
-		message?: unknown;
-	};
-	message?: unknown;
-};
+const apiErrorDetailsSchema = z.object({
+	statusCode: z.number().int().min(400).max(599).optional(),
+	body: z.object({ message: z.string().optional() }).optional(),
+	message: z.string().optional(),
+});
+const billingCheckoutSchema = z.object({
+	plan: z.string().trim().min(1),
+	customerType: z.enum(["user", "organization"]).optional(),
+	referenceId: z.string().optional(),
+	successUrl: z.string().optional(),
+	cancelUrl: z.string().optional(),
+});
+const billingPlanOrderSchema = z.object({ order: z.array(z.string()) });
+const organizationSubscriptionSchema = z.object({
+	customerType: z.literal("organization"),
+	plan: z.string().trim().min(1),
+});
 
-function objectShape(value: unknown) {
-	return value && typeof value === "object" ? (value as APIErrorShape) : null;
-}
-
-function adminOAuthErrorResponse(error: unknown) {
-	console.error("Admin OAuth request failed", error);
-	const shape = objectShape(error);
-	const status =
-		typeof shape?.statusCode === "number" && shape.statusCode >= 400 && shape.statusCode < 600
-			? shape.statusCode
-			: 500;
-	const bodyMessage = shape?.body?.message;
-	const errorMessage = shape?.message;
+function adminOAuthErrorResponse(cause: unknown) {
+	console.error("Admin OAuth request failed", cause);
+	const details = apiErrorDetailsSchema.safeParse(cause);
+	const status = details.success ? (details.data.statusCode ?? 500) : 500;
+	const bodyMessage = details.success ? details.data.body?.message : undefined;
+	const errorMessage = details.success ? details.data.message : undefined;
 	const message =
-		status < 500 && typeof bodyMessage === "string" && bodyMessage.trim()
+		status < 500 && bodyMessage?.trim()
 			? bodyMessage
-			: status < 500 && typeof errorMessage === "string" && errorMessage.trim()
+			: status < 500 && errorMessage?.trim()
 				? errorMessage
 				: "Could not manage OAuth client.";
 
@@ -865,31 +881,25 @@ function parsePageInput(request: Request): { page: PageInput } | { response: Res
 		return { response: jsonError("Invalid pagination parameters.", 400) };
 	}
 
-	return {
-		page: {
-			limit,
-			...(cursorValue === null ? {} : { cursor: cursorValue }),
-		},
-	};
+	const page: PageInput = { limit };
+	if (cursorValue !== null) page.cursor = cursorValue;
+	return { page };
 }
 
 function pageMetadata<T>(page: PageInput, result: PageResult<T>) {
-	return {
-		limit: page.limit,
-		...(result.nextCursor ? { nextCursor: result.nextCursor } : {}),
-	};
+	return result.nextCursor
+		? { limit: page.limit, nextCursor: result.nextCursor }
+		: { limit: page.limit };
 }
 
 function imageExtension(type: string) {
-	return IMAGE_EXTENSIONS[type as keyof typeof IMAGE_EXTENSIONS];
+	return Object.entries(IMAGE_EXTENSIONS).find(([imageType]) => imageType === type)?.[1];
 }
 
-function imagePurposeSegment(value: unknown) {
+function imagePurposeSegment(value: FormDataEntryValue | null) {
 	if (value === null || value === "") return "";
-	if (typeof value !== "string") return null;
-	return PROFILE_IMAGE_PURPOSES.includes(value as (typeof PROFILE_IMAGE_PURPOSES)[number])
-		? value
-		: null;
+	const purpose = z.enum(PROFILE_IMAGE_PURPOSES).safeParse(value);
+	return purpose.success ? purpose.data : null;
 }
 
 function splitCSV(value: string | undefined) {
@@ -902,7 +912,7 @@ function splitCSV(value: string | undefined) {
 }
 
 function isAdmin(session: ProfileSession, env: Env) {
-	return isAdminOperator(env as PublicEnv, session.user);
+	return isAdminOperator(env, session.user);
 }
 
 function safeCSSValue(value: string | undefined) {
@@ -913,7 +923,7 @@ function safeCSSValue(value: string | undefined) {
 }
 
 function brandConfig(env: Env) {
-	const publicEnv = env as PublicEnv;
+	const publicEnv: PublicEnv = env;
 	const theme = {
 		brand: safeCSSValue(publicEnv.BRAND_COLOR),
 		brandForeground: safeCSSValue(publicEnv.BRAND_FOREGROUND_COLOR),
@@ -921,22 +931,25 @@ function brandConfig(env: Env) {
 		primaryForeground: safeCSSValue(publicEnv.PRIMARY_FOREGROUND_COLOR),
 		ring: safeCSSValue(publicEnv.RING_COLOR),
 	};
-	const cleanTheme = Object.fromEntries(
-		Object.entries(theme).filter(([, value]) => Boolean(value)),
-	) as Record<string, string>;
-	return {
+	const cleanTheme: Record<string, string> = {};
+	for (const [key, value] of Object.entries(theme)) {
+		if (value) cleanTheme[key] = value;
+	}
+	const config: BrandConfiguration = {
 		name: publicEnv.BRAND_NAME?.trim() || DEFAULT_BRAND.name,
 		descriptor: publicEnv.BRAND_DESCRIPTOR?.trim() || DEFAULT_BRAND.descriptor,
-		...(publicEnv.BRAND_LOGO_SRC?.trim() ? { logoSrc: publicEnv.BRAND_LOGO_SRC.trim() } : {}),
 		capabilities: splitCSV(publicEnv.BRAND_CAPABILITIES).length
 			? splitCSV(publicEnv.BRAND_CAPABILITIES)
 			: DEFAULT_BRAND.capabilities,
-		...(Object.keys(cleanTheme).length ? { theme: cleanTheme } : {}),
 	};
+	const logoSrc = publicEnv.BRAND_LOGO_SRC?.trim();
+	if (logoSrc) config.logoSrc = logoSrc;
+	if (Object.keys(cleanTheme).length > 0) config.theme = cleanTheme;
+	return config;
 }
 
 function captchaConfig(env: Env) {
-	const publicEnv = env as PublicEnv;
+	const publicEnv: PublicEnv = env;
 	const secretKey = publicEnv.CAPTCHA_SECRET_KEY?.trim();
 	const siteKey = publicEnv.CAPTCHA_SITE_KEY?.trim();
 	const apiEndpoint = publicEnv.CAPTCHA_API_ENDPOINT?.trim();
@@ -952,7 +965,7 @@ function captchaConfig(env: Env) {
 }
 
 function billingPlansConfig(env: Env) {
-	const publicEnv = env as PublicEnv;
+	const publicEnv: PublicEnv = env;
 	return {
 		plans: Object.values(
 			billingPlanCatalog(parseStripeBillingPlans(publicEnv.STRIPE_BILLING_PLANS)),
@@ -1085,7 +1098,7 @@ async function handleAdminOAuthProxy(
 	);
 	if ("response" in adminSession) return adminSession.response;
 
-	const publicEnv = env as PublicEnv;
+	const publicEnv: PublicEnv = env;
 	const requestURL = new URL(request.url);
 	const currentURL = publicEnv.BETTER_AUTH_URL?.trim() || requestURL.origin;
 	const productionURL = publicEnv.OAUTH_PROXY_PRODUCTION_URL?.trim() || currentURL;
@@ -1416,11 +1429,11 @@ async function handleAdminBillingPlanReorder(
 	if (!billingPlans) return jsonError("Billing plan management is not configured.", 501);
 
 	return billingPlanResponse(async () => {
-		const body = (await readJSON(request)) as { order?: unknown };
-		if (!Array.isArray(body.order) || body.order.some((id) => typeof id !== "string")) {
+		const body = billingPlanOrderSchema.safeParse(await readJSON(request));
+		if (!body.success) {
 			return jsonError("order must be an array of plan ids.", 400);
 		}
-		await billingPlans.reorder(env, body.order as string[]);
+		await billingPlans.reorder(env, body.data.order);
 		return new Response(null, { status: 204 });
 	});
 }
@@ -1510,20 +1523,13 @@ async function handleAdminRegistryItem<T>(
 	return new Response(null, { status: 405 });
 }
 
-function billingCheckoutError(error: unknown) {
-	if (error && typeof error === "object") {
-		const candidate = error as {
-			statusCode?: number;
-			body?: { message?: string };
-			message?: string;
-		};
-		const status =
-			typeof candidate.statusCode === "number" ? candidate.statusCode : 400;
-		const message =
-			candidate.body?.message ?? candidate.message ?? "Could not start checkout.";
-		return jsonError(message, status);
-	}
-	return jsonError("Could not start checkout.", 500);
+function billingCheckoutError(cause: unknown) {
+	const details = apiErrorDetailsSchema.safeParse(cause);
+	if (!details.success) return jsonError("Could not start checkout.", 500);
+	return jsonError(
+		details.data.body?.message ?? details.data.message ?? "Could not start checkout.",
+		details.data.statusCode ?? 400,
+	);
 }
 
 async function handleBillingCheckout(
@@ -1542,23 +1548,20 @@ async function handleBillingCheckout(
 	if ("response" in sessionResult) return sessionResult.response;
 	if (!billingCheckout) return jsonError("Billing checkout is not configured.", 501);
 
-	const body = (await readJSON(request)) as { [key: string]: unknown };
-	const plan = typeof body.plan === "string" ? body.plan.trim() : "";
-	if (!plan) return jsonError("A plan is required.", 400);
+	const parsed = billingCheckoutSchema.safeParse(await readJSON(request));
+	if (!parsed.success) return jsonError("A plan is required.", 400);
+	const body = parsed.data;
 
 	const email = sessionResult.session.user.email;
 	if (!email) return jsonError("Your account is missing an email address.", 400);
 
-	const customerType = body.customerType === "organization" ? "organization" : "user";
 	try {
 		const result = await billingCheckout.create(env, {
-			plan,
-			customerType,
-			referenceId: typeof body.referenceId === "string" ? body.referenceId : undefined,
-			successUrl:
-				typeof body.successUrl === "string" ? body.successUrl : "/billing?checkout=success",
-			cancelUrl:
-				typeof body.cancelUrl === "string" ? body.cancelUrl : "/billing?checkout=cancel",
+			plan: body.plan,
+			customerType: body.customerType ?? "user",
+			referenceId: body.referenceId,
+			successUrl: body.successUrl ?? "/billing?checkout=success",
+			cancelUrl: body.cancelUrl ?? "/billing?checkout=cancel",
 			user: { id: sessionResult.session.user.id, email },
 		});
 		return Response.json(result);
@@ -1608,15 +1611,15 @@ async function enforceSubscriptionPersonalOnly(
 	billingPlans: BillingPlanService | undefined,
 ) {
 	if (request.method !== "POST" || !billingPlans) return undefined;
-	let body: { [key: string]: unknown };
+	let body: unknown;
 	try {
-		body = (await request.clone().json()) as { [key: string]: unknown };
+		body = await request.clone().json();
 	} catch {
 		return undefined;
 	}
-	if (body.customerType !== "organization") return undefined;
-	const plan = typeof body.plan === "string" ? body.plan.toLowerCase() : "";
-	if (!plan) return undefined;
+	const parsed = organizationSubscriptionSchema.safeParse(body);
+	if (!parsed.success) return undefined;
+	const plan = parsed.data.plan.toLowerCase();
 	const catalog = await billingPlans.catalog(env);
 	const entry = catalog.find((candidate) => candidate.name.toLowerCase() === plan);
 	if (entry?.personalOnly) {

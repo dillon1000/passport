@@ -6,6 +6,7 @@
  * exposed in storage keys.
  */
 import { parseOptionalBoolean, parseOptionalInteger } from "./auth-server/env";
+import * as z from "zod";
 
 export const ACCOUNT_LOCKOUT_KEY_PREFIX = "passport:account-lockout:";
 export const DEFAULT_ACCOUNT_LOCKOUT_THRESHOLD = 10;
@@ -44,6 +45,12 @@ type AccountLockoutKV = {
 	) => Promise<void>;
 	delete: (key: string) => Promise<void>;
 };
+
+const accountLockoutStateSchema = z.object({
+	attempts: z.number(),
+	windowStartedAt: z.string(),
+	lockedUntil: z.string().optional(),
+});
 
 export function accountLockoutPolicyFromEnv(
 	env: AccountLockoutEnv,
@@ -95,20 +102,8 @@ export async function accountLockoutKey(identifier: string) {
 function parseLockoutState(value: string | null): AccountLockoutState | null {
 	if (!value) return null;
 	try {
-		const parsed = JSON.parse(value) as Partial<AccountLockoutState>;
-		if (
-			typeof parsed.attempts !== "number" ||
-			typeof parsed.windowStartedAt !== "string"
-		) {
-			return null;
-		}
-		return {
-			attempts: parsed.attempts,
-			windowStartedAt: parsed.windowStartedAt,
-			...(typeof parsed.lockedUntil === "string"
-				? { lockedUntil: parsed.lockedUntil }
-				: {}),
-		};
+		const parsed = accountLockoutStateSchema.safeParse(JSON.parse(value));
+		return parsed.success ? parsed.data : null;
 	} catch {
 		return null;
 	}
@@ -195,8 +190,8 @@ export async function recordFailedCredentialAttempt(
 		windowStartedAt: resetWindow
 			? now.toISOString()
 			: currentState?.windowStartedAt ?? now.toISOString(),
-		...(lockedUntil ? { lockedUntil } : {}),
 	};
+	if (lockedUntil) nextState.lockedUntil = lockedUntil;
 
 	await kv.put(key, JSON.stringify(nextState), {
 		expirationTtl: lockoutTTL(policy),

@@ -3,5 +3,5 @@
  * challenge. The result is true only when the browser exposes WebAssembly.
  */
 export function isWebAssemblyAvailable() {
-	return typeof WebAssembly !== "undefined";
+	return globalThis.WebAssembly !== undefined;
 }

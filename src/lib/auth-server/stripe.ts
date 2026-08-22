@@ -8,6 +8,7 @@ import { stripe, type StripePlan, type Subscription } from "@better-auth/stripe"
 import { APIError } from "better-auth/api";
 import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
 import Stripe from "stripe";
+import { z } from "zod";
 
 import * as schema from "../../db/schema";
 import type { AuthEnv } from "../../env";
@@ -17,11 +18,13 @@ import {
 	stripePlansFromBillingPlans,
 	validateStripeProductInput,
 	type BillingPlanDefinition,
+	type BillingPlanInput,
 	type BillingPlanType,
 	type StripeProductProvisionInput,
+	type StripeProductInput,
 } from "../billing";
 import { loadBillingPlans } from "../billing-plan-store";
-import { emitWebhookEvent, WEBHOOK_EVENT_TYPES } from "../webhooks";
+import { emitWebhookEvent, WEBHOOK_EVENT_TYPES, type WebhookData } from "../webhooks";
 import { optionalEnv, parseOptionalBoolean } from "./env";
 import type { AuthDatabase } from "./types";
 
@@ -101,6 +104,8 @@ export type StripeProvisionResult = {
 	seatPriceId?: string;
 };
 
+type StripeProvisioningInput = BillingPlanInput & { stripe?: StripeProductInput };
+
 /**
  * Create a Stripe Product plus its primary Price, and optionally an annual price
  * and a per-seat price, from validated admin input. Subscription plans get
@@ -115,65 +120,62 @@ async function createStripeProductWithPrices(
 	const recurring = context.planType !== "one_time";
 	const interval = input.interval ?? "month";
 
-	const product = await client.products.create({
-		name: context.productName,
-		...(context.description ? { description: context.description } : {}),
-		...(input.statementDescriptor ? { statement_descriptor: input.statementDescriptor } : {}),
-		...(input.unitLabel ? { unit_label: input.unitLabel } : {}),
-		...(input.taxCode ? { tax_code: input.taxCode } : {}),
-		...(input.url ? { url: input.url } : {}),
-	});
+	const productParams: Stripe.ProductCreateParams = { name: context.productName };
+	if (context.description) productParams.description = context.description;
+	if (input.statementDescriptor) productParams.statement_descriptor = input.statementDescriptor;
+	if (input.unitLabel) productParams.unit_label = input.unitLabel;
+	if (input.taxCode) productParams.tax_code = input.taxCode;
+	if (input.url) productParams.url = input.url;
+	const product = await client.products.create(productParams);
 
-	const basePrice = await client.prices.create({
+	const basePriceParams: Stripe.PriceCreateParams = {
 		product: product.id,
 		currency: input.currency,
 		unit_amount: toMinorUnits(input.amount, input.currency),
-		...(input.nickname ? { nickname: input.nickname } : {}),
-		...(input.lookupKey ? { lookup_key: input.lookupKey } : {}),
-		...(input.taxBehavior ? { tax_behavior: input.taxBehavior } : {}),
-		...(recurring
-			? {
-					recurring: {
-						interval,
-						...(input.intervalCount ? { interval_count: input.intervalCount } : {}),
-						...(input.usageType ? { usage_type: input.usageType } : {}),
-					},
-				}
-			: {}),
-	});
-
-	const result: StripeProvisionResult = {
-		productId: product.id,
-		priceId: basePrice.id,
-		...(basePrice.lookup_key ? { lookupKey: basePrice.lookup_key } : {}),
 	};
+	if (input.nickname) basePriceParams.nickname = input.nickname;
+	if (input.lookupKey) basePriceParams.lookup_key = input.lookupKey;
+	if (input.taxBehavior) basePriceParams.tax_behavior = input.taxBehavior;
+	if (recurring) {
+		basePriceParams.recurring = {
+			interval,
+			interval_count: input.intervalCount,
+			usage_type: input.usageType,
+		};
+	}
+	const basePrice = await client.prices.create(basePriceParams);
+
+	const result: StripeProvisionResult = { productId: product.id, priceId: basePrice.id };
+	if (basePrice.lookup_key) result.lookupKey = basePrice.lookup_key;
 
 	if (recurring && input.annualAmount !== undefined) {
-		const annual = await client.prices.create({
+		const annualParams: Stripe.PriceCreateParams = {
 			product: product.id,
 			currency: input.currency,
 			unit_amount: toMinorUnits(input.annualAmount, input.currency),
-			...(input.annualLookupKey ? { lookup_key: input.annualLookupKey } : {}),
-			...(input.taxBehavior ? { tax_behavior: input.taxBehavior } : {}),
 			recurring: { interval: "year" },
-		});
+		};
+		if (input.annualLookupKey) annualParams.lookup_key = input.annualLookupKey;
+		if (input.taxBehavior) annualParams.tax_behavior = input.taxBehavior;
+		const annual = await client.prices.create(annualParams);
 		result.annualDiscountPriceId = annual.id;
 		if (annual.lookup_key) result.annualDiscountLookupKey = annual.lookup_key;
 	}
 
 	if (recurring && input.seatAmount !== undefined) {
-		const seat = await client.prices.create({
+		const seatParams: Stripe.PriceCreateParams = {
 			product: product.id,
 			currency: input.currency,
 			unit_amount: toMinorUnits(input.seatAmount, input.currency),
-			...(input.seatLookupKey ? { lookup_key: input.seatLookupKey } : {}),
-			...(input.taxBehavior ? { tax_behavior: input.taxBehavior } : {}),
 			recurring: {
 				interval,
-				...(input.intervalCount ? { interval_count: input.intervalCount } : {}),
-				...(input.usageType ? { usage_type: input.usageType } : {}),
+				interval_count: input.intervalCount,
+				usage_type: input.usageType,
 			},
-		});
+		};
+		if (input.seatLookupKey) seatParams.lookup_key = input.seatLookupKey;
+		if (input.taxBehavior) seatParams.tax_behavior = input.taxBehavior;
+		const seat = await client.prices.create(seatParams);
 		result.seatPriceId = seat.id;
 	}
 
@@ -188,10 +190,9 @@ async function createStripeProductWithPrices(
  */
 export async function applyStripeProvisioning(
 	env: AuthEnv,
-	input: unknown,
-): Promise<{ [key: string]: unknown }> {
-	const value = (input ?? {}) as { [key: string]: unknown };
-	if (value.stripe === undefined || value.stripe === null) return value;
+	input: StripeProvisioningInput,
+): Promise<BillingPlanInput> {
+	if (!input.stripe) return input;
 
 	const secrets = stripeSecretConfig(env);
 	if (!secrets) {
@@ -200,41 +201,36 @@ export async function applyStripeProvisioning(
 		});
 	}
 
-	const provision = validateStripeProductInput(value.stripe, "stripe");
-	const planType: BillingPlanType = value.type === "one_time" ? "one_time" : "subscription";
-	const label = typeof value.label === "string" ? value.label.trim() : "";
-	const name = typeof value.name === "string" ? value.name.trim() : "";
+	const provision = validateStripeProductInput(input.stripe, "stripe");
+	const planType: BillingPlanType = input.type === "one_time" ? "one_time" : "subscription";
+	const label = input.label?.trim() ?? "";
+	const name = input.name?.trim() ?? "";
 	const productName = provision.productName ?? (label || name);
 	if (!productName) {
 		throw new APIError("BAD_REQUEST", { message: "A product name is required." });
 	}
 	const description =
 		provision.description ??
-		(typeof value.description === "string" && value.description.trim()
-			? value.description.trim()
-			: undefined);
+		input.description?.trim();
 
 	const client = createStripeClient(env, secrets.secretKey);
 	const result = await createStripeProductWithPrices(client, provision, {
 		planType,
 		productName,
-		...(description ? { description } : {}),
+		description,
 	});
 
-	const rest = { ...value };
-	delete rest.stripe;
-	return {
-		...rest,
-		priceId: result.priceId,
-		...(result.lookupKey ? { lookupKey: result.lookupKey } : {}),
-		...(result.annualDiscountPriceId
-			? { annualDiscountPriceId: result.annualDiscountPriceId }
-			: {}),
-		...(result.annualDiscountLookupKey
-			? { annualDiscountLookupKey: result.annualDiscountLookupKey }
-			: {}),
-		...(result.seatPriceId ? { seatPriceId: result.seatPriceId } : {}),
-	};
+	const { stripe: _, ...plan } = input;
+	const provisioned: BillingPlanInput = { ...plan, priceId: result.priceId };
+	if (result.lookupKey) provisioned.lookupKey = result.lookupKey;
+	if (result.annualDiscountPriceId) {
+		provisioned.annualDiscountPriceId = result.annualDiscountPriceId;
+	}
+	if (result.annualDiscountLookupKey) {
+		provisioned.annualDiscountLookupKey = result.annualDiscountLookupKey;
+	}
+	if (result.seatPriceId) provisioned.seatPriceId = result.seatPriceId;
+	return provisioned;
 }
 
 export type ResolvedStripePrice = {
@@ -243,6 +239,13 @@ export type ResolvedStripePrice = {
 	interval?: string;
 	intervalCount?: number;
 };
+
+const resolvedStripePriceSchema = z.object({
+	amount: z.number().nullable(),
+	currency: z.string(),
+	interval: z.string().optional(),
+	intervalCount: z.number().optional(),
+});
 
 const PRICE_CACHE_PREFIX = "passport:billing:price:";
 const PRICE_CACHE_TTL_SECONDS = 3600;
@@ -269,20 +272,20 @@ export async function resolveStripePrices(
 	for (const id of uniqueIds) {
 		const cached = await kv.get(`${PRICE_CACHE_PREFIX}${id}`);
 		if (cached) {
-			result[id] = JSON.parse(cached) as ResolvedStripePrice;
+				result[id] = resolvedStripePriceSchema.parse(JSON.parse(cached));
 			continue;
 		}
 		client ??= createStripeClient(env, secrets.secretKey);
 		try {
 			const price = await client.prices.retrieve(id);
-			const resolved: ResolvedStripePrice = {
-				amount: price.unit_amount ?? null,
-				currency: price.currency,
-				...(price.recurring?.interval ? { interval: price.recurring.interval } : {}),
-				...(price.recurring?.interval_count
-					? { intervalCount: price.recurring.interval_count }
-					: {}),
-			};
+				const resolved: ResolvedStripePrice = {
+					amount: price.unit_amount ?? null,
+					currency: price.currency,
+				};
+				if (price.recurring?.interval) resolved.interval = price.recurring.interval;
+				if (price.recurring?.interval_count) {
+					resolved.intervalCount = price.recurring.interval_count;
+				}
 			result[id] = resolved;
 			await kv.put(`${PRICE_CACHE_PREFIX}${id}`, JSON.stringify(resolved), {
 				expirationTtl: PRICE_CACHE_TTL_SECONDS,
@@ -311,7 +314,7 @@ async function emitBillingWebhook(
 	env: AuthEnv,
 	db: AuthDatabase,
 	type: (typeof WEBHOOK_EVENT_TYPES)[keyof typeof WEBHOOK_EVENT_TYPES],
-	data: { [key: string]: unknown },
+	data: WebhookData,
 ) {
 	await emitWebhookEvent(env, db, type, data);
 }
@@ -332,8 +335,8 @@ async function emitBillingWebhook(
  */
 async function reconcileSubscriptionCustomer(db: AuthDatabase, subscription: Stripe.Subscription) {
 	const stripeSubscriptionId = subscription.id;
-	const customerId =
-		typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+	const customer = z.string().safeParse(subscription.customer);
+	const customerId = customer.success ? customer.data : subscription.customer.id;
 	if (!stripeSubscriptionId || !customerId) return;
 	await db
 		.update(schema.subscription)
@@ -426,27 +429,19 @@ function checkoutSessionParams(env: AuthEnv) {
 	const defaults = stripeCheckoutDefaults(env);
 	return {
 		params: {
-			...(defaults.allowPromotionCodes === undefined
-				? {}
-				: { allow_promotion_codes: defaults.allowPromotionCodes }),
-			...(defaults.automaticTaxEnabled === undefined
-				? {}
-				: { automatic_tax: { enabled: defaults.automaticTaxEnabled } }),
-			...(defaults.taxIDCollectionEnabled === undefined
-				? {}
-				: { tax_id_collection: { enabled: defaults.taxIDCollectionEnabled } }),
-			...(defaults.billingAddressCollection
-				? { billing_address_collection: defaults.billingAddressCollection }
-				: {}),
-			...(defaults.customTextSubmitMessage
-				? {
-						custom_text: {
-							submit: {
-								message: defaults.customTextSubmitMessage,
-							},
-						},
-					}
-				: {}),
+			allow_promotion_codes: defaults.allowPromotionCodes,
+			automatic_tax:
+				defaults.automaticTaxEnabled === undefined
+					? undefined
+					: { enabled: defaults.automaticTaxEnabled },
+			tax_id_collection:
+				defaults.taxIDCollectionEnabled === undefined
+					? undefined
+					: { enabled: defaults.taxIDCollectionEnabled },
+			billing_address_collection: defaults.billingAddressCollection,
+			custom_text: defaults.customTextSubmitMessage
+				? { submit: { message: defaults.customTextSubmitMessage } }
+				: undefined,
 		},
 	};
 }
@@ -590,12 +585,12 @@ export async function recordOneTimePurchase(
 	const referenceId = metadata.passportReferenceId?.trim() || session.client_reference_id;
 	if (!plan || !referenceId) return;
 
-	const customerId =
-		typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
-	const paymentIntentId =
-		typeof session.payment_intent === "string"
-			? session.payment_intent
-			: (session.payment_intent?.id ?? null);
+	const customer = z.string().safeParse(session.customer);
+	const paymentIntent = z.string().safeParse(session.payment_intent);
+	const customerId = customer.success ? customer.data : (session.customer?.id ?? null);
+	const paymentIntentId = paymentIntent.success
+		? paymentIntent.data
+		: (session.payment_intent?.id ?? null);
 
 	const [row] = await db
 		.insert(schema.oneTimePurchase)

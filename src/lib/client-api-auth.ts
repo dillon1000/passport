@@ -7,6 +7,7 @@
  */
 import { verifyJwsAccessToken } from "better-auth/oauth2";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 
 import * as schema from "../db/schema";
 import {
@@ -60,9 +61,26 @@ type LiveClient = {
 	confidential: boolean;
 };
 
-function isRecord(value: unknown): value is { [key: string]: unknown } {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+const rs256HeaderSchema = z.object({ alg: z.literal("RS256") }).passthrough();
+const verifiedAccessTokenSchema = z.object({
+	sub: z.string().min(1),
+	azp: z.string().min(1),
+	iss: z.string(),
+	aud: z.union([z.string(), z.array(z.string())]),
+	exp: z.number().finite(),
+	scope: z.string(),
+});
+const publicJWKSchema = z.object({
+	kty: z.string().min(1),
+	use: z.string().optional(),
+	kid: z.string().optional(),
+	alg: z.string().optional(),
+	n: z.string().optional(),
+	e: z.string().optional(),
+	crv: z.string().optional(),
+	x: z.string().optional(),
+	y: z.string().optional(),
+});
 
 function decodeBase64URL(value: string) {
 	const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
@@ -87,8 +105,8 @@ export function extractClientAPIBearerToken(
 export function assertRS256ClientAPIJWT(token: string, passportOrigin: string) {
 	try {
 		const [encodedHeader] = token.split(".");
-		const header = JSON.parse(decodeBase64URL(encodedHeader)) as unknown;
-		if (!isRecord(header) || header.alg !== "RS256") {
+		const header = rs256HeaderSchema.safeParse(JSON.parse(decodeBase64URL(encodedHeader)));
+		if (!header.success) {
 			throw invalidClientAPITokenError(passportOrigin);
 		}
 	} catch (error) {
@@ -97,7 +115,7 @@ export function assertRS256ClientAPIJWT(token: string, passportOrigin: string) {
 	}
 }
 
-function audienceIncludes(audience: unknown, expected: string) {
+function audienceIncludes(audience: string | string[], expected: string) {
 	return (
 		audience === expected ||
 		(Array.isArray(audience) && audience.length === 1 && audience[0] === expected)
@@ -124,22 +142,13 @@ export function validateDelegatedAccessTokenClaims({
 	passportOrigin: string;
 	now?: Date;
 }): DelegatedAccessTokenClaims {
-	if (!isRecord(payload)) throw invalidClientAPITokenError(passportOrigin);
-
-	const scope = payload.scope;
-	const scopes =
-		typeof scope === "string" ? scope.split(" ").map((item) => item.trim()).filter(Boolean) : [];
+	const parsed = verifiedAccessTokenSchema.safeParse(payload);
+	if (!parsed.success) throw invalidClientAPITokenError(passportOrigin);
+	const scopes = parsed.data.scope.split(" ").map((item) => item.trim()).filter(Boolean);
 	const valid =
-		typeof payload.sub === "string" &&
-		Boolean(payload.sub) &&
-		typeof payload.azp === "string" &&
-		Boolean(payload.azp) &&
-		payload.iss === issuer &&
-		audienceIncludes(payload.aud, audience) &&
-		typeof payload.exp === "number" &&
-		Number.isFinite(payload.exp) &&
-		payload.exp > Math.floor(now.getTime() / 1_000) &&
-		typeof scope === "string";
+		parsed.data.iss === issuer &&
+		audienceIncludes(parsed.data.aud, audience) &&
+		parsed.data.exp > Math.floor(now.getTime() / 1_000);
 	if (!valid) throw invalidClientAPITokenError(passportOrigin);
 
 	const missingScopes = requiredScopes.filter((required) => !scopes.includes(required));
@@ -148,11 +157,11 @@ export function validateDelegatedAccessTokenClaims({
 	}
 
 	return {
-		sub: payload.sub as string,
-		azp: payload.azp as string,
-		iss: payload.iss as string,
-		aud: payload.aud as string | string[],
-		exp: payload.exp as number,
+		sub: parsed.data.sub,
+		azp: parsed.data.azp,
+		iss: parsed.data.iss,
+		aud: parsed.data.aud,
+		exp: parsed.data.exp,
 		scopes,
 	};
 }
@@ -299,10 +308,10 @@ async function localJWKS(db: AuthDatabase, now: Date) {
 					row.expiresAt.getTime() + JWT_KEY_GRACE_PERIOD_MS > now.getTime(),
 			)
 			.map((row) => {
-				const publicKey = JSON.parse(row.publicKey) as unknown;
-				if (!isRecord(publicKey)) throw new TypeError("Stored JWKS public key is invalid.");
+				const publicKey = publicJWKSchema.safeParse(JSON.parse(row.publicKey));
+				if (!publicKey.success) throw new TypeError("Stored JWKS public key is invalid.");
 				return {
-					...publicKey,
+					...publicKey.data,
 					alg: "RS256",
 					kid: row.id,
 					use: "sig",

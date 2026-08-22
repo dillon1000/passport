@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type { RequestLocation } from "../lib/request-location";
+import type { BillingLimits, BillingPlanLineItem } from "../lib/billing";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -817,9 +818,9 @@ export const billingPlan = pgTable(
     // by anyone who has the direct /billing/product/:id deeplink.
     hidden: boolean("hidden").default(false).notNull(),
     displayOrder: integer("display_order").default(0).notNull(),
-    limits: jsonb("limits").$type<{ [key: string]: unknown }>(),
+    limits: jsonb("limits").$type<BillingLimits>(),
     entitlements: jsonb("entitlements").$type<string[]>(),
-    lineItems: jsonb("line_items").$type<{ [key: string]: unknown }[]>(),
+    lineItems: jsonb("line_items").$type<BillingPlanLineItem[]>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()

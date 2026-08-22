@@ -19,16 +19,15 @@ type ThemeStore = {
 };
 
 function hasDOM() {
-	return typeof document !== "undefined";
+	return globalThis.document !== undefined;
 }
 
 function hasLocalStorage() {
-	return typeof localStorage !== "undefined";
+	return globalThis.localStorage !== undefined;
 }
 
 export function systemTheme(): Theme {
-	if (typeof window === "undefined") return "light";
-	return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+	return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function currentTheme(): Theme {

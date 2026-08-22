@@ -206,7 +206,7 @@ export function Consent() {
 							<AppMark client={client} published={published} name={clientName} />
 							<div className="min-w-0 flex-1">
 								<h1 className="text-2xl leading-7 font-semibold tracking-tight">
-									{clientName} wants access
+									{clientName} wants to connect with your {brand.name} account
 								</h1>
 								<p className="mt-1 text-sm text-muted-foreground">
 									Review what {clientName} can do with your {brand.name} account.
@@ -229,7 +229,7 @@ export function Consent() {
 							<div>
 								<p className="font-medium">Unpublished application</p>
 								<p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-									Passport has not verified this application and its redirect. Continue only if you trust the developer.
+									{brand.name} has not verified this application and its redirect. Continue only if you trust the developer.
 								</p>
 							</div>
 						</div>

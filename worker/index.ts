@@ -7,6 +7,7 @@
  */
 import { tracing } from "cloudflare:workers";
 import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { z } from "zod";
 
 import {
 	createWorkerApp,
@@ -36,7 +37,7 @@ import {
 import { auth } from "../src/auth";
 import { createDb } from "../src/db/client";
 import * as schema from "../src/db/schema";
-import { parseOAuthClientSeeds, type AuthEnv } from "../src/env";
+import { parseOAuthClientSeeds } from "../src/env";
 import { billingPlanCatalog, billingPlanCatalogEntry, catalogPriceIds } from "../src/lib/billing";
 import {
 	createBillingPlan,
@@ -67,7 +68,7 @@ import {
 	listOneTimePurchases,
 	resolveStripePrices,
 } from "../src/lib/auth-server/stripe";
-import { auditMetadataJSON } from "../src/lib/admin-audit";
+import { auditMetadataJSON, sanitizeAuditMetadata } from "../src/lib/admin-audit";
 import { DEFAULT_EMAIL_NOTIFICATION_PREFERENCES } from "../src/lib/notification-preferences";
 import { parseAccountActivityMetadata } from "../src/lib/account-activity";
 import { emitWebhookEvent, generateWebhookSecret, WEBHOOK_EVENT_TYPES } from "../src/lib/webhooks";
@@ -104,45 +105,46 @@ export { DataExportWorkflow };
 export { AuthSecondaryStorage } from "./auth-secondary-storage";
 export { WebhookDeliveryWorkflow } from "./webhooks";
 
-type OAuthClientAPIShape = {
-	client_id: string;
-	client_secret?: string;
-	client_name?: string;
-	client_uri?: string;
-	logo_uri?: string;
-	tos_uri?: string;
-	policy_uri?: string;
-	redirect_uris?: string[];
-	post_logout_redirect_uris?: string[];
-	scope?: string;
-	public?: boolean;
-	disabled?: boolean;
-	platform_admin_only?: boolean;
-	skip_consent?: boolean;
-	enable_end_session?: boolean;
-	grant_types?: OAuthGrantType[];
-	metadata?: unknown;
-	[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY]?: unknown;
-};
+const oauthClientAPIRecordSchema = z.object({
+	client_id: z.string(),
+	client_secret: z.string().optional(),
+	client_name: z.string().optional(),
+	client_uri: z.string().optional(),
+	logo_uri: z.string().optional(),
+	tos_uri: z.string().optional(),
+	policy_uri: z.string().optional(),
+	redirect_uris: z.array(z.string()).optional(),
+	post_logout_redirect_uris: z.array(z.string()).optional(),
+	scope: z.union([z.string(), z.array(z.string())]).optional(),
+	public: z.boolean().optional(),
+	disabled: z.boolean().optional(),
+	platform_admin_only: z.boolean().optional(),
+	skip_consent: z.boolean().optional(),
+	enable_end_session: z.boolean().optional(),
+	grant_types: z.array(z.enum(["authorization_code", "client_credentials", "refresh_token"])).optional(),
+	metadata: z.json().optional(),
+	[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY]: z.array(z.string()).optional(),
+});
+type OAuthClientAPIRecord = z.infer<typeof oauthClientAPIRecordSchema>;
 
-type OAuthConsentAPIShape = {
-	id: string;
-	clientId: string;
-	scopes?: string[];
-	createdAt?: Date | string | null;
-	updatedAt?: Date | string | null;
-};
+const oauthConsentAPIRecordSchema = z.object({
+	id: z.string(),
+	clientId: z.string(),
+	scopes: z.array(z.string()).optional(),
+	createdAt: z.union([z.date(), z.string(), z.null()]).optional(),
+	updatedAt: z.union([z.date(), z.string(), z.null()]).optional(),
+});
+type OAuthConsentAPIRecord = z.infer<typeof oauthConsentAPIRecordSchema>;
 
-type AdminUserAPIShape = {
-	id: string;
-	email?: string | null;
-	role?: string | null;
-	banned?: boolean | null;
-};
+const adminUserAPIRecordSchema = z.object({
+	id: z.string(),
+	email: z.string().nullable().optional(),
+	role: z.string().nullable().optional(),
+	banned: z.boolean().nullable().optional(),
+});
+type AdminUserAPIRecord = z.infer<typeof adminUserAPIRecordSchema>;
 
-type LinkedAccountAPIShape = {
-	providerId: string;
-};
+const linkedAccountAPIRecordSchema = z.object({ providerId: z.string() });
 
 function toISOString(value: Date | string | null | undefined) {
 	if (!value) return null;
@@ -154,7 +156,7 @@ function scopesFrom(value: string | string[] | null | undefined) {
 	return value?.split(" ").map((scope) => scope.trim()).filter(Boolean) ?? [];
 }
 
-function mapOAuthClient(client: OAuthClientAPIShape): OAuthClientWithSecret {
+function mapOAuthClient(client: OAuthClientAPIRecord): OAuthClientWithSecret {
 	return {
 		clientId: client.client_id,
 		name: client.client_name ?? client.client_id,
@@ -171,7 +173,9 @@ function mapOAuthClient(client: OAuthClientAPIShape): OAuthClientWithSecret {
 		skipConsent: client.skip_consent,
 		enableEndSession: client.enable_end_session,
 		grantTypes: client.grant_types,
-		allowedAudiences: allowedAudiencesFromMetadata(client),
+		allowedAudiences:
+			allowedAudiencesFromMetadata(client.metadata) ??
+			client[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY],
 		clientSecret: client.client_secret,
 	};
 }
@@ -261,7 +265,7 @@ async function createMachineOAuthClient(
 	const now = new Date();
 	const clientId = `client_${randomBase64URL(18)}`;
 	const clientSecret = randomBase64URL(32);
-	const [client] = await createDb(env as AuthEnv)
+	const [client] = await createDb(env)
 		.insert(schema.oauthClient)
 		.values({
 			id: crypto.randomUUID(),
@@ -334,7 +338,7 @@ async function updateMachineOAuthClient(
 		update.backchannelLogoutUri = input.backchannelLogoutUri;
 	}
 
-	const [client] = await createDb(env as AuthEnv)
+	const [client] = await createDb(env)
 		.update(schema.oauthClient)
 		.set(update)
 		.where(eq(schema.oauthClient.clientId, clientId))
@@ -376,7 +380,7 @@ async function persistOAuthClientPassportFields(
 	}
 	if (input.verified !== undefined) update.verified = input.verified;
 	if (Object.keys(update).length === 0) return undefined;
-	await createDb(env as AuthEnv)
+	await createDb(env)
 		.update(schema.oauthClient)
 		.set({ ...update, updatedAt: new Date() })
 		.where(eq(schema.oauthClient.clientId, clientId));
@@ -390,13 +394,12 @@ function pageOffset(page: PageInput) {
 function pageSlice<T>(items: T[], page: PageInput): PageResult<T> {
 	const offset = pageOffset(page);
 	const end = offset + page.limit;
-	return {
-		items: items.slice(offset, end),
-		...(items.length > end ? { nextCursor: String(end) } : {}),
-	};
+	return items.length > end
+		? { items: items.slice(offset, end), nextCursor: String(end) }
+		: { items: items.slice(offset, end) };
 }
 
-function sortConsentsByMostRecent(consents: OAuthConsentAPIShape[]) {
+function sortConsentsByMostRecent(consents: OAuthConsentAPIRecord[]) {
 	return [...consents].sort((a, b) =>
 		String(b.updatedAt ?? b.createdAt ?? "").localeCompare(
 			String(a.updatedAt ?? a.createdAt ?? ""),
@@ -409,7 +412,7 @@ async function getOAuthClientsByClientId(env: Env, clientIds: string[]) {
 		return new Map<string, OAuthClientSummary>();
 	}
 
-	const clients = await createDb(env as AuthEnv)
+	const clients = await createDb(env)
 		.select()
 		.from(schema.oauthClient)
 		.where(inArray(schema.oauthClient.clientId, clientIds));
@@ -427,7 +430,7 @@ function requestIP(request: Request) {
 function parseAuditMetadata(value: string | null | undefined) {
 	if (!value) return undefined;
 	try {
-		return JSON.parse(value) as AdminAuditEventSummary["metadata"];
+		return sanitizeAuditMetadata(JSON.parse(value));
 	} catch {
 		return value;
 	}
@@ -503,14 +506,14 @@ async function getAdminUser(
 	env: Env,
 	headers: Headers,
 	userId: string,
-): Promise<AdminUserAPIShape> {
-	const user = (await auth(env as AuthEnv).api.getUser({
+): Promise<AdminUserAPIRecord> {
+	const response = adminUserAPIRecordSchema.nullable().safeParse(await auth(env).api.getUser({
 		headers,
 		query: {
 			id: userId,
 		},
-	})) as AdminUserAPIShape | null;
-	return user ?? { id: userId };
+	}));
+	return response.success && response.data ? response.data : { id: userId };
 }
 
 /**
@@ -523,7 +526,7 @@ async function getAdminUser(
  */
 async function propagateBackchannelLogout(env: Env, userId: string) {
 	try {
-		const db = createDb(env as AuthEnv);
+		const db = createDb(env);
 		const targets = await db
 			.selectDistinct({
 				clientId: schema.oauthConsent.clientId,
@@ -542,20 +545,20 @@ async function propagateBackchannelLogout(env: Env, userId: string) {
 			);
 		if (targets.length === 0) return;
 
-		const issuer = backchannelLogoutIssuer((env as AuthEnv).BETTER_AUTH_URL);
-		const authInstance = auth(env as AuthEnv);
+		const issuer = backchannelLogoutIssuer((env).BETTER_AUTH_URL);
+		const authInstance = auth(env);
 		for (const target of targets) {
 			if (!target.uri) continue;
 			try {
-				const { token } = (await authInstance.api.signJWT({
-					body: {
+			const { token } = z.object({ token: z.string() }).parse(await authInstance.api.signJWT({
+				body: {
 						payload: buildLogoutTokenClaims({
 							issuer,
 							audience: target.clientId,
 							subject: userId,
 						}),
 					},
-				})) as { token: string };
+			}));
 				await fetch(target.uri, {
 					method: "POST",
 					headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -576,10 +579,10 @@ async function updateAccountPassword(
 	env: Env,
 	input: AccountPasswordInput,
 ) {
-	const authInstance = auth(env as AuthEnv);
-	const accounts = (await authInstance.api.listUserAccounts({
+	const authInstance = auth(env);
+	const accounts = z.array(linkedAccountAPIRecordSchema).parse(await authInstance.api.listUserAccounts({
 		headers: request.headers,
-	})) as LinkedAccountAPIShape[];
+	}));
 	const hasCredentialAccount = accounts.some((account) => account.providerId === "credential");
 
 	if (hasCredentialAccount) {
@@ -607,7 +610,7 @@ async function updateAccountPassword(
 }
 
 async function getEmailNotificationPreferences(env: Env, userId: string) {
-	const [row] = await createDb(env as AuthEnv)
+	const [row] = await createDb(env)
 		.select({
 			securityAlerts: schema.emailNotificationPreference.securityAlerts,
 		})
@@ -621,7 +624,7 @@ const emailNotificationPreferences: EmailNotificationPreferenceService = {
 	get: async ({ env, session }) =>
 		getEmailNotificationPreferences(env, session.user.id),
 	update: async ({ env, session }, preferences) => {
-		const [row] = await createDb(env as AuthEnv)
+		const [row] = await createDb(env)
 			.insert(schema.emailNotificationPreference)
 			.values({
 				userId: session.user.id,
@@ -645,7 +648,7 @@ async function resolveConsentClientMetadata(
 	env: Env,
 	clientId: string,
 ): Promise<ConsentClientMetadata | null> {
-	const db = createDb(env as AuthEnv);
+	const db = createDb(env);
 	const [client] = await db
 		.select()
 		.from(schema.oauthClient)
@@ -655,7 +658,7 @@ async function resolveConsentClientMetadata(
 		return consentMetadataFromRegisteredClient(mapDatabaseClient(client));
 	}
 
-	const seedClient = parseOAuthClientSeeds((env as AuthEnv).OAUTH_CLIENTS).find(
+	const seedClient = parseOAuthClientSeeds((env).OAUTH_CLIENTS).find(
 		(seed) => seed.id === clientId,
 	);
 	return seedClient ? consentMetadataFromSeedClient(seedClient) : null;
@@ -663,16 +666,16 @@ async function resolveConsentClientMetadata(
 
 const app = createWorkerApp({
 	tracer: tracing,
-	authHandler: (request, env) => auth(env as AuthEnv).handler(request),
-	agentConfiguration: ({ env }) => auth(env as AuthEnv).api.getAgentConfiguration(),
+	authHandler: (request, env) => auth(env).handler(request),
+	agentConfiguration: ({ env }) => auth(env).api.getAgentConfiguration(),
 	getSession: (request, env) =>
-		auth(env as AuthEnv).api.getSession({
+		auth(env).api.getSession({
 			headers: request.headers,
 		}),
 	signInMethods: {
 		discover: async ({ env }, credential) => {
 			const normalized = credential.trim().toLowerCase();
-			const db = createDb(env as AuthEnv);
+			const db = createDb(env);
 			const [matchedUser] = await db
 				.select({ id: schema.user.id, email: schema.user.email })
 				.from(schema.user)
@@ -702,7 +705,7 @@ const app = createWorkerApp({
 					.limit(1),
 			]);
 			const providerIds = new Set(linkedAccounts.map((account) => account.providerId));
-			const configuredProviders = socialProviders(env as AuthEnv);
+			const configuredProviders = socialProviders(env);
 			const socialProviderIds = ["github", "discord", "twitter"] as const;
 
 			return {
@@ -718,10 +721,10 @@ const app = createWorkerApp({
 	},
 	applications: {
 		list: async ({ request, env }, page) => {
-			const authInstance = auth(env as AuthEnv);
-			const consents = (await authInstance.api.getOAuthConsents({
+			const authInstance = auth(env);
+			const consents = z.array(oauthConsentAPIRecordSchema).parse(await authInstance.api.getOAuthConsents({
 				headers: request.headers,
-			})) as OAuthConsentAPIShape[];
+			}));
 			const sortedConsents = sortConsentsByMostRecent(consents);
 			const visibleConsents = pageSlice(sortedConsents, page);
 			const clientIds = [...new Set(visibleConsents.items.map((consent) => consent.clientId))];
@@ -740,13 +743,12 @@ const app = createWorkerApp({
 				};
 			});
 
-			return {
-				items: applications,
-				...(visibleConsents.nextCursor ? { nextCursor: visibleConsents.nextCursor } : {}),
-			};
+			return visibleConsents.nextCursor
+				? { items: applications, nextCursor: visibleConsents.nextCursor }
+				: { items: applications };
 		},
 		revoke: async ({ request, env, consentId }) => {
-			await auth(env as AuthEnv).api.deleteOAuthConsent({
+			await auth(env).api.deleteOAuthConsent({
 				headers: request.headers,
 				body: {
 					id: consentId,
@@ -760,20 +762,20 @@ const app = createWorkerApp({
 	adminAudit: {
 		list: async ({ env }, page) => {
 			const offset = pageOffset(page);
-			const rows = await createDb(env as AuthEnv)
+			const rows = await createDb(env)
 				.select()
 				.from(schema.adminAuditEvent)
 				.orderBy(desc(schema.adminAuditEvent.createdAt))
 				.limit(page.limit + 1)
 				.offset(offset);
 			const visibleRows = rows.slice(0, page.limit);
-			return {
-				items: visibleRows.map(mapAuditEvent),
-				...(rows.length > page.limit ? { nextCursor: String(offset + page.limit) } : {}),
-			};
+			const items = visibleRows.map(mapAuditEvent);
+			return rows.length > page.limit
+				? { items, nextCursor: String(offset + page.limit) }
+				: { items };
 		},
 		record: async ({ request, env, session }, input) => {
-			await createDb(env as AuthEnv).insert(schema.adminAuditEvent).values({
+			await createDb(env).insert(schema.adminAuditEvent).values({
 				id: crypto.randomUUID(),
 				actorUserId: session.user.id,
 				actorEmail: session.user.email,
@@ -792,7 +794,7 @@ const app = createWorkerApp({
 	},
 	adminUsers: {
 		setRole: async ({ request, env }, userId, role) => {
-			await auth(env as AuthEnv).api.setRole({
+			await auth(env).api.setRole({
 				headers: request.headers,
 				body: {
 					userId,
@@ -800,7 +802,7 @@ const app = createWorkerApp({
 				},
 			});
 			const user = await getAdminUser(env, request.headers, userId);
-			await emitWebhookEvent(env as AuthEnv, createDb(env as AuthEnv), WEBHOOK_EVENT_TYPES.USER_ROLE_CHANGED, {
+			await emitWebhookEvent(env, createDb(env), WEBHOOK_EVENT_TYPES.USER_ROLE_CHANGED, {
 				userId: user.id,
 				email: user.email,
 				role: user.role ?? role,
@@ -812,7 +814,7 @@ const app = createWorkerApp({
 			};
 		},
 		ban: async ({ request, env }, userId, input) => {
-			await auth(env as AuthEnv).api.banUser({
+			await auth(env).api.banUser({
 				headers: request.headers,
 				body: {
 					userId,
@@ -821,7 +823,7 @@ const app = createWorkerApp({
 				},
 			});
 			const user = await getAdminUser(env, request.headers, userId);
-			await emitWebhookEvent(env as AuthEnv, createDb(env as AuthEnv), WEBHOOK_EVENT_TYPES.USER_BANNED, {
+			await emitWebhookEvent(env, createDb(env), WEBHOOK_EVENT_TYPES.USER_BANNED, {
 				userId: user.id,
 				email: user.email,
 				banReason: input.banReason ?? null,
@@ -834,14 +836,14 @@ const app = createWorkerApp({
 			};
 		},
 		unban: async ({ request, env }, userId) => {
-			await auth(env as AuthEnv).api.unbanUser({
+			await auth(env).api.unbanUser({
 				headers: request.headers,
 				body: {
 					userId,
 				},
 			});
 			const user = await getAdminUser(env, request.headers, userId);
-			await emitWebhookEvent(env as AuthEnv, createDb(env as AuthEnv), WEBHOOK_EVENT_TYPES.USER_UNBANNED, {
+			await emitWebhookEvent(env, createDb(env), WEBHOOK_EVENT_TYPES.USER_UNBANNED, {
 				userId: user.id,
 				email: user.email,
 			});
@@ -866,7 +868,7 @@ const app = createWorkerApp({
 	activityLog: {
 		list: async ({ env, session }, page) => {
 			const offset = pageOffset(page);
-			const rows = await createDb(env as AuthEnv)
+			const rows = await createDb(env)
 				.select()
 				.from(schema.accountActivityEvent)
 				.where(eq(schema.accountActivityEvent.userId, session.user.id))
@@ -874,8 +876,7 @@ const app = createWorkerApp({
 				.limit(page.limit + 1)
 				.offset(offset);
 			const visibleRows = rows.slice(0, page.limit);
-			return {
-				items: visibleRows.map((event) => ({
+			const items = visibleRows.map((event) => ({
 					id: event.id,
 					type: event.type,
 					createdAt: toISOString(event.createdAt) ?? new Date(0).toISOString(),
@@ -883,29 +884,30 @@ const app = createWorkerApp({
 					location: parseRequestLocation(event.location),
 					userAgent: event.userAgent,
 					metadata: parseAccountActivityMetadata(event.metadata),
-				})),
-				...(rows.length > page.limit ? { nextCursor: String(offset + page.limit) } : {}),
-			};
+				}));
+			return rows.length > page.limit
+				? { items, nextCursor: String(offset + page.limit) }
+				: { items };
 		},
 	},
 	webhooks: {
 		list: async ({ env }, page) => {
 			const offset = pageOffset(page);
-			const rows = await createDb(env as AuthEnv)
+			const rows = await createDb(env)
 				.select()
 				.from(schema.webhookEndpoint)
 				.orderBy(desc(schema.webhookEndpoint.createdAt))
 				.limit(page.limit + 1)
 				.offset(offset);
 			const visibleRows = rows.slice(0, page.limit);
-			return {
-				items: visibleRows.map(mapWebhookEndpoint),
-				...(rows.length > page.limit ? { nextCursor: String(offset + page.limit) } : {}),
-			};
+			const items = visibleRows.map(mapWebhookEndpoint);
+			return rows.length > page.limit
+				? { items, nextCursor: String(offset + page.limit) }
+				: { items };
 		},
 		create: async ({ env, session }, input) => {
 			const secret = generateWebhookSecret();
-			const [row] = await createDb(env as AuthEnv)
+			const [row] = await createDb(env)
 				.insert(schema.webhookEndpoint)
 				.values({
 					id: crypto.randomUUID(),
@@ -920,20 +922,21 @@ const app = createWorkerApp({
 			return { ...mapWebhookEndpoint(row), secret };
 		},
 		update: async ({ env }, id, input) => {
-			const [row] = await createDb(env as AuthEnv)
+			const update: Partial<typeof schema.webhookEndpoint.$inferInsert> = {
+				updatedAt: new Date(),
+			};
+			if (input.events) update.events = input.events;
+			if (input.description !== undefined) update.description = input.description;
+			if (input.disabled !== undefined) update.disabled = input.disabled;
+			const [row] = await createDb(env)
 				.update(schema.webhookEndpoint)
-				.set({
-					...(input.events ? { events: input.events } : {}),
-					...(input.description !== undefined ? { description: input.description } : {}),
-					...(input.disabled !== undefined ? { disabled: input.disabled } : {}),
-					updatedAt: new Date(),
-				})
+				.set(update)
 				.where(eq(schema.webhookEndpoint.id, id))
 				.returning();
 			return row ? mapWebhookEndpoint(row) : null;
 		},
 		remove: async ({ env }, id) => {
-			const rows = await createDb(env as AuthEnv)
+			const rows = await createDb(env)
 				.delete(schema.webhookEndpoint)
 				.where(eq(schema.webhookEndpoint.id, id))
 				.returning({ id: schema.webhookEndpoint.id });
@@ -941,7 +944,7 @@ const app = createWorkerApp({
 		},
 		rotateSecret: async ({ env }, id) => {
 			const secret = generateWebhookSecret();
-			const [row] = await createDb(env as AuthEnv)
+			const [row] = await createDb(env)
 				.update(schema.webhookEndpoint)
 				.set({ secret, updatedAt: new Date() })
 				.where(eq(schema.webhookEndpoint.id, id))
@@ -950,7 +953,7 @@ const app = createWorkerApp({
 		},
 		listDeliveries: async ({ env }, id, page) => {
 			const offset = pageOffset(page);
-			const rows = await createDb(env as AuthEnv)
+			const rows = await createDb(env)
 				.select()
 				.from(schema.webhookDelivery)
 				.where(eq(schema.webhookDelivery.endpointId, id))
@@ -958,8 +961,7 @@ const app = createWorkerApp({
 				.limit(page.limit + 1)
 				.offset(offset);
 			const visibleRows = rows.slice(0, page.limit);
-			return {
-				items: visibleRows.map((row) => ({
+			const items = visibleRows.map((row) => ({
 					id: row.id,
 					eventType: row.eventType,
 					status: row.status,
@@ -968,97 +970,99 @@ const app = createWorkerApp({
 					error: row.error,
 					createdAt: toISOString(row.createdAt) ?? new Date(0).toISOString(),
 					deliveredAt: toISOString(row.deliveredAt),
-				})),
-				...(rows.length > page.limit ? { nextCursor: String(offset + page.limit) } : {}),
-			};
+				}));
+			return rows.length > page.limit
+				? { items, nextCursor: String(offset + page.limit) }
+				: { items };
 		},
 	},
 	billingPlans: {
 		catalog: async (env) => {
-			const plans = await loadBillingPlans(env as AuthEnv, createDb(env as AuthEnv));
-			const prices = await resolveStripePrices(env as AuthEnv, catalogPriceIds(plans));
+			const plans = await loadBillingPlans(env, createDb(env));
+			const prices = await resolveStripePrices(env, catalogPriceIds(plans));
 			return Object.values(billingPlanCatalog(plans, prices));
 		},
 		product: async (env, id) => {
-			const row = await getBillingPlanById(createDb(env as AuthEnv), id);
+			const row = await getBillingPlanById(createDb(env), id);
 			if (!row) return null;
 			const definition = rowToDefinition(row);
-			const prices = await resolveStripePrices(env as AuthEnv, catalogPriceIds([definition]));
+			const prices = await resolveStripePrices(env, catalogPriceIds([definition]));
 			return billingPlanCatalogEntry(definition, row.id, prices);
 		},
-		labels: async (env) => loadRegistryLabels(createDb(env as AuthEnv)),
+		labels: async (env) => loadRegistryLabels(createDb(env)),
 		list: async (env) =>
-			(await listBillingPlans(createDb(env as AuthEnv))).map(mapBillingPlanRow),
+			(await listBillingPlans(createDb(env))).map(mapBillingPlanRow),
 		create: async (env, input) => {
 			// When the payload carries a `stripe` block, create the Stripe
 			// Product/Price(s) first and persist the resulting `price_…` ids.
-			const provisioned = await applyStripeProvisioning(env as AuthEnv, input);
-			const row = await createBillingPlan(createDb(env as AuthEnv), provisioned);
+			const provisioned = await applyStripeProvisioning(env, input);
+			const row = await createBillingPlan(createDb(env), provisioned);
 			if (!row) throw new Error("Could not create billing plan.");
 			return mapBillingPlanRow(row);
 		},
 		update: async (env, id, input) => {
-			const row = await updateBillingPlan(createDb(env as AuthEnv), id, input);
+			const row = await updateBillingPlan(createDb(env), id, input);
 			return row ? mapBillingPlanRow(row) : null;
 		},
 		remove: async (env, id) => {
-			const row = await deleteBillingPlan(createDb(env as AuthEnv), id);
+			const row = await deleteBillingPlan(createDb(env), id);
 			return Boolean(row);
 		},
-		reorder: async (env, order) => reorderBillingPlans(createDb(env as AuthEnv), order),
-		prices: async (env, ids) => resolveStripePrices(env as AuthEnv, ids),
+		reorder: async (env, order) => reorderBillingPlans(createDb(env), order),
+		prices: async (env, ids) => resolveStripePrices(env, ids),
 	},
 	billingRegistry: {
 		entitlements: {
 			list: async (env) =>
-				(await listEntitlements(createDb(env as AuthEnv))).map(mapEntitlementRow),
+				(await listEntitlements(createDb(env))).map(mapEntitlementRow),
 			create: async (env, input) => {
-				const row = await createEntitlement(createDb(env as AuthEnv), input);
+				const row = await createEntitlement(createDb(env), input);
 				if (!row) throw new Error("Could not create entitlement.");
 				return mapEntitlementRow(row);
 			},
 			update: async (env, id, input) => {
-				const row = await updateEntitlement(createDb(env as AuthEnv), id, input);
+				const row = await updateEntitlement(createDb(env), id, input);
 				return row ? mapEntitlementRow(row) : null;
 			},
 			remove: async (env, id) =>
-				Boolean(await deleteEntitlement(createDb(env as AuthEnv), id)),
+				Boolean(await deleteEntitlement(createDb(env), id)),
 		},
 		limits: {
-			list: async (env) => (await listLimits(createDb(env as AuthEnv))).map(mapLimitRow),
+			list: async (env) => (await listLimits(createDb(env))).map(mapLimitRow),
 			create: async (env, input) => {
-				const row = await createLimit(createDb(env as AuthEnv), input);
+				const row = await createLimit(createDb(env), input);
 				if (!row) throw new Error("Could not create limit.");
 				return mapLimitRow(row);
 			},
 			update: async (env, id, input) => {
-				const row = await updateLimit(createDb(env as AuthEnv), id, input);
+				const row = await updateLimit(createDb(env), id, input);
 				return row ? mapLimitRow(row) : null;
 			},
-			remove: async (env, id) => Boolean(await deleteLimit(createDb(env as AuthEnv), id)),
+			remove: async (env, id) => Boolean(await deleteLimit(createDb(env), id)),
 		},
 	},
 	billingCheckout: {
 		create: async (env, input) =>
-			createOneTimeCheckout(env as AuthEnv, createDb(env as AuthEnv), input),
+			createOneTimeCheckout(env, createDb(env), input),
 	},
 	billingPurchases: {
 		list: async (env, input) =>
-			listOneTimePurchases(createDb(env as AuthEnv), input),
+			listOneTimePurchases(createDb(env), input),
 	},
 	adminOAuth: {
 		list: async ({ request, env }, page) => {
-			const clients =
-				((await auth(env as AuthEnv).api.getOAuthClients({
+			const clients = z.array(oauthClientAPIRecordSchema).nullable().parse(
+				await auth(env).api.getOAuthClients({
 					headers: request.headers,
-				})) as OAuthClientAPIShape[] | null) ?? [];
+				}),
+			) ?? [];
 			const result = pageSlice(
 				clients.map((client) => redactClientSecret(mapOAuthClient(client))),
 				page,
 			);
 			if (result.items.length === 0) return result;
 
-			const passportFields = await createDb(env as AuthEnv)
+			const passportFields = await createDb(env)
 				.select({
 					clientId: schema.oauthClient.clientId,
 					backchannelLogoutUri: schema.oauthClient.backchannelLogoutUri,
@@ -1095,7 +1099,7 @@ const app = createWorkerApp({
 			if (hasClientCredentialsGrant(input.grantTypes)) {
 				return createMachineOAuthClient(env, session, input);
 			}
-			const client = (await auth(env as AuthEnv).api.adminCreateOAuthClient({
+			const client = oauthClientAPIRecordSchema.parse(await auth(env).api.adminCreateOAuthClient({
 				headers: request.headers,
 				body: {
 					redirect_uris: input.redirectUris,
@@ -1112,7 +1116,7 @@ const app = createWorkerApp({
 					enable_end_session: input.enableEndSession,
 					metadata: oauthClientMetadata(input.allowedAudiences),
 				},
-			})) as OAuthClientAPIShape;
+			}));
 			const created = mapOAuthClient(client);
 			const storedFields = await persistOAuthClientPassportFields(env, created.clientId, {
 				backchannelLogoutUri: input.backchannelLogoutUri,
@@ -1128,7 +1132,7 @@ const app = createWorkerApp({
 			if (hasClientCredentialsGrant(input.grantTypes)) {
 				return updateMachineOAuthClient(env, clientId, input);
 			}
-			const client = (await auth(env as AuthEnv).api.adminUpdateOAuthClient({
+			const client = oauthClientAPIRecordSchema.parse(await auth(env).api.adminUpdateOAuthClient({
 				headers: request.headers,
 				body: {
 					client_id: clientId,
@@ -1147,7 +1151,7 @@ const app = createWorkerApp({
 						metadata: oauthClientMetadata(input.allowedAudiences),
 					},
 				},
-			})) as OAuthClientAPIShape;
+			}));
 			const updated = redactClientSecret(mapOAuthClient(client));
 			const storedFields = await persistOAuthClientPassportFields(env, clientId, {
 				backchannelLogoutUri: input.backchannelLogoutUri,
@@ -1160,16 +1164,16 @@ const app = createWorkerApp({
 			return storedFields === undefined ? updated : { ...updated, ...storedFields };
 		},
 		rotateSecret: async ({ request, env }, clientId) => {
-			const client = (await auth(env as AuthEnv).api.rotateClientSecret({
+			const client = oauthClientAPIRecordSchema.parse(await auth(env).api.rotateClientSecret({
 				headers: request.headers,
 				body: {
 					client_id: clientId,
 				},
-			})) as OAuthClientAPIShape;
+			}));
 			return mapOAuthClient(client);
 		},
 		setDisabled: async ({ env }, clientId, disabled) => {
-			const db = createDb(env as AuthEnv);
+			const db = createDb(env);
 			const [client] = await db
 				.update(schema.oauthClient)
 				.set({
@@ -1191,7 +1195,7 @@ const worker = {
 		return app.fetch(request, env, context);
 	},
 	scheduled(_controller: ScheduledController, env: Env, context: ExecutionContext) {
-		context.waitUntil(cleanupBillingActionIntents(createDb(env as AuthEnv)));
+		context.waitUntil(cleanupBillingActionIntents(createDb(env)));
 	},
 } satisfies ExportedHandler<Env>;
 

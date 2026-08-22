@@ -10,12 +10,12 @@ export const PASSPORT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 export const PASSPORT_IMAGE_PATH_PREFIX = "/api/profile-images/";
 export const PASSPORT_IMAGE_KEY_PREFIX = "profile-images";
 
-const IMAGE_EXTENSIONS = {
-	"image/gif": "gif",
-	"image/jpeg": "jpg",
-	"image/png": "png",
-	"image/webp": "webp",
-} as const;
+const IMAGE_EXTENSIONS = new Map([
+	["image/gif", "gif"],
+	["image/jpeg", "jpg"],
+	["image/png", "png"],
+	["image/webp", "webp"],
+]);
 
 export type PassportImagePurpose = "profile" | "organization-logo" | "team-logo";
 
@@ -25,7 +25,7 @@ type PassportImageStorage = {
 		key: string,
 		value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob,
 		options?: R2PutOptions,
-	): Promise<unknown>;
+	): Promise<void | R2Object>;
 };
 
 export type PassportImageAssetService = ReturnType<typeof createPassportImageAssetService>;
@@ -72,7 +72,7 @@ export function createPassportImageAssetService(options: {
 		purpose: PassportImagePurpose;
 		assign: (absoluteURL: string) => Promise<string | null | undefined>;
 	}) {
-		const extension = IMAGE_EXTENSIONS[input.file.type as keyof typeof IMAGE_EXTENSIONS];
+		const extension = IMAGE_EXTENSIONS.get(input.file.type);
 		if (!extension) {
 			throw delegatedBadRequest(
 				"invalid_image_type",
