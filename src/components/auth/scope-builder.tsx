@@ -2,10 +2,11 @@
  * OAuth scope selector for managed client forms. Scope metadata comes from the
  * central registry; callers provide the selected scope names and receive the
  * next registry-ordered selection whenever a checkbox changes. The header can
- * copy the current selection for OAuth client configuration.
+ * copy the current selection and exposes optional guidance through a tooltip.
  */
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Copy } from "@/lib/icons";
+import { Check, CircleHelp, Copy } from "@/lib/icons";
+import { Tooltip } from "@cloudflare/kumo";
 
 import { Checkbox } from "@/components/kumo/primitives/checkbox";
 import { Button } from "@/components/kumo/primitives/button";
@@ -102,9 +103,22 @@ export function ScopeBuilder({
 		<fieldset className="flex flex-col gap-3">
 			<legend className="sr-only">{title}</legend>
 			<div id={legendId} className="flex flex-wrap items-center justify-between gap-2">
-				<span>
-					<span className="block text-sm font-medium">{title}</span>
-					{description ? <span className="block text-xs text-muted-foreground">{description}</span> : null}
+				<span className="inline-flex items-center gap-1 text-sm font-medium">
+					{title}
+					{description ? (
+						<Tooltip
+							content={description}
+							render={
+								<button
+									type="button"
+									aria-label={`About ${title}`}
+									className="grid size-5 place-items-center text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+								>
+									<CircleHelp className="size-3.5" />
+								</button>
+							}
+						/>
+					) : null}
 				</span>
 				<div className="flex items-center gap-2">
 					<span className="text-xs tabular-nums text-muted-foreground">
