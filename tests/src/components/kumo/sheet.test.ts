@@ -5,11 +5,19 @@ const sheetStyles = readFileSync(
 	new URL("../../../../src/index.css", import.meta.url),
 	"utf8",
 );
+const sheetSource = readFileSync(
+	new URL("../../../../src/components/kumo/primitives/sheet.tsx", import.meta.url),
+	"utf8",
+);
 
 describe("Sheet motion", () => {
 	it("uses the transition attributes emitted by Base UI", () => {
 		expect(sheetStyles).toContain('[data-slot="sheet-content"][data-starting-style]');
 		expect(sheetStyles).toContain('[data-slot="sheet-content"][data-ending-style]');
 		expect(sheetStyles).not.toContain('[data-slot="sheet-content"][data-state="open"]');
+	});
+
+	it("clears Kumo's centered-dialog translation at rest", () => {
+		expect(sheetSource).toContain("!translate-x-0 !translate-y-0");
 	});
 });
