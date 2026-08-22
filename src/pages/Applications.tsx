@@ -1,7 +1,9 @@
 /**
  * Applications dashboard page: shows OAuth consents for the signed-in user and
  * admin-managed OAuth clients when the session has access. The page consumes
- * paginated Worker APIs and keeps client edit drafts local until an admin saves.
+ * paginated Worker APIs, opens client creation and editing in wide drawers, and
+ * keeps drafts local until an admin saves. OAuth registries control the form's
+ * supported scopes and grant behavior.
  */
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
@@ -301,7 +303,7 @@ export function Applications() {
 	const [status, setStatus] = useState<Status | null>(null);
 	const [revokeTarget, setRevokeTarget] = useState<AuthorizedApplication | null>(null);
 	const [oneTimeSecret, setOneTimeSecret] = useState<OAuthClientSummary | null>(null);
-	const [expanded, setExpanded] = useState<Set<string>>(new Set());
+	const [editingClientId, setEditingClientId] = useState<string | null>(null);
 	const [secretCopied, setSecretCopied] = useState(false);
 	const [createClientSheetOpen, setCreateClientSheetOpen] = useState(false);
 	const [createClientStep, setCreateClientStep] = useState<CreateClientStep>("details");
@@ -334,6 +336,10 @@ export function Applications() {
 	});
 	const applications = applicationsQuery.data?.pages.flatMap((page) => page.applications) ?? [];
 	const clients = clientsQuery.data?.pages.flatMap((page) => page.clients) ?? [];
+	const editingClient = clients.find((client) => client.clientId === editingClientId) ?? null;
+	const editingDraft = editingClient
+		? (clientDrafts[editingClient.clientId] ?? clientDraft(editingClient))
+		: null;
 	const loaded = applicationsQuery.isFetched;
 	const adminAvailable = clientsQuery.data?.pages.some((page) => page.adminAvailable) ?? false;
 	const oauthProxyLoaded = oauthProxyQuery.isFetched;
@@ -505,6 +511,7 @@ export function Applications() {
 			return;
 		}
 		setStatus({ tone: "success", message: "OAuth client updated." });
+		setEditingClientId(null);
 		setClientDrafts({});
 		void clientsQuery.refetch();
 	}
@@ -556,13 +563,12 @@ export function Applications() {
 		}));
 	}
 
-	function toggleExpanded(clientId: string) {
-		setExpanded((current) => {
-			const next = new Set(current);
-			if (next.has(clientId)) next.delete(clientId);
-			else next.add(clientId);
-			return next;
-		});
+	function openClientEditor(client: OAuthClientSummary) {
+		setClientDrafts((current) => ({
+			...current,
+			[client.clientId]: current[client.clientId] ?? clientDraft(client),
+		}));
+		setEditingClientId(client.clientId);
 	}
 
 	async function uploadApplicationPicture(
@@ -716,233 +722,17 @@ export function Applications() {
 					>
 						{clients.length ? (
 							<div className="divide-y overflow-hidden rounded-lg border">
-								{clients.map((client) => {
-									const draft = clientDrafts[client.clientId] ?? clientDraft(client);
-									const open = expanded.has(client.clientId);
-									return (
-										<div key={client.clientId}>
-											<ManagedOAuthClientRow
-												client={client}
-												open={open}
-												copied={copiedKey === `managed-client-id:${client.clientId}`}
-												onToggleExpanded={() => toggleExpanded(client.clientId)}
-												onCopyClientID={() =>
-													void copyValue(`managed-client-id:${client.clientId}`, client.clientId)
-												}
-											/>
-
-											{open ? (
-												<form
-													id={`client-${client.clientId}`}
-													className="space-y-4 border-t bg-muted/20 px-3.5 py-4"
-													onSubmit={(event) => {
-														event.preventDefault();
-														void updateClient(client.clientId);
-													}}
-												>
-													<div className="grid gap-4 sm:grid-cols-2">
-														<Field label="Name">
-															<FieldInput
-																value={draft.name}
-																onChange={(event) =>
-																	setDraft(client.clientId, { name: event.target.value })
-																}
-															/>
-														</Field>
-														<Field label="Client URI">
-															<FieldInput
-																value={draft.uri}
-																onChange={(event) =>
-																	setDraft(client.clientId, { uri: event.target.value })
-																}
-															/>
-														</Field>
-													</div>
-													<Segmented
-														value={draft.clientType}
-														onChange={(clientType) => setDraft(client.clientId, { clientType })}
-												options={CLIENT_TYPE_OPTIONS}
-												aria-label="Client type"
-											/>
-											<ClientPictureField
-												value={draft.icon}
-												busy={busy === `upload-picture:${client.clientId}`}
-												onURLChange={(icon) => setDraft(client.clientId, { icon })}
-												onFileSelect={(file) =>
-													void uploadApplicationPicture(
-														file,
-														(icon) => setDraft(client.clientId, { icon }),
-														`upload-picture:${client.clientId}`,
-													)
-												}
-											/>
-											<ScopeBuilder
-												value={draft.scopes}
-												onValueChange={(scopes) =>
-													setDraft(client.clientId, {
-														scopes,
-														optionalScopes: draft.optionalScopes.filter((scope) =>
-															new Set<string>(scopes).has(scope),
-														),
-													})
-												}
-												onCopyError={(message) => setStatus({ tone: "error", message })}
-											/>
-											<ScopeBuilder
-												title="Optional scopes"
-												description="Users may remove only these scopes during consent."
-												availableScopes={draft.scopes}
-												value={draft.optionalScopes}
-												onValueChange={(optionalScopes) =>
-													setDraft(client.clientId, { optionalScopes })
-												}
-												onCopyError={(message) => setStatus({ tone: "error", message })}
-											/>
-													{draft.clientType === "m2m" ? (
-														<Field label="Allowed audiences" hint="One protected API resource per line.">
-															<FieldTextarea
-																value={draft.allowedAudiences}
-																onChange={(event) =>
-																	setDraft(client.clientId, {
-																		allowedAudiences: event.target.value,
-																	})
-																}
-															/>
-														</Field>
-													) : (
-														<div className="grid gap-4 sm:grid-cols-2">
-														<URLListBuilder
-															label="Redirect URIs"
-															hint="Allowed return locations after sign-in."
-															placeholder="https://app.example.com/callback"
-															value={draft.redirectUris}
-															onChange={(redirectUris) => setDraft(client.clientId, { redirectUris })}
-															required
-														/>
-														<URLListBuilder
-															label="Post-logout URIs"
-															hint="Allowed return locations after logout."
-															placeholder="https://app.example.com/"
-															value={draft.postLogoutRedirectUris}
-															onChange={(postLogoutRedirectUris) =>
-																setDraft(client.clientId, { postLogoutRedirectUris })
-															}
-														/>
-														</div>
-													)}
-													<div className="grid gap-4 sm:grid-cols-2">
-														<Field label="Terms of service URL">
-															<FieldInput
-																type="url"
-																value={draft.tos}
-																onChange={(event) =>
-																	setDraft(client.clientId, { tos: event.target.value })
-																}
-																placeholder="https://app.example.com/terms"
-															/>
-														</Field>
-														<Field label="Privacy policy URL">
-															<FieldInput
-																type="url"
-																value={draft.policy}
-																onChange={(event) =>
-																	setDraft(client.clientId, { policy: event.target.value })
-																}
-																placeholder="https://app.example.com/privacy"
-															/>
-														</Field>
-														<Field
-															label="Back-channel logout URL"
-															hint="Passport POSTs a signed logout_token here when the user is force-logged-out."
-														>
-															<FieldInput
-																type="url"
-																value={draft.backchannelLogoutUri}
-																onChange={(event) =>
-																	setDraft(client.clientId, { backchannelLogoutUri: event.target.value })
-																}
-																placeholder="https://app.example.com/oidc/backchannel-logout"
-															/>
-														</Field>
-													</div>
-													<div className="flex flex-wrap items-end justify-between gap-3 pt-1">
-														<div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
-										<CheckboxField
-											label="Skip consent"
-											checked={draft.skipConsent}
-											onCheckedChange={(value) =>
-												setDraft(client.clientId, { skipConsent: value })
-											}
-										/>
-										{draft.clientType === "browser" ? (
-											<>
-												<CheckboxField
-													label="Published"
-													hint="Show reviewed branding on consent screens."
-													checked={draft.verified}
-													onCheckedChange={(value) => setDraft(client.clientId, { verified: value })}
-												/>
-												<CheckboxField
-													label="Platform admins only"
-													hint="Only platform admins can sign in to this app."
-													checked={draft.platformAdminOnly}
-													onCheckedChange={(value) => setDraft(client.clientId, { platformAdminOnly: value })}
-												/>
-											</>
-										) : null}
-															<CheckboxField
-															label={<OIDCLogoutLabel enabled={false} />}
-																checked={draft.enableEndSession}
-																onCheckedChange={(value) =>
-																	setDraft(client.clientId, { enableEndSession: value })
-																}
-															/>
-														</div>
-														<div className="flex flex-wrap gap-2">
-															<Button
-																size="sm"
-																type="submit"
-																disabled={busy === `update:${client.clientId}`}
-															>
-																<Save className="size-4" />
-																Save
-															</Button>
-															{client.public ? null : (
-																<Button
-																	variant="outline"
-																	size="sm"
-																	type="button"
-																	onClick={() => rotateSecret(client.clientId)}
-																	disabled={busy === `rotate:${client.clientId}`}
-																>
-																	<RotateCcw className="size-4" />
-																	Rotate secret
-																</Button>
-															)}
-															<Button
-																variant={client.disabled ? "outline" : "destructive"}
-																size="sm"
-																type="button"
-																onClick={() => setClientDisabled(client.clientId, !client.disabled)}
-																disabled={
-																	busy ===
-																	`${client.disabled ? "enable" : "disable"}:${client.clientId}`
-																}
-															>
-																{client.disabled ? (
-																	<CheckCircle2 className="size-4" />
-																) : (
-																	<Ban className="size-4" />
-																)}
-																{client.disabled ? "Enable" : "Disable"}
-															</Button>
-														</div>
-													</div>
-												</form>
-											) : null}
-										</div>
-									);
-								})}
+								{clients.map((client) => (
+									<ManagedOAuthClientRow
+										key={client.clientId}
+										client={client}
+										copied={copiedKey === `managed-client-id:${client.clientId}`}
+										onEdit={() => openClientEditor(client)}
+										onCopyClientID={() =>
+											void copyValue(`managed-client-id:${client.clientId}`, client.clientId)
+										}
+									/>
+								))}
 							</div>
 						) : (
 							<EmptyState
@@ -970,6 +760,151 @@ export function Applications() {
 					</SettingsCard>
 
 					<Sheet
+						open={Boolean(editingClient)}
+						onOpenChange={(open) => {
+							if (!open) setEditingClientId(null);
+						}}
+					>
+						<SheetContent className="[--sheet-width:68rem]" pushed={oidcSheetOpen}>
+							{editingClient && editingDraft ? (
+								<form
+									className="flex min-h-0 flex-1 flex-col"
+									onSubmit={(event) => {
+										event.preventDefault();
+										void updateClient(editingClient.clientId);
+									}}
+								>
+									<SheetHeader>
+										<SheetTitle>Edit OAuth client</SheetTitle>
+										<SheetDescription>{editingClient.name}</SheetDescription>
+									</SheetHeader>
+									<SheetBody className="space-y-4">
+										<OIDCConfigurationButton onClick={openOIDCSheet} />
+										<div className="grid gap-4 sm:grid-cols-2">
+											<Field label="Name">
+												<FieldInput
+													value={editingDraft.name}
+													onChange={(event) => setDraft(editingClient.clientId, { name: event.target.value })}
+												/>
+											</Field>
+											<Field label="Client URI">
+												<FieldInput
+													type="url"
+													value={editingDraft.uri}
+													onChange={(event) => setDraft(editingClient.clientId, { uri: event.target.value })}
+												/>
+											</Field>
+										</div>
+										<Segmented
+											value={editingDraft.clientType}
+											onChange={(clientType) => setDraft(editingClient.clientId, { clientType })}
+											options={CLIENT_TYPE_OPTIONS}
+											aria-label="Client type"
+										/>
+										<ClientPictureField
+											value={editingDraft.icon}
+											busy={busy === `upload-picture:${editingClient.clientId}`}
+											onURLChange={(icon) => setDraft(editingClient.clientId, { icon })}
+											onFileSelect={(file) =>
+												void uploadApplicationPicture(
+													file,
+													(icon) => setDraft(editingClient.clientId, { icon }),
+													`upload-picture:${editingClient.clientId}`,
+												)
+											}
+										/>
+										<ScopeBuilder
+											value={editingDraft.scopes}
+											onValueChange={(scopes) =>
+												setDraft(editingClient.clientId, {
+													scopes,
+													optionalScopes: editingDraft.optionalScopes.filter((scope) =>
+														new Set<string>(scopes).has(scope),
+													),
+												})
+											}
+											onCopyError={(message) => setStatus({ tone: "error", message })}
+										/>
+										<ScopeBuilder
+											title="Optional scopes"
+											description="Users may remove only these scopes during consent."
+											availableScopes={editingDraft.scopes}
+											value={editingDraft.optionalScopes}
+											onValueChange={(optionalScopes) => setDraft(editingClient.clientId, { optionalScopes })}
+											onCopyError={(message) => setStatus({ tone: "error", message })}
+										/>
+										{editingDraft.clientType === "m2m" ? (
+											<Field label={<TipLabel tip="Enter one protected API resource per line.">Allowed audiences</TipLabel>}>
+												<FieldTextarea
+													value={editingDraft.allowedAudiences}
+													onChange={(event) => setDraft(editingClient.clientId, { allowedAudiences: event.target.value })}
+												/>
+											</Field>
+										) : (
+											<div className="grid gap-4 sm:grid-cols-2">
+												<URLListBuilder
+													label="Redirect URIs"
+													hint="Allowed return locations after sign-in."
+													placeholder="https://app.example.com/callback"
+													value={editingDraft.redirectUris}
+													onChange={(redirectUris) => setDraft(editingClient.clientId, { redirectUris })}
+													required
+												/>
+												<URLListBuilder
+													label="Post-logout URIs"
+													hint="Allowed return locations after logout."
+													placeholder="https://app.example.com/"
+													value={editingDraft.postLogoutRedirectUris}
+													onChange={(postLogoutRedirectUris) => setDraft(editingClient.clientId, { postLogoutRedirectUris })}
+												/>
+											</div>
+										)}
+										<div className="grid gap-4 sm:grid-cols-2">
+											<Field label="Terms of service URL">
+												<FieldInput type="url" value={editingDraft.tos} onChange={(event) => setDraft(editingClient.clientId, { tos: event.target.value })} placeholder="https://app.example.com/terms" />
+											</Field>
+											<Field label="Privacy policy URL">
+												<FieldInput type="url" value={editingDraft.policy} onChange={(event) => setDraft(editingClient.clientId, { policy: event.target.value })} placeholder="https://app.example.com/privacy" />
+											</Field>
+											<Field label={<TipLabel tip="Passport POSTs a signed logout_token here when the user is force-logged-out.">Back-channel logout URL</TipLabel>}>
+												<FieldInput type="url" value={editingDraft.backchannelLogoutUri} onChange={(event) => setDraft(editingClient.clientId, { backchannelLogoutUri: event.target.value })} placeholder="https://app.example.com/oidc/backchannel-logout" />
+											</Field>
+										</div>
+										<div className="flex flex-col gap-3 pt-1 sm:flex-row sm:flex-wrap sm:gap-6">
+											<CheckboxField label="Skip consent" checked={editingDraft.skipConsent} onCheckedChange={(skipConsent) => setDraft(editingClient.clientId, { skipConsent })} />
+											{editingDraft.clientType === "browser" ? (
+												<>
+													<CheckboxField label={<TipLabel tip="Show reviewed branding on consent screens.">Published</TipLabel>} checked={editingDraft.verified} onCheckedChange={(verified) => setDraft(editingClient.clientId, { verified })} />
+													<CheckboxField label={<TipLabel tip="Only platform admins can sign in to this app.">Platform admins only</TipLabel>} checked={editingDraft.platformAdminOnly} onCheckedChange={(platformAdminOnly) => setDraft(editingClient.clientId, { platformAdminOnly })} />
+												</>
+											) : null}
+											<CheckboxField label={<OIDCLogoutLabel enabled={false} />} checked={editingDraft.enableEndSession} onCheckedChange={(enableEndSession) => setDraft(editingClient.clientId, { enableEndSession })} />
+										</div>
+									</SheetBody>
+									<SheetFooter className="sm:justify-between">
+										<div className="flex flex-col-reverse gap-2 sm:flex-row">
+											{editingClient.public ? null : (
+												<Button variant="outline" type="button" onClick={() => void rotateSecret(editingClient.clientId)} disabled={busy === `rotate:${editingClient.clientId}`}>
+													<RotateCcw className="size-4" />
+													Rotate secret
+												</Button>
+											)}
+											<Button variant={editingClient.disabled ? "outline" : "destructive"} type="button" onClick={() => void setClientDisabled(editingClient.clientId, !editingClient.disabled)} disabled={busy === `${editingClient.disabled ? "enable" : "disable"}:${editingClient.clientId}`}>
+												{editingClient.disabled ? <CheckCircle2 className="size-4" /> : <Ban className="size-4" />}
+												{editingClient.disabled ? "Enable" : "Disable"}
+											</Button>
+										</div>
+										<div className="flex flex-col-reverse gap-2 sm:flex-row">
+											<SheetClose asChild><Button variant="outline" type="button">Cancel</Button></SheetClose>
+											<Button type="submit" disabled={busy === `update:${editingClient.clientId}`}><Save className="size-4" />Save changes</Button>
+										</div>
+									</SheetFooter>
+								</form>
+							) : null}
+						</SheetContent>
+					</Sheet>
+
+					<Sheet
 						open={createClientSheetOpen}
 						onOpenChange={(open) => {
 							setCreateClientSheetOpen(open);
@@ -987,20 +922,7 @@ export function Applications() {
 									</SheetDescription>
 								</SheetHeader>
 								<SheetBody className="space-y-4">
-									<button
-										type="button"
-										onClick={openOIDCSheet}
-										className="flex w-full items-center gap-3 rounded-lg border bg-muted/30 px-3.5 py-3 text-left transition-colors hover:bg-muted/60"
-									>
-										<Globe className="size-[1.15rem] shrink-0 text-muted-foreground" />
-										<span className="min-w-0 flex-1">
-											<span className="block text-sm font-medium">OpenID configuration</span>
-											<span className="block text-xs text-muted-foreground">
-												Copy the issuer and endpoint URLs to wire up this client.
-											</span>
-										</span>
-										<ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-									</button>
+									<OIDCConfigurationButton onClick={openOIDCSheet} />
 									{createClientStep === "details" ? (
 										<>
 											<div className="grid gap-4 sm:grid-cols-2">
@@ -1066,9 +988,9 @@ export function Applications() {
 												}
 												onCopyError={(message) => setStatus({ tone: "error", message })}
 											/>
-											<ScopeBuilder
-												title="Optional scopes"
-												description="Users may remove only these scopes during consent."
+										<ScopeBuilder
+											title="Optional scopes"
+											description="Users may remove only these scopes during consent."
 												availableScopes={newClient.scopes}
 												value={newClient.optionalScopes}
 												onValueChange={(optionalScopes) =>
@@ -1077,7 +999,7 @@ export function Applications() {
 												onCopyError={(message) => setStatus({ tone: "error", message })}
 											/>
 											{newClient.clientType === "m2m" ? (
-												<Field label="Allowed audiences" hint="One protected API resource per line.">
+											<Field label={<TipLabel tip="Enter one protected API resource per line.">Allowed audiences</TipLabel>}>
 													<FieldTextarea
 														value={newClient.allowedAudiences}
 														onChange={(event) =>
@@ -1115,9 +1037,8 @@ export function Applications() {
 											)}
 											<div className="flex flex-col gap-3 pt-1">
 												{newClient.clientType === "m2m" ? null : (
-													<CheckboxField
-														label="Public client"
-														hint="No secret (SPA / native)."
+												<CheckboxField
+													label={<TipLabel tip="Creates a client without a secret for a single-page or native app.">Public client</TipLabel>}
 														checked={newClientPublic}
 														onCheckedChange={setNewClientPublic}
 													/>
@@ -1131,8 +1052,7 @@ export function Applications() {
 										/>
 										{newClient.clientType === "browser" ? (
 											<CheckboxField
-												label="Platform admins only"
-												hint="Only platform admins can sign in to this app."
+												label={<TipLabel tip="Only platform admins can sign in to this app.">Platform admins only</TipLabel>}
 												checked={newClient.platformAdminOnly}
 												onCheckedChange={(value) =>
 													setNewClient((current) => ({ ...current, platformAdminOnly: value }))
@@ -1176,10 +1096,7 @@ export function Applications() {
 													placeholder="https://app.example.com/privacy"
 												/>
 											</Field>
-											<Field
-												label="Back-channel logout URL"
-												hint="Passport POSTs a signed logout_token here when the user is force-logged-out."
-											>
+										<Field label={<TipLabel tip="Passport POSTs a signed logout_token here when the user is force-logged-out.">Back-channel logout URL</TipLabel>}>
 												<FieldInput
 													type="url"
 													value={newClient.backchannelLogoutUri}
@@ -1557,24 +1474,21 @@ export function AuthorizedApplicationRow({
 
 export function ManagedOAuthClientRow({
 	client,
-	open,
 	copied,
-	onToggleExpanded,
+	onEdit,
 	onCopyClientID,
 }: {
 	client: OAuthClientSummary;
-	open: boolean;
 	copied: boolean;
-	onToggleExpanded: () => void;
+	onEdit: () => void;
 	onCopyClientID: () => void;
 }) {
 	return (
 		<div className="flex items-center transition-colors hover:bg-muted/40">
 			<button
 				type="button"
-				onClick={onToggleExpanded}
-				aria-expanded={open}
-				aria-controls={`client-${client.clientId}`}
+				onClick={onEdit}
+				aria-label={`Edit ${client.name}`}
 				className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
 			>
 				<AppIcon src={client.icon} />
@@ -1593,12 +1507,7 @@ export function ManagedOAuthClientRow({
 						{client.clientId}
 					</div>
 				</div>
-				<ChevronDown
-					className={cn(
-						"size-4 shrink-0 text-muted-foreground transition-transform",
-						open && "rotate-180",
-					)}
-				/>
+				<ArrowRight className="size-4 shrink-0 text-muted-foreground" />
 			</button>
 			<Button
 				type="button"
@@ -1650,7 +1559,7 @@ function URLListBuilder({
 	}
 
 	return (
-		<Field label={label} hint={hint} error={error}>
+		<Field label={<TipLabel tip={hint}>{label}</TipLabel>} error={error}>
 			<div className="space-y-2">
 				<div className="flex gap-2">
 					<FieldInput
@@ -1694,22 +1603,49 @@ function URLListBuilder({
 	);
 }
 
-/** Explains an OIDC option without adding persistent copy to the compact form. */
-function OIDCLogoutLabel({ enabled }: { enabled: boolean }) {
+function OIDCConfigurationButton({ onClick }: { onClick: () => void }) {
+	return (
+		<Tooltip
+			content="Copy the issuer and endpoint URLs to wire up this client."
+			render={
+				<button
+					type="button"
+					onClick={onClick}
+					className="flex w-full items-center gap-3 rounded-lg border bg-muted/30 px-3.5 py-3 text-left transition-colors hover:bg-muted/60"
+				>
+					<Globe className="size-[1.15rem] shrink-0 text-muted-foreground" />
+					<span className="min-w-0 flex-1 text-sm font-medium">OpenID configuration</span>
+					<ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+				</button>
+			}
+		/>
+	);
+}
+
+/** Keeps optional field guidance available without permanently expanding dense forms. */
+function TipLabel({ children, tip }: { children: ReactNode; tip: string }) {
 	return (
 		<span className="inline-flex items-center gap-1">
-			{enabled ? "Enable OIDC logout" : "OIDC logout"}
-			<Tooltip content="Allows this app to start the standard OpenID Connect logout flow after a user signs out." render={
+			{children}
+			<Tooltip content={tip} render={
 					<button
 						type="button"
-						aria-label="What is OIDC logout?"
+						aria-label={`About ${typeof children === "string" ? children : "this field"}`}
 						onClick={(event) => event.preventDefault()}
-						className="text-muted-foreground hover:text-foreground focus-visible:outline-none"
+						className="grid size-5 place-items-center text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
 					>
 						<CircleHelp className="size-3.5" />
 					</button>
 				} />
 		</span>
+	);
+}
+
+function OIDCLogoutLabel({ enabled }: { enabled: boolean }) {
+	return (
+		<TipLabel tip="Allows this app to start the standard OpenID Connect logout flow after a user signs out.">
+			{enabled ? "Enable OIDC logout" : "OIDC logout"}
+		</TipLabel>
 	);
 }
 
@@ -1728,7 +1664,7 @@ function ClientPictureField({
 		<div className="flex items-start gap-3 rounded-xl border bg-background p-3">
 			<AppIcon src={value} />
 			<div className="min-w-0 flex-1 space-y-3">
-				<Field label="Application picture URL" hint="Upload an image or paste an image URL.">
+				<Field label={<TipLabel tip="Upload an image or paste an image URL.">Application picture URL</TipLabel>}>
 					<FieldInput
 						type="url"
 						value={value}

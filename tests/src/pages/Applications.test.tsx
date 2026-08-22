@@ -94,15 +94,16 @@ describe("Applications", () => {
 					redirectUris: ["https://app.example.com/callback"],
 					public: true,
 				}}
-				open={false}
 				copied={false}
 				onCopyClientID={() => undefined}
-				onToggleExpanded={() => undefined}
+				onEdit={() => undefined}
 			/>,
 		);
 
 		expect(html).toContain("managed_client_123");
 		expect(html).toContain("Copy client ID");
+		expect(html).toContain("Edit Managed App");
+		expect(html).not.toContain("aria-expanded");
 	});
 
 	it("labels managed machine-to-machine clients", () => {
@@ -115,10 +116,9 @@ describe("Applications", () => {
 					public: false,
 					grantTypes: ["client_credentials"],
 				}}
-				open={false}
 				copied={false}
 				onCopyClientID={() => undefined}
-				onToggleExpanded={() => undefined}
+				onEdit={() => undefined}
 			/>,
 		);
 
