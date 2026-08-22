@@ -53,7 +53,6 @@ export function parseOptionalBoolean(value: string | undefined, name: string) {
 }
 
 export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGlobal()): AuthEnv {
-	// SAFETY: this CLI-only environment supplies inert binding stubs, and schema generation never invokes them.
 	return {
 		ASSETS: {
 			fetch: () => new Response(null, { status: 404 }),
@@ -140,5 +139,5 @@ export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGl
 		PRIMARY_COLOR: processEnv.PRIMARY_COLOR,
 		PRIMARY_FOREGROUND_COLOR: processEnv.PRIMARY_FOREGROUND_COLOR,
 		RING_COLOR: processEnv.RING_COLOR,
-	} as AuthEnv;
+	} as unknown as AuthEnv;
 }

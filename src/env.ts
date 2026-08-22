@@ -16,7 +16,7 @@ export type OAuthClientSeed = {
 	skipConsent?: boolean;
 };
 
-type AuthEnvOverrides = {
+export type AuthEnv = Env & {
 	ASSETS: Fetcher;
 	HYPERDRIVE: Hyperdrive;
 	EMAIL: SendEmail;
@@ -81,9 +81,6 @@ type AuthEnvOverrides = {
 	PRIMARY_FOREGROUND_COLOR?: string;
 	RING_COLOR?: string;
 };
-
-/** Runtime auth accepts normal string-valued local configuration, not Wrangler's generated literals. */
-export type AuthEnv = Omit<Env, keyof AuthEnvOverrides> & AuthEnvOverrides;
 
 export function splitCsv(value: string | undefined) {
 	return value
