@@ -38,6 +38,8 @@ After any authentication email link is sent, replace the originating form with t
 
 When an external OAuth authorization starts an authentication flow, preserve its complete signed continuation across every sign-in, sign-up, recovery, account-selection, two-factor, and email-link path. Completed authentication must return to OAuth consent or the requesting application, never a dashboard fallback.
 
+When upgrading an authentication library, review its upgrade guide, generate the required schema changes, backfill existing production data with trusted mappings, and apply the migration before deploying runtime code that depends on the new schema.
+
 Drawer and sheet surfaces must animate on both enter and exit. Preserve the established motion profile when changing a shared primitive, and isolate page-specific fixes from shared motion. Use the transition attributes emitted by the active component library, verify the movement property is included in `transition-property`, preserve the reduced-motion behavior, and confirm the resting position at compact and desktop breakpoints after changing transform or translate rules.
 
 ### Fight for the "obvious" solution
