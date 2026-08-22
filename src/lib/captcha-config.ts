@@ -87,6 +87,11 @@ export function captchaFetchOptions(
 	};
 }
 
+/** Wraps optional CAPTCHA headers for Better Auth calls without changing omitted-field semantics. */
+export function captchaClientOptions(fetchOptions: CaptchaFetchOptions | undefined) {
+	return fetchOptions ? { fetchOptions } : {};
+}
+
 /**
  * Resolves the token already in state or waits for the widget's current solve.
  * A null result means the protected action must pause for configuration or an

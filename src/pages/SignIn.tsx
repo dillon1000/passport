@@ -35,6 +35,7 @@ import {
 import { CaptchaChallenge } from "@/lib/captcha";
 import {
 	captchaFetchOptions,
+	captchaClientOptions,
 	captchaRequirementMessage,
 	resolveCaptchaFetchOptions,
 	type CaptchaSolver,
@@ -303,7 +304,7 @@ export function SignIn() {
 		void authClient.signIn
 			.passkey({
 				autoFill: true,
-				...(fetchOptions ? { fetchOptions } : {}),
+				...captchaClientOptions(fetchOptions),
 			})
 			.then((result) => {
 				if (!result.error) window.location.assign(callbackURL);
@@ -482,13 +483,13 @@ export function SignIn() {
 							email: credentialValue,
 							password,
 							callbackURL: verificationFlow.callbackURL,
-							...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+							...captchaClientOptions(authFetchOptions),
 						})
 					: await authClient.signIn.username({
 							username: credentialValue,
 							password,
 							callbackURL: verificationFlow.callbackURL,
-							...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+							...captchaClientOptions(authFetchOptions),
 						})
 					: await authClient.signUp.email({
 							email: credentialValue,
@@ -497,7 +498,7 @@ export function SignIn() {
 							username: signupUsername.trim(),
 							displayUsername: signupUsername.trim(),
 							callbackURL: verificationFlow.callbackURL,
-							...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+							...captchaClientOptions(authFetchOptions),
 					});
 
 		if (result.error) {
@@ -577,7 +578,7 @@ export function SignIn() {
 				username: signupUsername.trim(),
 				callbackURL: verificationFlow.callbackURL,
 			}),
-			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+			...captchaClientOptions(authFetchOptions),
 		});
 		if (result.error) {
 			void cancelEmailLinkFlow(verificationFlow.flow);
@@ -609,7 +610,7 @@ export function SignIn() {
 				username: credential.trim(),
 				password,
 				callbackURL: verification.flow.callbackURL,
-				...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+				...captchaClientOptions(authFetchOptions),
 			});
 			resetCaptcha();
 			if (!result.error) {
@@ -677,7 +678,7 @@ export function SignIn() {
 		const result = await authClient.signIn.magicLink({
 			email,
 			callbackURL: emailLinkFlow.callbackURL,
-			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+			...captchaClientOptions(authFetchOptions),
 		});
 		setLoading(false);
 		resetCaptcha();
@@ -724,7 +725,7 @@ export function SignIn() {
 		const result = await authClient.requestPasswordReset({
 			email,
 			redirectTo: emailLinkFlow.callbackURL,
-			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+			...captchaClientOptions(authFetchOptions),
 		});
 		setLoading(false);
 		resetCaptcha();
@@ -812,7 +813,7 @@ export function SignIn() {
 		const result = await authClient.signIn.social({
 			provider,
 			callbackURL,
-			...(authFetchOptions ? { fetchOptions: authFetchOptions } : {}),
+			...captchaClientOptions(authFetchOptions),
 		});
 		if (result.error) {
 			setLoading(false);
