@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 
 /*
  * Guards the app's loading-state contract. Page and auth-component UI should
- * expose skeleton placeholders for loading surfaces. The sign-in card uses its
- * deliberate full-card spinner; generic component motion such as dialogs and
- * menus lives outside these scanned directories.
+ * expose skeleton placeholders for loading surfaces. Focused authentication
+ * interstitials share one deliberate full-card spinner; generic component
+ * motion such as dialogs and menus lives outside these scanned directories.
  */
 const uiRoots = ["src/pages", "src/components/auth"] as const;
-const spinnerLoadingSurfaceFiles = new Set(["src/pages/SignIn.tsx"]);
+const spinnerLoadingSurfaceFiles = new Set(["src/components/auth/fast-auth-spinner.tsx"]);
 
 const loadingAnimationPattern = /\banimate-(spin|pulse)\b/;
 const visibleLoadingCopyPattern =
@@ -47,7 +47,7 @@ function findNonSkeletonLoadingIndicators() {
 }
 
 describe("loading states", () => {
-	it("uses skeletons except for the sign-in card spinner and avoids visible loading copy", () => {
+	it("uses skeletons except for the auth interstitial spinner and avoids visible loading copy", () => {
 		expect(findNonSkeletonLoadingIndicators()).toEqual([]);
 	});
 

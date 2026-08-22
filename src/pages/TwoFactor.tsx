@@ -1,8 +1,14 @@
+/**
+ * Focused second-factor sign-in interstitial. Inputs are the pending Better
+ * Auth session and callback URL; successful verification resumes that callback,
+ * while recoverable errors restore the populated verification screen.
+ */
 import { useState, type FormEvent } from "react";
 import { KeyRound, Mail, ShieldCheck } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { FastAuthSpinner } from "@/components/auth/fast-auth-spinner";
 import { Wordmark } from "@/components/auth/wordmark";
 import { CheckboxField, Field, FieldInput } from "@/components/auth/field";
 import { OTPInput } from "@/components/auth/otp-input";
@@ -45,14 +51,13 @@ export function TwoFactor() {
 	}
 
 	function finish(error: { message?: string } | null | undefined) {
-		setLoading(false);
 		if (error) {
+			setLoading(false);
 			setStatus({ tone: "error", message: error.message ?? "Verification failed." });
 			setCode("");
 			return;
 		}
-		setStatus({ tone: "success", message: "Verified — redirecting…" });
-		window.location.assign(callbackURL);
+		requestAnimationFrame(() => window.location.assign(callbackURL));
 	}
 
 	async function submit(value: string) {
@@ -92,25 +97,33 @@ export function TwoFactor() {
 	const canSubmit = isOTP ? code.length === 6 : code.trim().length > 0;
 
 	return (
-		<AuthShell>
-			<div className="flex flex-col items-center gap-6">
-				<div className="flex flex-col items-center gap-3 text-center">
-					<Wordmark className="h-7" />
-					<div className="space-y-1">
-						<h1 className="text-xl font-semibold tracking-tight">Two-factor verification</h1>
-						<p className="text-sm text-muted-foreground">Confirm it's you to finish signing in.</p>
-					</div>
-				</div>
+		<AuthShell focused>
+			<Card
+				aria-busy={loading}
+				className="relative w-full overflow-hidden gap-0 py-0 [view-transition-name:auth-step]"
+			>
+				<div
+					aria-hidden={loading}
+					className={`transition-[translate,opacity] duration-150 ease-out ${
+						loading ? "pointer-events-none -translate-x-6 opacity-0" : "translate-x-0 opacity-100"
+					}`}
+					inert={loading ? true : undefined}
+				>
+					<CardContent className="space-y-5 p-7">
+						<div className="space-y-7">
+							<Wordmark className="h-7" />
+							<div className="space-y-1">
+								<h1 className="text-2xl font-semibold tracking-tight">Verify it's you</h1>
+								<p className="text-sm text-muted-foreground">Complete the second step to finish signing in.</p>
+							</div>
+						</div>
 
-				<Card className="w-full overflow-hidden gap-0 py-0">
-					<Segmented
+						<Segmented
 						value={method}
 						onChange={selectMethod}
 						options={METHODS}
 						aria-label="Verification method"
-						className="px-2 pt-2"
-					/>
-					<CardContent className="space-y-5 px-5 py-5">
+						/>
 						<StatusBanner status={status} />
 						<p className="text-sm text-muted-foreground">{HEADLINES[method]}</p>
 
@@ -171,16 +184,27 @@ export function TwoFactor() {
 								</>
 							) : null}
 						</form>
+						<a
+							href="/sign-in"
+							className="mx-auto flex min-h-8 w-fit items-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+						>
+							Use a different account
+						</a>
 					</CardContent>
-				</Card>
+				</div>
 
-				<a
-					href="/sign-in"
-					className="inline-flex min-h-10 items-center text-xs text-muted-foreground underline-offset-4 transition-[scale,color] duration-150 ease-out hover:text-foreground hover:underline active:scale-[0.96]"
+				<div
+					aria-hidden={!loading}
+					aria-label="Verifying"
+					aria-live="polite"
+					className={`absolute inset-0 z-10 grid place-items-center bg-card text-muted-foreground transition-[translate,opacity] duration-150 ease-out ${
+						loading ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"
+					}`}
+					role="status"
 				>
-					Use a different account
-				</a>
-			</div>
+					<FastAuthSpinner />
+				</div>
+			</Card>
 		</AuthShell>
 	);
 }

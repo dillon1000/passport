@@ -24,12 +24,12 @@ import {
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { FastAuthSpinner } from "@/components/auth/fast-auth-spinner";
 import { StatusBanner, type Status } from "@/components/auth/status";
+import { Wordmark } from "@/components/auth/wordmark";
 import { Button } from "@/components/kumo/primitives/button";
 import { Card, CardContent } from "@/components/kumo/primitives/card";
 import { Checkbox } from "@/components/kumo/primitives/checkbox";
-import { Loader } from "@/components/kumo/primitives/loader";
-import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { useBrand } from "@/lib/brand-runtime";
 import {
 	consentScopeGroups,
@@ -182,38 +182,45 @@ export function Consent() {
 		setStatus({ tone: "error", message: "The consent service did not return a redirect URL." });
 	}
 
-	if (!metadataLoaded || sessionPending || signedOut) return <ConsentSkeleton />;
+	if (!metadataLoaded || sessionPending || signedOut) return <ConsentLoader />;
 
-	if (redirecting) {
-		return (
-			<AuthShell width="sm" focused>
-				<Card>
-					<CardContent className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-						<AppMark client={client} published={published} name={clientName} />
-						<p className="text-sm font-medium">Returning to {clientName}…</p>
-					</CardContent>
-				</Card>
-			</AuthShell>
-		);
-	}
+	const transitioning = loading !== null || redirecting;
 
 	return (
 		<AuthShell width="sm" focused>
-			<Card className="w-full gap-0 overflow-hidden py-0">
-				<CardContent className="px-5 py-6 sm:px-6 sm:py-7">
-					<header className="flex flex-col items-center text-center">
-						<AppMark client={client} published={published} name={clientName} />
-						<h1 className="mt-5 text-xl leading-7 font-semibold tracking-tight">
-							{clientName} wants to access your {brand.name} account
-						</h1>
-						{redirectHost ? (
-							<p className="mt-2 flex max-w-full items-center justify-center gap-2 font-mono text-sm text-muted-foreground">
-								{published ? (
-									<CheckCircle2 className="size-4 shrink-0 text-green-700 dark:text-green-400" />
+			<Card
+				aria-busy={transitioning}
+				className="relative w-full gap-0 overflow-hidden py-0 [view-transition-name:auth-step]"
+			>
+				<div
+					aria-hidden={transitioning}
+					className={`transition-[translate,opacity] duration-150 ease-out ${
+						transitioning ? "pointer-events-none -translate-x-6 opacity-0" : "translate-x-0 opacity-100"
+					}`}
+					inert={transitioning ? true : undefined}
+				>
+					<CardContent className="px-5 py-6 sm:px-6 sm:py-7">
+					<header className="space-y-7">
+						<Wordmark className="h-7" />
+						<div className="flex items-start gap-3.5">
+							<AppMark client={client} published={published} name={clientName} />
+							<div className="min-w-0 flex-1">
+								<h1 className="text-2xl leading-7 font-semibold tracking-tight">
+									{clientName} wants access
+								</h1>
+								<p className="mt-1 text-sm text-muted-foreground">
+									Review what {clientName} can do with your {brand.name} account.
+								</p>
+								{redirectHost ? (
+									<p className="mt-2 flex max-w-full items-center gap-2 font-mono text-xs text-muted-foreground">
+										{published ? (
+											<CheckCircle2 className="size-3.5 shrink-0 text-green-700 dark:text-green-400" />
+										) : null}
+										<span className="truncate">{redirectHost}</span>
+									</p>
 								) : null}
-								<span className="truncate">{redirectHost}</span>
-							</p>
-						) : null}
+							</div>
+						</div>
 					</header>
 
 					{!published ? (
@@ -292,10 +299,10 @@ export function Consent() {
 
 					<div className="mt-5 grid grid-cols-2 gap-2">
 						<Button className="w-full" size="lg" variant="outline" onClick={() => void decide(false)} disabled={loading !== null}>
-							{loading === "deny" ? <Loader size="sm" /> : "Deny"}
+							Deny
 						</Button>
 						<Button className="w-full" size="lg" onClick={() => void decide(true)} disabled={approvalBlocked}>
-							{loading === "accept" ? <Loader size="sm" className="text-primary-foreground" /> : "Allow access"}
+							Allow access
 						</Button>
 					</div>
 
@@ -309,7 +316,26 @@ export function Consent() {
 						{links.length ? <span aria-hidden="true">·</span> : null}
 						<span>Secured by {brand.name}</span>
 					</footer>
-				</CardContent>
+					</CardContent>
+				</div>
+
+				<div
+					aria-hidden={!transitioning}
+					aria-label={redirecting ? `Returning to ${clientName}` : "Saving authorization choice"}
+					aria-live="polite"
+					className={`absolute inset-0 z-10 grid place-items-center bg-card text-muted-foreground transition-[translate,opacity] duration-150 ease-out ${
+						transitioning ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"
+					}`}
+					role="status"
+				>
+					<div className="flex flex-col items-center gap-3 text-center">
+						<AppMark client={client} published={published} name={clientName} />
+						<FastAuthSpinner className="size-6" />
+						<p className="text-sm font-medium">
+							{redirecting ? `Returning to ${clientName}…` : "Saving your choice…"}
+						</p>
+					</div>
+				</div>
 			</Card>
 		</AuthShell>
 	);
@@ -371,10 +397,22 @@ function ScopeGroup({ group, selected, unpublished, onChange }: { group: Consent
 	);
 }
 
-function ConsentSkeleton() {
+function ConsentLoader() {
 	return (
 		<AuthShell width="sm" focused>
-			<Card><CardContent className="space-y-5 px-6 py-7"><div className="flex flex-col items-center gap-3"><Skeleton className="size-11 rounded-xl" /><Skeleton className="h-6 w-4/5" /><Skeleton className="h-4 w-2/5" /></div><Skeleton className="h-11 w-full rounded-lg" /><Skeleton className="h-52 w-full" /><Skeleton className="h-16 w-full rounded-lg" /></CardContent></Card>
+			<Card className="[view-transition-name:auth-step]">
+				<CardContent
+					className="flex min-h-72 flex-col px-7 py-7 text-muted-foreground"
+					role="status"
+					aria-live="polite"
+				>
+					<Wordmark className="h-7 text-foreground" />
+					<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+						<FastAuthSpinner />
+						<p className="text-sm font-medium">Preparing authorization…</p>
+					</div>
+				</CardContent>
+			</Card>
 		</AuthShell>
 	);
 }

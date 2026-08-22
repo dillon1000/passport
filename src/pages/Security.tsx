@@ -183,6 +183,8 @@ export function Security() {
 	const [backupCopied, setBackupCopied] = useState(false);
 	const [newPassword, setNewPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
+	const [passwordRecoveryStatus, setPasswordRecoveryStatus] = useState<Status | null>(null);
+	const [passwordRecoveryBusy, setPasswordRecoveryBusy] = useState(false);
 	const [confirmationAction, setConfirmationAction] =
 		useState<SecurityConfirmationAction | null>(null);
 	const user = session?.user as SecurityUser | undefined;
@@ -493,6 +495,23 @@ export function Security() {
 			setPasswordSheetOpen(false);
 			void loadCredentials();
 		}
+	}
+
+	/** Sends the signed-in account a reset link without requiring its current password. */
+	async function requestPasswordRecovery() {
+		if (!user) return;
+		setPasswordRecoveryStatus(null);
+		setPasswordRecoveryBusy(true);
+		const result = await authClient.requestPasswordReset({
+			email: user.email,
+			redirectTo: "/sign-in?flow=reset-password",
+		});
+		setPasswordRecoveryBusy(false);
+		setPasswordRecoveryStatus(
+			result.error
+				? { tone: "error", message: result.error.message ?? "Could not send the reset link." }
+				: { tone: "success", message: `Password reset link sent to ${user.email}.` },
+		);
 	}
 
 	async function deleteAccount() {
@@ -1078,6 +1097,7 @@ export function Security() {
 								</SheetDescription>
 							</SheetHeader>
 							<SheetBody className="space-y-5">
+								<StatusBanner status={passwordRecoveryStatus} />
 								{hasCredentialAccount ? (
 									<Field label="Current password">
 										<FieldPasswordInput
@@ -1115,6 +1135,25 @@ export function Security() {
 									</Field>
 									<PasswordStrength value={newPassword} />
 								</div>
+								{hasCredentialAccount ? (
+									<div className="space-y-3 border-t pt-5">
+										<div>
+											<p className="text-sm font-medium">Forgot your current password?</p>
+											<p className="mt-1 text-xs text-muted-foreground">
+												Send a secure reset link to {user.email}.
+											</p>
+										</div>
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() => void requestPasswordRecovery()}
+											disabled={passwordRecoveryBusy}
+										>
+											<MailCheck className="size-4" />
+											{passwordRecoveryBusy ? "Sending…" : "Email reset link"}
+										</Button>
+									</div>
+								) : null}
 							</SheetBody>
 							<SheetFooter>
 								<SheetClose asChild>
