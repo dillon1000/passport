@@ -34,6 +34,8 @@ When a page has multiple similarly named sections, place requested UI actions in
 
 When an authentication loading surface replaces a form, every recoverable error must reverse the same transition and return to the populated form. Transition declarations must include the CSS property changed by the movement utility.
 
+After any authentication email link is sent, replace the originating form with the dedicated check-email interstitial. Keep flow-specific resend and back actions on that interstitial, and preserve its continuation while the tab polls.
+
 When an external OAuth authorization starts an authentication flow, preserve its complete signed continuation across every sign-in, sign-up, recovery, account-selection, two-factor, and email-link path. Completed authentication must return to OAuth consent or the requesting application, never a dashboard fallback.
 
 Drawer and sheet surfaces must animate on both enter and exit. Preserve the established motion profile when changing a shared primitive, and isolate page-specific fixes from shared motion. Use the transition attributes emitted by the active component library, verify the movement property is included in `transition-property`, preserve the reduced-motion behavior, and confirm the resting position at compact and desktop breakpoints after changing transform or translate rules.
