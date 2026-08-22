@@ -129,7 +129,7 @@ const linkedAccountSummarySchema = z.object({
 	id: z.string(), providerId: z.string(), accountId: z.string(),
 	createdAt: z.union([z.string(), z.date()]).nullable().optional(),
 });
-const twoFactorSetupSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()).optional() });
+const twoFactorSetupSchema = z.object({ totpURI: z.string(), backupCodes: z.array(z.string()).default([]) });
 
 async function fetchSecurityCredentials(): Promise<SecurityCredentialsPayload> {
 	const [passkeyResult, accountResult] = await Promise.all([

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
-import type { AuthEnv } from "./env";
 import { sendPhoneVerificationSMS } from "./sms";
 
 const textEncoder = new TextEncoder();
@@ -12,12 +12,12 @@ type CapturedRequest = {
 	init: RequestInit;
 };
 
-function createSMSEnv(overrides: Partial<AuthEnv> = {}) {
+function createSMSEnv(overrides: Partial<Parameters<typeof sendPhoneVerificationSMS>[0]> = {}) {
 	return {
 		AZURE_COMMUNICATION_CONNECTION_STRING: `endpoint=https://contoso.communication.azure.com/;accesskey=${accessKey}`,
 		AZURE_COMMUNICATION_SMS_FROM: "+18001110000",
 		...overrides,
-	} as AuthEnv;
+	} satisfies Parameters<typeof sendPhoneVerificationSMS>[0];
 }
 
 function createFetch(response: Response) {
@@ -28,7 +28,7 @@ function createFetch(response: Response) {
 			init: init ?? {},
 		});
 		return response;
-	}) as unknown as typeof fetch;
+	});
 
 	return { fetcher, requests };
 }
@@ -110,10 +110,11 @@ describe("sendPhoneVerificationSMS", () => {
 		);
 		expect(requests[0].init.method).toBe("POST");
 
-		const body = requests[0].init.body;
-		if (typeof body !== "string") {
+		const parsedBody = z.string().safeParse(requests[0].init.body);
+		if (!parsedBody.success) {
 			throw new Error("Expected ACS request body to be a string.");
 		}
+		const body = parsedBody.data;
 		expect(body).toBe(
 			JSON.stringify({
 				from: "+18001110000",
