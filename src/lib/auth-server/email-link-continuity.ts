@@ -50,18 +50,17 @@ function sameOriginDestination(value: string, baseURL: string) {
 	return `${destination.pathname}${destination.search}${destination.hash}`;
 }
 
-function continuationDestination(flow: StoredEmailLinkFlow) {
-	const destination = new URL(flow.destination, "https://passport.invalid");
-	if (flow.kind === "password-reset" && flow.resetToken) {
-		destination.searchParams.set("token", flow.resetToken);
+/** Restores the exact same-origin destination stored when an email flow starts. */
+export function emailLinkContinuationDestination(destinationValue: string, resetToken?: string) {
+	const destination = new URL(destinationValue, "https://passport.invalid");
+	if (resetToken) {
+		destination.searchParams.set("token", resetToken);
 	}
 	return `${destination.pathname}${destination.search}${destination.hash}`;
 }
 
-function consumingDeviceDestination(flow: StoredEmailLinkFlow) {
-	return flow.kind === "password-reset"
-		? continuationDestination(flow)
-		: "/sign-in?emailLinkConsumed=1";
+function continuationDestination(flow: StoredEmailLinkFlow) {
+	return emailLinkContinuationDestination(flow.destination, flow.resetToken);
 }
 
 async function findFlow(db: AuthDatabase, flow: string) {
@@ -164,7 +163,7 @@ export function emailLinkContinuity(db: AuthDatabase) {
 
 					ctx.setHeader("cache-control", "no-store");
 					ctx.setHeader("referrer-policy", "no-referrer");
-					throw ctx.redirect(consumingDeviceDestination(completed));
+					throw ctx.redirect(continuationDestination(completed));
 				},
 			),
 			pollEmailLinkFlow: createAuthEndpoint(
