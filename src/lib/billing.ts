@@ -247,7 +247,7 @@ export function validateBillingPlanInput(
 }
 
 /** Parse an admin plan write at the HTTP boundary before it reaches storage. */
-export function parseBillingPlanWriteInput(value: unknown): BillingPlanInput & { displayOrder?: number } {
+export function parseBillingPlanWriteInput(value: z.input<ReturnType<typeof z.unknown>>): BillingPlanInput & { displayOrder?: number } {
 	const parsed = billingPlanWriteInputSchema.safeParse(value);
 	if (!parsed.success) throw new TypeError(parsed.error.issues[0]?.message ?? "Invalid billing plan.");
 	return parsed.data;

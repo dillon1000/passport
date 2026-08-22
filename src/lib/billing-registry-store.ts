@@ -32,7 +32,7 @@ const billingRegistryInputSchema = z.object({
 });
 
 /** Parse an admin registry write at the HTTP boundary before it reaches storage. */
-export function parseBillingRegistryInput(value: unknown): BillingRegistryInput {
+export function parseBillingRegistryInput(value: z.input<ReturnType<typeof z.unknown>>): BillingRegistryInput {
 	const parsed = billingRegistryInputSchema.safeParse(value);
 	if (!parsed.success) throw new TypeError(parsed.error.issues[0]?.message ?? "Invalid registry entry.");
 	return parsed.data;

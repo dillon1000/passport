@@ -32,7 +32,7 @@ describe("logout token claims", () => {
 		expect(claims).not.toHaveProperty("nonce");
 		expect(claims.jti).toBeTypeOf("string");
 		expect(claims.sid).toBeUndefined();
-		expect((claims.exp as number) - (claims.iat as number)).toBe(LOGOUT_TOKEN_TTL_SECONDS);
+		expect(claims.exp - claims.iat).toBe(LOGOUT_TOKEN_TTL_SECONDS);
 	});
 
 	it("includes sid when a session id is supplied", () => {

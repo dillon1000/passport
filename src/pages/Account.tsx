@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { z } from "zod";
 import { MailPlus, Save, Upload } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
@@ -23,15 +24,15 @@ const SECTIONS: Section[] = [
 	{ id: "user-id", label: "User ID" },
 ];
 
-type AccountUser = {
-	id: string;
-	name?: string | null;
-	email: string;
-	emailVerified?: boolean | null;
-	image?: string | null;
-	username?: string | null;
-	displayUsername?: string | null;
-};
+const accountUserSchema = z.object({
+	id: z.string(),
+	name: z.string().nullable().optional(),
+	email: z.string(),
+	emailVerified: z.boolean().nullable().optional(),
+	image: z.string().nullable().optional(),
+	username: z.string().nullable().optional(),
+	displayUsername: z.string().nullable().optional(),
+});
 
 export function Account() {
 	const { data: session } = useRequireSession();
@@ -52,7 +53,7 @@ export function Account() {
 	const [newEmail, setNewEmail] = useState("");
 	const [imageURL, setImageURL] = useState<string | null>(null);
 	const [imageFile, setImageFile] = useState<File | null>(null);
-	const user = session?.user as AccountUser | undefined;
+	const user = accountUserSchema.optional().parse(session?.user);
 
 	async function updateProfile(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { z } from "zod";
 
 /**
  * Decorative image renderer for files in `public/icons`. Vite serves public
@@ -11,13 +12,16 @@ export type PublicIconSource =
 	| {
 			light: string;
 			dark: string;
-	  };
+		  };
+
+const publicIconPairSchema = z.object({ light: z.string(), dark: z.string() });
 
 export function PublicIcon({ src, className }: { src: PublicIconSource; className?: string }) {
-	if (typeof src === "string") {
+	const single = z.string().safeParse(src);
+	if (single.success) {
 		return (
 			<img
-				src={src}
+				src={single.data}
 				alt=""
 				aria-hidden="true"
 				draggable={false}
@@ -25,17 +29,18 @@ export function PublicIcon({ src, className }: { src: PublicIconSource; classNam
 			/>
 		);
 	}
+	const source = publicIconPairSchema.parse(src);
 
 	return (
 		<span aria-hidden="true" className={cn("relative inline-block size-4 shrink-0", className)}>
 			<img
-				src={src.light}
+				src={source.light}
 				alt=""
 				draggable={false}
 				className="size-full object-contain dark:hidden"
 			/>
 			<img
-				src={src.dark}
+				src={source.dark}
 				alt=""
 				draggable={false}
 				className="hidden size-full object-contain dark:block"

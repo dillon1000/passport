@@ -8,6 +8,7 @@ type ButtonProps = Omit<React.ComponentProps<typeof KumoButton>, "variant" | "si
 	size?: "default" | "sm" | "lg";
 };
 
+// SAFETY: Kumo renders a native button for these props; the wrapper removes only its overly narrow icon-only overload.
 const KumoButtonCompat = KumoButton as React.ComponentType<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string; size?: string }>;
 
 function Button({ asChild = false, children, className, variant = "default", size = "default", ...props }: ButtonProps) {

@@ -5,6 +5,7 @@
  * account details, username, and email verification as ordered card steps.
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { z } from "zod";
 import { AtSign, Fingerprint, LogIn, Mail, MailCheck, Pencil } from "@/lib/icons";
 import { useQuery } from "@tanstack/react-query";
 
@@ -92,10 +93,15 @@ type DeviceAccount = {
 	user: { id: string; name: string; email: string; image?: string | null };
 };
 
+const deviceAccountSchema = z.object({
+	session: z.object({ token: z.string() }),
+	user: z.object({ id: z.string(), name: z.string(), email: z.string(), image: z.string().nullable().optional() }),
+});
+
 async function fetchDeviceAccounts(): Promise<DeviceAccount[]> {
 	const result = await authClient.multiSession.listDeviceSessions();
 	if (result.error) throw new Error(result.error.message ?? "Could not load signed-in accounts.");
-	return (result.data ?? []) as DeviceAccount[];
+	return z.array(deviceAccountSchema).parse(result.data ?? []);
 }
 
 function copyFor(mode: Mode) {

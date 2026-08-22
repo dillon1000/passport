@@ -6,6 +6,7 @@ import * as React from "react";
 import { Checkbox as KumoCheckbox, cn } from "@cloudflare/kumo";
 
 type CheckboxProps = React.ComponentProps<typeof KumoCheckbox> & { id?: string };
+// SAFETY: Kumo's checkbox component accepts this exact prop set at runtime; its exported overload is not JSX-compatible.
 const KumoCheckboxCompat = KumoCheckbox as React.ComponentType<CheckboxProps>;
 
 function Checkbox({ className, ...props }: CheckboxProps) {

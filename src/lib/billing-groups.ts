@@ -3,7 +3,7 @@
  * field (the "app"); plans without a group collapse into a single "Other"
  * bucket sorted last so nothing disappears from the catalog.
  */
-import type { BillingPlanCatalogEntry } from "./billing";
+import type { BillingLimits, BillingPlanCatalogEntry } from "./billing";
 
 export const OTHER_GROUP = "Other";
 
@@ -43,7 +43,7 @@ export type PricingPlanInput = {
 	label?: string | null;
 	priceId?: string | null;
 	entitlements?: string[] | null;
-	limits?: { [key: string]: unknown } | null;
+	limits?: BillingLimits | null;
 	freeTrialDays?: number | null;
 };
 

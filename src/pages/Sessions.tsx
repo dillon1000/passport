@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { z } from "zod";
 import {
 	LogIn,
 	LogOut,
@@ -55,11 +56,11 @@ const SECTIONS: Section[] = [
 	{ id: "revoke", label: "Sign out" },
 ];
 
-const DEVICE_ICON: Record<DeviceType, typeof Monitor> = {
+const DEVICE_ICON = {
 	desktop: Monitor,
 	mobile: Smartphone,
 	tablet: Tablet,
-};
+} satisfies Record<DeviceType, typeof Monitor>;
 
 type SessionIconAsset = {
 	src: PublicIconSource;
@@ -113,6 +114,29 @@ type SessionsPayload = {
 	deviceSessions: ListedDeviceSession[];
 };
 
+const listedSessionSchema = z.object({
+	id: z.string(),
+	token: z.string(),
+	expiresAt: z.union([z.string(), z.date()]),
+	createdAt: z.union([z.string(), z.date()]).nullable().optional(),
+	updatedAt: z.union([z.string(), z.date()]).nullable().optional(),
+	ipAddress: z.string().nullable().optional(),
+	location: z.custom<RequestLocation>().nullable().optional(),
+	userAgent: z.string().nullable().optional(),
+});
+const sessionsPayloadSchema = z.object({
+	sessions: z.array(listedSessionSchema),
+	deviceSessions: z.array(z.object({
+		session: listedSessionSchema,
+		user: z.object({
+			id: z.string(),
+			name: z.string(),
+			email: z.string(),
+			image: z.string().nullable().optional(),
+		}),
+	})),
+});
+
 async function fetchSessionsPayload(): Promise<SessionsPayload> {
 	const [sessionResult, deviceSessionResult] = await Promise.all([
 		authClient.listSessions(),
@@ -126,10 +150,10 @@ async function fetchSessionsPayload(): Promise<SessionsPayload> {
 		errors.push(deviceSessionResult.error.message ?? "Could not load signed-in accounts.");
 	}
 	if (errors.length) throw new Error(errors.join(" "));
-	return {
-		sessions: (sessionResult.data ?? []) as ListedSession[],
-		deviceSessions: (deviceSessionResult.data ?? []) as ListedDeviceSession[],
-	};
+	return sessionsPayloadSchema.parse({
+		sessions: sessionResult.data ?? [],
+		deviceSessions: deviceSessionResult.data ?? [],
+	});
 }
 
 export function Sessions() {

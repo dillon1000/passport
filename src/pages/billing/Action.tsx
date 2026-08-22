@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, CreditCard, ShieldCheck } from "@/lib/icons";
 import { useParams } from "react-router";
+import { z } from "zod";
 
 import { BillingShell } from "@/components/auth/billing-shell";
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
@@ -52,11 +53,24 @@ const ACTION_COPY = {
 	},
 } as const;
 
-async function readData<T>(response: Response): Promise<T> {
-	const payload = (await response.json()) as {
-		data?: T;
-		error?: { message?: string };
-	};
+const billingActionDetailsSchema = z.object({
+		id: z.string(),
+		action: z.enum(["checkout", "portal", "cancel_subscription", "restore_subscription"]),
+		status: z.string(),
+		expiresAt: z.string(),
+		client: z.object({ id: z.string(), name: z.string() }),
+		target: z.object({ type: z.enum(["user", "organization"]), id: z.string(), label: z.string() }),
+		product: z.object({ id: z.string(), name: z.string(), label: z.string().nullable().optional() }).optional(),
+		subscription: z.object({ id: z.string(), plan: z.string(), status: z.string() }).optional(),
+	resultUrl: z.string().nullable().optional(),
+});
+const executeResultSchema = z.object({ status: z.string(), url: z.string().nullable().optional() });
+
+async function readData<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+	const payload = z.object({
+		data: schema.optional(),
+		error: z.object({ message: z.string().optional() }).optional(),
+	}).parse(await response.json());
 	if (!response.ok || payload.data === undefined) {
 		throw new Error(payload.error?.message ?? "Could not load this billing action.");
 	}
@@ -79,9 +93,9 @@ export function BillingAction() {
 		void fetch(`/api/billing/actions/${encodeURIComponent(intentId)}`, {
 			credentials: "same-origin",
 		})
-			.then(readData<BillingActionDetails>)
+			.then((response) => readData(response, billingActionDetailsSchema))
 			.then((value) => active && setDetails(value))
-			.catch((error: unknown) => {
+			.catch((error: Error) => {
 				if (!active) return;
 				setStatus({
 					tone: "error",
@@ -102,7 +116,7 @@ export function BillingAction() {
 			const result = await fetch(`/api/billing/actions/${encodeURIComponent(intentId)}/execute`, {
 				method: "POST",
 				credentials: "same-origin",
-			}).then(readData<{ status: string; url?: string | null }>);
+			}).then((response) => readData(response, executeResultSchema));
 			if (result.url) {
 				window.location.assign(result.url);
 				return;

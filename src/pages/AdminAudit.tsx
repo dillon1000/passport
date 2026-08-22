@@ -6,6 +6,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { z } from "zod";
 import { RefreshCw, ShieldCheck } from "@/lib/icons";
 
 import { DashboardShell } from "@/components/auth/dashboard-shell";
@@ -34,7 +35,7 @@ type AuditEvent = {
 	organizationId?: string | null;
 	ipAddress?: string | null;
 	location?: RequestLocation | null;
-	metadata?: unknown;
+	metadata?: z.input<ReturnType<typeof z.unknown>>;
 };
 
 type AuditPayload = {
@@ -48,12 +49,13 @@ function actionLabel(action: string) {
 		.join(" / ");
 }
 
-function metadataSummary(value: unknown) {
-	if (!value || typeof value !== "object") return "";
-	const entries = Object.entries(value as { [key: string]: unknown });
+function metadataSummary(value: z.input<ReturnType<typeof z.unknown>> | undefined) {
+	const parsed = z.record(z.string(), z.json()).safeParse(value);
+	if (!parsed.success) return "";
+	const entries = Object.entries(parsed.data);
 	return entries
 		.slice(0, 3)
-		.map(([key, item]) => `${key}: ${typeof item === "string" ? item : JSON.stringify(item)}`)
+		.map(([key, item]) => `${key}: ${z.string().safeParse(item).data ?? JSON.stringify(item)}`)
 		.join(" · ");
 }
 

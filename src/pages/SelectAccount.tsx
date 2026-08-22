@@ -6,6 +6,7 @@
 import { Loader } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
 import { authClient } from "@/auth-client";
 import { AccountChoice } from "@/components/auth/account-choice";
@@ -31,12 +32,28 @@ type DeviceAccount = {
 	};
 };
 
+const deviceAccountSchema = z.object({
+	session: z.object({ token: z.string() }),
+	user: z.object({
+		id: z.string(),
+		name: z.string(),
+		email: z.string(),
+		image: z.string().nullable().optional(),
+	}),
+});
+const oauthContinuationSchema = z.object({
+	redirect_uri: z.string().optional(),
+	redirectURI: z.string().optional(),
+	redirectTo: z.string().optional(),
+	url: z.string().optional(),
+});
+
 async function fetchDeviceAccounts(): Promise<DeviceAccount[]> {
 	const result = await authClient.multiSession.listDeviceSessions();
 	if (result.error) {
 		throw new Error(result.error.message ?? "Could not load signed-in accounts.");
 	}
-	return (result.data ?? []) as DeviceAccount[];
+	return z.array(deviceAccountSchema).parse(result.data ?? []);
 }
 
 /** Completes the provider's select-account interaction and returns its redirect URL. */
@@ -47,14 +64,7 @@ async function continueOAuthAccountSelection() {
 		body: JSON.stringify({ selected: true, oauth_query: window.location.search }),
 	});
 	if (!response.ok) throw new Error(await response.text());
-	return oauthConsentRedirect(
-		(await response.json()) as {
-			redirect_uri?: string;
-			redirectURI?: string;
-			redirectTo?: string;
-			url?: string;
-		},
-	);
+	return oauthConsentRedirect(oauthContinuationSchema.parse(await response.json()));
 }
 
 export function SelectAccount() {
