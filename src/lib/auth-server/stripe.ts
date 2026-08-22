@@ -106,7 +106,15 @@ export type StripeProvisionResult = {
 
 type StripeProvisioningInput = BillingPlanInput & { stripe?: StripeProductInput };
 
-export type StripeProvisioningClient = Pick<Stripe, "products" | "prices">;
+/** Narrow Stripe to the two creation calls used by plan provisioning. */
+export type StripeProvisioningClient = {
+	products: {
+		create(input: Parameters<Stripe["products"]["create"]>[0]): Promise<{ id: string }>;
+	};
+	prices: {
+		create(input: Parameters<Stripe["prices"]["create"]>[0]): Promise<{ id: string; lookup_key: string | null }>;
+	};
+};
 export type StripeProvisioningDependencies = {
 	createClient?: (env: AuthEnv, secretKey: string) => StripeProvisioningClient;
 };
