@@ -4,10 +4,13 @@
  * status, entitlements, limits, and subscription summaries. Raw Stripe customer,
  * subscription, and schedule IDs are intentionally excluded from claims.
  */
+import { z } from "zod";
+
 import type { AuthEnv } from "../env";
-import type { BillingPlanCatalog } from "./billing";
+import type { BillingLimits, BillingPlanCatalog } from "./billing";
 
 type BillingClaimEnv = Pick<AuthEnv, "BETTER_AUTH_URL">;
+const finiteLimitSchema = z.number().finite();
 
 export type BillingCustomerType = "user" | "organization";
 
@@ -40,6 +43,61 @@ export type BillingPurchaseClaimSource = {
 	amountTotal?: number | null;
 	currency?: string | null;
 	purchasedAt?: Date | string | null;
+};
+
+type BillingSubscriptionClaim = {
+	id: string;
+	referenceId: string;
+	customerType: BillingCustomerType;
+	plan: string;
+	status: string;
+	billingInterval?: string;
+	seats?: number;
+	periodStart?: string;
+	periodEnd?: string;
+	trialStart?: string;
+	trialEnd?: string;
+	cancelAtPeriodEnd: boolean;
+	cancelAt?: string;
+	canceledAt?: string;
+	endedAt?: string;
+	scheduledChange: boolean;
+	limits?: BillingLimits;
+	entitlements: readonly string[];
+};
+
+type BillingPurchaseClaim = {
+	id: string;
+	referenceId: string;
+	customerType: BillingCustomerType;
+	plan: string;
+	status: string;
+	quantity?: number;
+	amountTotal?: number;
+	currency?: string;
+	purchasedAt?: string;
+	limits?: BillingLimits;
+	entitlements: readonly string[];
+};
+
+type BillingStatusClaim = {
+	active: boolean;
+	trialing: boolean;
+	pastDue: boolean;
+	canceled: boolean;
+	activePlans: string[];
+	plans: string[];
+};
+
+export type BillingScopeClaimValue =
+	| BillingStatusClaim
+	| BillingSubscriptionClaim[]
+	| BillingPurchaseClaim[]
+	| string[]
+	| BillingLimits;
+
+export type BillingScopeClaims = {
+	[claimURL: string]: BillingScopeClaimValue;
 };
 
 function hasScope(scopes: readonly string[], scope: string) {
@@ -92,44 +150,34 @@ function billingSubscriptionClaims(
 ) {
 	return subscriptions.map((subscription) => {
 		const catalogPlan = catalog[subscription.plan.toLowerCase()];
-		return {
+		const claim: BillingSubscriptionClaim = {
 			id: subscription.id,
 			referenceId: subscription.referenceId,
 			customerType: subscription.customerType,
 			plan: subscription.plan,
 			status: subscription.status,
-			...(subscription.billingInterval
-				? { billingInterval: subscription.billingInterval }
-				: {}),
-			...(subscription.seats === undefined || subscription.seats === null
-				? {}
-				: { seats: subscription.seats }),
-			...(optionalISODate(subscription.periodStart)
-				? { periodStart: optionalISODate(subscription.periodStart) }
-				: {}),
-			...(optionalISODate(subscription.periodEnd)
-				? { periodEnd: optionalISODate(subscription.periodEnd) }
-				: {}),
-			...(optionalISODate(subscription.trialStart)
-				? { trialStart: optionalISODate(subscription.trialStart) }
-				: {}),
-			...(optionalISODate(subscription.trialEnd)
-				? { trialEnd: optionalISODate(subscription.trialEnd) }
-				: {}),
 			cancelAtPeriodEnd: subscription.cancelAtPeriodEnd === true,
-			...(optionalISODate(subscription.cancelAt)
-				? { cancelAt: optionalISODate(subscription.cancelAt) }
-				: {}),
-			...(optionalISODate(subscription.canceledAt)
-				? { canceledAt: optionalISODate(subscription.canceledAt) }
-				: {}),
-			...(optionalISODate(subscription.endedAt)
-				? { endedAt: optionalISODate(subscription.endedAt) }
-				: {}),
 			scheduledChange: Boolean(subscription.stripeScheduleId),
-			...(catalogPlan?.limits ? { limits: catalogPlan.limits } : {}),
 			entitlements: catalogPlan?.entitlements ?? [],
 		};
+		if (subscription.billingInterval) claim.billingInterval = subscription.billingInterval;
+		if (subscription.seats !== undefined && subscription.seats !== null) claim.seats = subscription.seats;
+		const periodStart = optionalISODate(subscription.periodStart);
+		if (periodStart) claim.periodStart = periodStart;
+		const periodEnd = optionalISODate(subscription.periodEnd);
+		if (periodEnd) claim.periodEnd = periodEnd;
+		const trialStart = optionalISODate(subscription.trialStart);
+		if (trialStart) claim.trialStart = trialStart;
+		const trialEnd = optionalISODate(subscription.trialEnd);
+		if (trialEnd) claim.trialEnd = trialEnd;
+		const cancelAt = optionalISODate(subscription.cancelAt);
+		if (cancelAt) claim.cancelAt = cancelAt;
+		const canceledAt = optionalISODate(subscription.canceledAt);
+		if (canceledAt) claim.canceledAt = canceledAt;
+		const endedAt = optionalISODate(subscription.endedAt);
+		if (endedAt) claim.endedAt = endedAt;
+		if (catalogPlan?.limits) claim.limits = catalogPlan.limits;
+		return claim;
 	});
 }
 
@@ -139,29 +187,25 @@ function billingPurchaseClaims(
 ) {
 	return purchases.map((purchase) => {
 		const catalogPlan = catalog[purchase.plan.toLowerCase()];
-		return {
+		const claim: BillingPurchaseClaim = {
 			id: purchase.id,
 			referenceId: purchase.referenceId,
 			customerType: purchase.customerType,
 			plan: purchase.plan,
 			status: purchase.status,
-			...(purchase.quantity === undefined || purchase.quantity === null
-				? {}
-				: { quantity: purchase.quantity }),
-			...(purchase.amountTotal === undefined || purchase.amountTotal === null
-				? {}
-				: { amountTotal: purchase.amountTotal }),
-			...(purchase.currency ? { currency: purchase.currency } : {}),
-			...(optionalISODate(purchase.purchasedAt)
-				? { purchasedAt: optionalISODate(purchase.purchasedAt) }
-				: {}),
-			...(catalogPlan?.limits ? { limits: catalogPlan.limits } : {}),
 			entitlements: catalogPlan?.entitlements ?? [],
 		};
+		if (purchase.quantity !== undefined && purchase.quantity !== null) claim.quantity = purchase.quantity;
+		if (purchase.amountTotal !== undefined && purchase.amountTotal !== null) claim.amountTotal = purchase.amountTotal;
+		if (purchase.currency) claim.currency = purchase.currency;
+		const purchasedAt = optionalISODate(purchase.purchasedAt);
+		if (purchasedAt) claim.purchasedAt = purchasedAt;
+		if (catalogPlan?.limits) claim.limits = catalogPlan.limits;
+		return claim;
 	});
 }
 
-function billingStatus(subscriptions: readonly BillingSubscriptionClaimSource[]) {
+function billingStatus(subscriptions: readonly BillingSubscriptionClaimSource[]): BillingStatusClaim {
 	const plans = unique(subscriptions.map((subscription) => subscription.plan));
 	const activePlans = unique(
 		subscriptions
@@ -192,18 +236,15 @@ function billingLimits(
 	catalog: BillingPlanCatalog,
 	planNames: readonly string[],
 ) {
-	const merged: { [key: string]: unknown } = {};
+	const merged: BillingLimits = {};
 	for (const plan of planNames) {
 		const limits = catalog[plan.toLowerCase()]?.limits;
 		if (!limits) continue;
 		for (const [key, value] of Object.entries(limits)) {
-			if (
-				typeof value === "number" &&
-				typeof merged[key] === "number" &&
-				Number.isFinite(value) &&
-				Number.isFinite(merged[key])
-			) {
-				merged[key] = Math.max(merged[key], value);
+			const limit = finiteLimitSchema.safeParse(value);
+			const current = finiteLimitSchema.safeParse(merged[key]);
+			if (limit.success && current.success) {
+				merged[key] = Math.max(limit.data, current.data);
 				continue;
 			}
 			if (merged[key] === undefined) {
@@ -220,36 +261,13 @@ export function buildBillingScopeClaims(
 	subscriptions: readonly BillingSubscriptionClaimSource[],
 	catalog: BillingPlanCatalog,
 	purchases: readonly BillingPurchaseClaimSource[] = [],
-): { [key: string]: unknown } {
+) {
 	const planNames = entitledPlanNames(subscriptions, purchases);
-	return {
-		...(hasScope(scopes, "billing:status")
-			? { [oauthClaimURL(env, "billing_status")]: billingStatus(subscriptions) }
-			: {}),
-		...(hasScope(scopes, "billing:subscriptions")
-			? {
-					[oauthClaimURL(env, "billing_subscriptions")]:
-						billingSubscriptionClaims(catalog, subscriptions),
-				}
-			: {}),
-		...(hasScope(scopes, "billing:purchases")
-			? {
-					[oauthClaimURL(env, "billing_purchases")]: billingPurchaseClaims(
-						catalog,
-						purchases,
-					),
-				}
-			: {}),
-		...(hasScope(scopes, "billing:entitlements")
-			? {
-					[oauthClaimURL(env, "billing_entitlements")]: billingEntitlements(
-						catalog,
-						planNames,
-					),
-				}
-			: {}),
-		...(hasScope(scopes, "billing:limits")
-			? { [oauthClaimURL(env, "billing_limits")]: billingLimits(catalog, planNames) }
-			: {}),
-	};
+	const claims: BillingScopeClaims = {};
+	if (hasScope(scopes, "billing:status")) claims[oauthClaimURL(env, "billing_status")] = billingStatus(subscriptions);
+	if (hasScope(scopes, "billing:subscriptions")) claims[oauthClaimURL(env, "billing_subscriptions")] = billingSubscriptionClaims(catalog, subscriptions);
+	if (hasScope(scopes, "billing:purchases")) claims[oauthClaimURL(env, "billing_purchases")] = billingPurchaseClaims(catalog, purchases);
+	if (hasScope(scopes, "billing:entitlements")) claims[oauthClaimURL(env, "billing_entitlements")] = billingEntitlements(catalog, planNames);
+	if (hasScope(scopes, "billing:limits")) claims[oauthClaimURL(env, "billing_limits")] = billingLimits(catalog, planNames);
+	return claims;
 }

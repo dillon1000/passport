@@ -14,6 +14,7 @@ import {
 	parseStripeBillingPlans,
 	validateBillingPlanInput,
 	type BillingPlanDefinition,
+	type BillingPlanInput,
 } from "./billing";
 import type { AuthDatabase } from "./auth-server/types";
 
@@ -26,42 +27,33 @@ function optionalText(value: string | null | undefined) {
 
 /** Map a stored row to the shared BillingPlanDefinition shape. */
 export function rowToDefinition(row: BillingPlanRow): BillingPlanDefinition {
-	return {
-		name: row.name,
-		...(optionalText(row.label) ? { label: optionalText(row.label) } : {}),
-		...(optionalText(row.description)
-			? { description: optionalText(row.description) }
-			: {}),
-		...(optionalText(row.priceId) ? { priceId: optionalText(row.priceId) } : {}),
-		...(optionalText(row.lookupKey) ? { lookupKey: optionalText(row.lookupKey) } : {}),
-		...(optionalText(row.annualDiscountPriceId)
-			? { annualDiscountPriceId: optionalText(row.annualDiscountPriceId) }
-			: {}),
-		...(optionalText(row.annualDiscountLookupKey)
-			? { annualDiscountLookupKey: optionalText(row.annualDiscountLookupKey) }
-			: {}),
-		...(optionalText(row.group) ? { group: optionalText(row.group) } : {}),
-		...(optionalText(row.seatPriceId)
-			? { seatPriceId: optionalText(row.seatPriceId) }
-			: {}),
-		...(optionalText(row.prorationBehavior)
-			? {
-					prorationBehavior:
-						row.prorationBehavior as BillingPlanDefinition["prorationBehavior"],
-				}
-			: {}),
-		...(row.freeTrialDays != null ? { freeTrialDays: row.freeTrialDays } : {}),
-		...(row.type && row.type !== "subscription"
-			? { type: row.type as BillingPlanDefinition["type"] }
-			: {}),
-		...(row.personalOnly ? { personalOnly: true } : {}),
-		...(row.hidden ? { hidden: true } : {}),
-		...(row.limits ? { limits: row.limits } : {}),
-		...(row.entitlements ? { entitlements: row.entitlements } : {}),
-		...(row.lineItems
-			? { lineItems: row.lineItems as BillingPlanDefinition["lineItems"] }
-			: {}),
-	};
+	const input: BillingPlanInput = { name: row.name };
+	const label = optionalText(row.label);
+	const description = optionalText(row.description);
+	const priceId = optionalText(row.priceId);
+	const lookupKey = optionalText(row.lookupKey);
+	const annualDiscountPriceId = optionalText(row.annualDiscountPriceId);
+	const annualDiscountLookupKey = optionalText(row.annualDiscountLookupKey);
+	const group = optionalText(row.group);
+	const seatPriceId = optionalText(row.seatPriceId);
+	const prorationBehavior = optionalText(row.prorationBehavior);
+	if (label) input.label = label;
+	if (description) input.description = description;
+	if (priceId) input.priceId = priceId;
+	if (lookupKey) input.lookupKey = lookupKey;
+	if (annualDiscountPriceId) input.annualDiscountPriceId = annualDiscountPriceId;
+	if (annualDiscountLookupKey) input.annualDiscountLookupKey = annualDiscountLookupKey;
+	if (group) input.group = group;
+	if (seatPriceId) input.seatPriceId = seatPriceId;
+	if (prorationBehavior) input.prorationBehavior = prorationBehavior;
+	if (row.freeTrialDays !== null) input.freeTrialDays = row.freeTrialDays;
+	if (row.type !== "subscription") input.type = row.type;
+	if (row.personalOnly) input.personalOnly = true;
+	if (row.hidden) input.hidden = true;
+	if (row.limits) input.limits = row.limits;
+	if (row.entitlements) input.entitlements = row.entitlements;
+	if (row.lineItems) input.lineItems = row.lineItems;
+	return validateBillingPlanInput(input, `billing plan ${row.id}`);
 }
 
 /** Map a validated definition to column values for insert/update. */
@@ -83,7 +75,7 @@ function definitionToColumns(plan: BillingPlanDefinition) {
 		hidden: plan.hidden ?? false,
 		limits: plan.limits ?? null,
 		entitlements: plan.entitlements ?? null,
-		lineItems: (plan.lineItems as { [key: string]: unknown }[] | undefined) ?? null,
+		lineItems: plan.lineItems ?? null,
 	};
 }
 
@@ -129,22 +121,21 @@ function newPlanId() {
 	return `prod_${nanoid()}`;
 }
 
-export type BillingPlanWriteInput = {
+export type BillingPlanWriteInput = BillingPlanInput & {
 	displayOrder?: number;
-} & { [key: string]: unknown };
+};
 
-function normalizeDisplayOrder(value: unknown) {
-	if (value === undefined || value === null) return undefined;
-	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+function normalizeDisplayOrder(value: number | undefined) {
+	if (value === undefined) return undefined;
+	if (!Number.isInteger(value) || value < 0) {
 		throw new TypeError("displayOrder must be a non-negative integer.");
 	}
 	return value;
 }
 
-export async function createBillingPlan(db: AuthDatabase, input: unknown) {
-	const value = (input ?? {}) as { [key: string]: unknown };
-	const plan = validateBillingPlanInput(value, "plan");
-	const displayOrder = normalizeDisplayOrder(value.displayOrder) ?? 0;
+export async function createBillingPlan(db: AuthDatabase, input: BillingPlanWriteInput) {
+	const plan = validateBillingPlanInput(input, "plan");
+	const displayOrder = normalizeDisplayOrder(input.displayOrder) ?? 0;
 	const [row] = await db
 		.insert(schema.billingPlan)
 		.values({
@@ -156,16 +147,16 @@ export async function createBillingPlan(db: AuthDatabase, input: unknown) {
 	return row;
 }
 
-export async function updateBillingPlan(db: AuthDatabase, id: string, input: unknown) {
-	const value = (input ?? {}) as { [key: string]: unknown };
-	const plan = validateBillingPlanInput(value, "plan");
-	const displayOrder = normalizeDisplayOrder(value.displayOrder);
+
+export async function updateBillingPlan(db: AuthDatabase, id: string, input: BillingPlanWriteInput) {
+	const plan = validateBillingPlanInput(input, "plan");
+	const displayOrder = normalizeDisplayOrder(input.displayOrder);
+	const columns: ReturnType<typeof definitionToColumns> & { displayOrder?: number } =
+		definitionToColumns(plan);
+	if (displayOrder !== undefined) columns.displayOrder = displayOrder;
 	const [row] = await db
 		.update(schema.billingPlan)
-		.set({
-			...definitionToColumns(plan),
-			...(displayOrder === undefined ? {} : { displayOrder }),
-		})
+		.set(columns)
 		.where(eq(schema.billingPlan.id, id))
 		.returning();
 	return row;
@@ -181,18 +172,14 @@ export async function deleteBillingPlan(db: AuthDatabase, id: string) {
 
 // Persist a drag-to-reorder result: each plan's displayOrder becomes its index
 // in the supplied id list. Ids not present are left untouched.
-export async function reorderBillingPlans(db: AuthDatabase, order: unknown) {
-	if (!Array.isArray(order) || order.some((id) => typeof id !== "string")) {
-		throw new TypeError("order must be an array of plan ids.");
-	}
-	const ids = order as string[];
+export async function reorderBillingPlans(db: AuthDatabase, order: string[]) {
 	await Promise.all(
-		ids.map((id, index) =>
+	order.map((id, index) =>
 			db
 				.update(schema.billingPlan)
 				.set({ displayOrder: index })
 				.where(eq(schema.billingPlan.id, id)),
 		),
 	);
-	return ids.length;
+	return order.length;
 }

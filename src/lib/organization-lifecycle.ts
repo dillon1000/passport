@@ -4,11 +4,12 @@
  * eligibility decisions only. Better Auth remains the enforcement boundary.
  */
 export const ORGANIZATION_ROLES = ["member", "admin", "owner"] as const;
+const organizationRoles = new Set<string>(ORGANIZATION_ROLES);
 
 export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
 
 export function canChangeOrganizationRole(role: string): role is OrganizationRole {
-	return ORGANIZATION_ROLES.includes(role as OrganizationRole);
+	return organizationRoles.has(role);
 }
 
 export function canRemoveOrganizationMember(input: {

@@ -50,6 +50,7 @@ import { DelegatedResourceError } from "../src/lib/delegated-resource-errors";
 import {
 	createDelegatedResourceService,
 	type DelegatedResourceActor,
+	type DelegatedMutation,
 } from "../src/lib/delegated-resources";
 import { hasLiveOrganizationPermission } from "../src/lib/organization-access";
 import { createPassportImageAssetService } from "../src/lib/passport-image-assets";
@@ -59,6 +60,14 @@ import { DELEGATED_CLIENT_API_SCOPES, OAUTH_SCOPE_DEFINITIONS } from "../src/lib
 
 type ClientAPIEnv = { Bindings: Env };
 type ClientAPIContext = Context<ClientAPIEnv>;
+type AccountActivityMetadata = NonNullable<DelegatedMutation["metadata"]> & {
+	clientId: string;
+	clientName: string;
+	action: string;
+	targetType: string;
+	targetId?: string;
+	organizationId?: string;
+};
 
 const ErrorSchema = z.object({
 	error: z.object({ code: z.string(), message: z.string() }),
@@ -172,7 +181,7 @@ async function authorize(
 	c: ClientAPIContext,
 	options: { requiredScopes?: readonly string[]; anyScope?: readonly string[]; sensitive?: boolean } = {},
 ) {
-	const env = c.env as AuthEnv;
+	const env = c.env;
 	const actor = await authorizeDelegatedClientRequest(env, createDb(env), {
 		authorization: c.req.header("authorization"),
 		requiredScopes: options.requiredScopes,
@@ -188,7 +197,7 @@ async function authorize(
 }
 
 function resourceService(c: ClientAPIContext) {
-	const env = c.env as AuthEnv;
+	const env = c.env;
 	const db = createDb(env);
 	const request = c.req.raw;
 	return createDelegatedResourceService({
@@ -199,6 +208,15 @@ function resourceService(c: ClientAPIContext) {
 			storage: env.PROFILE_IMAGES,
 		}),
 		onMutation: async (actor, mutation) => {
+			const metadata: AccountActivityMetadata = {
+				clientId: actor.clientID,
+				clientName: actor.clientName,
+				action: mutation.action,
+				targetType: mutation.targetType,
+				...(mutation.metadata ?? {}),
+			};
+			if (mutation.targetID) metadata.targetId = mutation.targetID;
+			if (mutation.organizationID) metadata.organizationId = mutation.organizationID;
 			await db.insert(schema.accountActivityEvent).values({
 				id: crypto.randomUUID(),
 				userId: actor.userID,
@@ -206,15 +224,7 @@ function resourceService(c: ClientAPIContext) {
 				ipAddress: requestIPAddress(request),
 				location: requestLocationFromRequest(request),
 				userAgent: request.headers.get("user-agent"),
-				metadata: JSON.stringify({
-					clientId: actor.clientID,
-					clientName: actor.clientName,
-					action: mutation.action,
-					targetType: mutation.targetType,
-					...(mutation.targetID ? { targetId: mutation.targetID } : {}),
-					...(mutation.organizationID ? { organizationId: mutation.organizationID } : {}),
-					...(mutation.metadata ?? {}),
-				}),
+				metadata: JSON.stringify(metadata),
 			});
 		},
 		sendInvitation: async (delivery) => {
@@ -324,7 +334,7 @@ async function recordBillingIntentActivity(
 	input: { action: BillingAction; intentId: string; referenceId: string },
 ) {
 	const request = c.req.raw;
-	await createDb(c.env as AuthEnv).insert(schema.accountActivityEvent).values({
+	await createDb(c.env).insert(schema.accountActivityEvent).values({
 		id: crypto.randomUUID(),
 		userId: actor.userId,
 		type: "connected_app_action",
@@ -353,7 +363,7 @@ function publicBillingIntent(creation: Awaited<ReturnType<typeof createBillingAc
 }
 
 async function sessionForBillingAction(c: ClientAPIContext) {
-	const session = await auth(c.env as AuthEnv).api.getSession({ headers: c.req.raw.headers });
+	const session = await auth(c.env).api.getSession({ headers: c.req.raw.headers });
 	if (!session) {
 		throw new ClientAPIError({
 			status: 401,
@@ -365,7 +375,7 @@ async function sessionForBillingAction(c: ClientAPIContext) {
 }
 
 async function billingActionContext(c: ClientAPIContext, intentId: string) {
-	const env = c.env as AuthEnv;
+	const env = c.env;
 	const db = createDb(env);
 	const session = await sessionForBillingAction(c);
 	const intent = await getBillingActionIntent(db, intentId, session.user.id);
@@ -451,7 +461,7 @@ export function createClientAPI() {
 	});
 
 	app.get("/.well-known/oauth-protected-resource/api/v1", (c) =>
-		c.json(clientAPIProtectedResourceMetadata((c.env as AuthEnv).BETTER_AUTH_URL)),
+		c.json(clientAPIProtectedResourceMetadata((c.env).BETTER_AUTH_URL)),
 	);
 
 	const mePatch = createRoute({
@@ -805,7 +815,7 @@ export function createClientAPI() {
 	});
 	app.openapi(productsGet, async (c) => {
 		await authorize(c, { anyScope: ["billing:checkout", "billing:subscriptions", "billing:purchases"] });
-		const env = c.env as AuthEnv;
+		const env = c.env;
 		const db = createDb(env);
 		const rows = await listBillingPlans(db);
 		const visible = rows.filter((row) => !row.hidden);
@@ -825,7 +835,7 @@ export function createClientAPI() {
 	});
 	app.openapi(productGet, async (c) => {
 		await authorize(c, { anyScope: ["billing:checkout", "billing:subscriptions", "billing:purchases"] });
-		const env = c.env as AuthEnv;
+		const env = c.env;
 		const db = createDb(env);
 		const row = await getBillingPlanById(db, c.req.valid("param").productId);
 		if (!row) throw new ClientAPIError({ status: 404, code: "product_not_found", message: "Product not found." });
@@ -841,7 +851,7 @@ export function createClientAPI() {
 	});
 	app.openapi(subscriptionsGet, async (c) => {
 		const actor = await authorize(c, { requiredScopes: ["billing:subscriptions"] });
-		const db = createDb(c.env as AuthEnv);
+		const db = createDb(c.env);
 		const target = await authorizeBillingTarget(db, actor, c.req.valid("query").organizationId, false);
 		const rows = await db
 			.select({
@@ -872,7 +882,7 @@ export function createClientAPI() {
 	});
 	app.openapi(purchasesGet, async (c) => {
 		const actor = await authorize(c, { requiredScopes: ["billing:purchases"] });
-		const db = createDb(c.env as AuthEnv);
+		const db = createDb(c.env);
 		const target = await authorizeBillingTarget(db, actor, c.req.valid("query").organizationId, false);
 		const rows = await db
 			.select({
@@ -901,7 +911,7 @@ export function createClientAPI() {
 	});
 	app.openapi(checkoutIntentPost, async (c) => {
 		const actor = await authorize(c, { requiredScopes: ["billing:checkout"], sensitive: true });
-		const env = c.env as AuthEnv;
+		const env = c.env;
 		const db = createDb(env);
 		const input = c.req.valid("json");
 		const target = await authorizeBillingTarget(db, actor, input.organizationId, true);
@@ -915,7 +925,7 @@ export function createClientAPI() {
 			userId: actor.userId,
 			client,
 			action: "checkout",
-			...(input.organizationId ? { organizationId: input.organizationId } : {}),
+			organizationId: input.organizationId,
 			productId: input.productId,
 			annual: input.annual,
 			seats: input.seats,
@@ -937,14 +947,14 @@ export function createClientAPI() {
 	});
 	app.openapi(portalIntentPost, async (c) => {
 		const actor = await authorize(c, { requiredScopes: ["billing:manage"], sensitive: true });
-		const env = c.env as AuthEnv;
+		const env = c.env;
 		const db = createDb(env);
 		const input = c.req.valid("json");
 		const target = await authorizeBillingTarget(db, actor, input.organizationId, true);
 		const client = await registeredBillingClient(env, db, actor.clientId);
 		const creation = await createBillingActionIntent(db, env.BETTER_AUTH_URL, {
 			userId: actor.userId, client, action: "portal",
-			...(input.organizationId ? { organizationId: input.organizationId } : {}),
+			organizationId: input.organizationId,
 			returnUrl: input.returnUrl,
 			idempotencyKey: c.req.header("Idempotency-Key") ?? "",
 		});
@@ -966,7 +976,7 @@ export function createClientAPI() {
 		});
 		app.openapi(route, async (c) => {
 			const actor = await authorize(c, { requiredScopes: ["billing:manage"], sensitive: true });
-			const env = c.env as AuthEnv;
+			const env = c.env;
 			const db = createDb(env);
 			const subscriptionId = c.req.valid("param").subscriptionId;
 			const [subscription] = await db
@@ -981,7 +991,7 @@ export function createClientAPI() {
 			const billingAction = `${action}_subscription` as const satisfies BillingAction;
 			const creation = await createBillingActionIntent(db, env.BETTER_AUTH_URL, {
 				userId: actor.userId, client, action: billingAction,
-				...(organizationId ? { organizationId } : {}),
+				organizationId,
 				subscriptionId,
 				returnUrl: c.req.valid("json").returnUrl,
 				idempotencyKey: c.req.header("Idempotency-Key") ?? "",
@@ -994,8 +1004,7 @@ export function createClientAPI() {
 	app.get("/api/billing/actions/:intentId", async (c) => {
 		const context = await billingActionContext(c, c.req.param("intentId"));
 		const { intent, liveActor, organization, product, subscription } = context;
-		return c.json({
-			data: {
+		const data = {
 				id: intent.id,
 				action: intent.action,
 				status: intent.status,
@@ -1006,11 +1015,11 @@ export function createClientAPI() {
 					id: intent.referenceId,
 					label: organization?.name ?? context.session.user.name,
 				},
-				...(product ? { product: { id: product.id, name: product.name, label: product.label } } : {}),
-				...(subscription ? { subscription: { id: subscription.id, plan: subscription.plan, status: subscription.status } } : {}),
+				product: product ? { id: product.id, name: product.name, label: product.label } : undefined,
+				subscription: subscription ? { id: subscription.id, plan: subscription.plan, status: subscription.status } : undefined,
 				resultUrl: intent.resultUrl,
-			},
-		});
+		};
+		return c.json({ data });
 	});
 
 	app.post("/api/billing/actions/:intentId/execute", async (c) => {
@@ -1028,7 +1037,7 @@ export function createClientAPI() {
 					const result = await createOneTimeCheckout(context.env, context.db, {
 						plan: definition.name,
 						customerType,
-						...(customerType === "organization" ? { referenceId: claimed.referenceId } : {}),
+						referenceId: customerType === "organization" ? claimed.referenceId : undefined,
 						user: { id: context.session.user.id, email: context.session.user.email },
 						successUrl: claimed.successUrl ?? context.env.BETTER_AUTH_URL,
 						cancelUrl: claimed.cancelUrl ?? context.env.BETTER_AUTH_URL,
@@ -1040,22 +1049,23 @@ export function createClientAPI() {
 						body: {
 							plan: definition.name,
 							annual: claimed.annual ?? false,
-							...(claimed.seats ? { seats: claimed.seats } : {}),
+							seats: claimed.seats,
 							customerType,
-							...(customerType === "organization" ? { referenceId: claimed.referenceId } : {}),
+							referenceId: customerType === "organization" ? claimed.referenceId : undefined,
 							successUrl: claimed.successUrl ?? context.env.BETTER_AUTH_URL,
 							cancelUrl: claimed.cancelUrl ?? context.env.BETTER_AUTH_URL,
 							disableRedirect: true,
 						},
 					});
-					resultUrl = "url" in result && typeof result.url === "string" ? result.url : null;
+					const resultURL = z.object({ url: z.string() }).safeParse(result);
+					resultUrl = resultURL.success ? resultURL.data.url : null;
 				}
 			} else if (claimed.action === "portal") {
 				const result = await auth(context.env).api.createBillingPortal({
 					headers: c.req.raw.headers,
 					body: {
 						customerType,
-						...(customerType === "organization" ? { referenceId: claimed.referenceId } : {}),
+						referenceId: customerType === "organization" ? claimed.referenceId : undefined,
 						returnUrl: claimed.returnUrl ?? context.env.BETTER_AUTH_URL,
 						disableRedirect: true,
 					},
@@ -1066,7 +1076,7 @@ export function createClientAPI() {
 					headers: c.req.raw.headers,
 					body: {
 						customerType,
-						...(customerType === "organization" ? { referenceId: claimed.referenceId } : {}),
+						referenceId: customerType === "organization" ? claimed.referenceId : undefined,
 						subscriptionId: context.subscription.stripeSubscriptionId,
 						returnUrl: claimed.returnUrl ?? context.env.BETTER_AUTH_URL,
 						disableRedirect: true,
@@ -1078,7 +1088,7 @@ export function createClientAPI() {
 					headers: c.req.raw.headers,
 					body: {
 						customerType,
-						...(customerType === "organization" ? { referenceId: claimed.referenceId } : {}),
+						referenceId: customerType === "organization" ? claimed.referenceId : undefined,
 						subscriptionId: context.subscription.stripeSubscriptionId,
 					},
 				});

@@ -8,6 +8,7 @@ import { NonRetryableError } from "cloudflare:workflows";
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { strToU8, Zip, ZipDeflate } from "fflate";
+import { z } from "zod";
 
 import { createDb } from "../src/db/client";
 import * as schema from "../src/db/schema";
@@ -44,6 +45,8 @@ type ExportFile = {
 	bytes: Uint8Array;
 };
 
+type JSONStringifyValue = Parameters<typeof JSON.stringify>[0];
+
 type ExportObjectSource = {
 	name: string;
 	key: string;
@@ -69,6 +72,7 @@ const DATA_EXPORT_REDACTED_FIELDS = [
 	"cancelTokenHash",
 	"downloadTokenHash",
 ] as const;
+const dataExportStatusSchema = z.enum(DATA_EXPORT_STATUSES);
 
 function toISOString(value: Date | string | null | undefined) {
 	if (!value) return null;
@@ -76,9 +80,8 @@ function toISOString(value: Date | string | null | undefined) {
 }
 
 function dataExportStatus(value: string): DataExportStatus {
-	return DATA_EXPORT_STATUSES.includes(value as DataExportStatus)
-		? (value as DataExportStatus)
-		: "failed";
+	const status = dataExportStatusSchema.safeParse(value);
+	return status.success ? status.data : "failed";
 }
 
 export function mapDataExportRequest(row: DataExportRow): DataExportRequestSummary {
@@ -99,7 +102,7 @@ function sanitizeRows<T extends object>(rows: T[], redactedFields: readonly stri
 	const redacted = new Set(redactedFields);
 	return rows.map((row) =>
 		Object.fromEntries(
-			(Object.entries(row) as [string, unknown][]).map(([key, value]) => [
+			Object.entries(row).map(([key, value]) => [
 				key,
 				redacted.has(key) && value !== null && value !== undefined ? REDACTED : value,
 			]),
@@ -107,7 +110,7 @@ function sanitizeRows<T extends object>(rows: T[], redactedFields: readonly stri
 	);
 }
 
-function jsonFile(name: string, value: unknown): ExportFile {
+function jsonFile(name: string, value: JSONStringifyValue): ExportFile {
 	return {
 		name,
 		bytes: strToU8(`${JSON.stringify(value, null, 2)}\n`),
@@ -160,12 +163,12 @@ async function latestDataExportRow(env: AuthEnv, userId: string) {
 }
 
 export async function getCurrentDataExportRequest(context: DataExportContext) {
-	const row = await latestDataExportRow(context.env as AuthEnv, context.session.user.id);
+	const row = await latestDataExportRow(context.env, context.session.user.id);
 	return row ? mapDataExportRequest(row) : null;
 }
 
 export async function requestDataExport(context: DataExportContext) {
-	const env = context.env as AuthEnv;
+	const env = context.env;
 	const userId = context.session.user.id;
 	const email = context.session.user.email;
 	if (!email) {
@@ -225,7 +228,7 @@ export async function requestDataExport(context: DataExportContext) {
 }
 
 export async function cancelDataExportRequest(context: DataExportContext, requestId: string) {
-	const env = context.env as AuthEnv;
+	const env = context.env;
 	const now = new Date();
 	const [row] = await createDb(env)
 		.update(schema.dataExportRequest)
@@ -306,7 +309,7 @@ export async function serveDataExportCancel(request: Request, env: Env, requestI
 	if (request.method !== "POST") return new Response(null, { status: 405 });
 	const form = await request.formData().catch(() => null);
 	const postedToken = String(form?.get("token") ?? token).trim();
-	const row = await cancelDataExportWithToken(env as AuthEnv, requestId, postedToken);
+	const row = await cancelDataExportWithToken(env, requestId, postedToken);
 	return htmlResponse(`<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Data export ${row ? "canceled" : "not canceled"}</title></head>
@@ -318,7 +321,7 @@ export async function serveDataExportCancel(request: Request, env: Env, requestI
 }
 
 export async function serveDataExportDownload(request: Request, env: Env, requestId: string) {
-	const authEnv = env as AuthEnv;
+	const authEnv = env;
 	const token = tokenFromURL(request);
 	if (!token) return htmlResponse("<h1>Missing download token</h1>", 400);
 
@@ -488,10 +491,7 @@ async function profileImageSources(env: AuthEnv, userId: string) {
 	const sources: ExportObjectSource[] = [];
 	let cursor: string | undefined;
 	do {
-		const result = await env.PROFILE_IMAGES.list({
-			prefix,
-			...(cursor ? { cursor } : {}),
-		});
+		const result = await env.PROFILE_IMAGES.list({ prefix, cursor });
 		for (const object of result.objects) {
 			sources.push({
 				key: object.key,

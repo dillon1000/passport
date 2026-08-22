@@ -6,7 +6,11 @@
  * scope strings in `oauth-scopes.ts` so discovery, consent, and API policy stay
  * aligned.
  */
-import { assertSupportedOAuthScopes, type SupportedOAuthScope } from "./oauth-scopes";
+import {
+	assertSupportedOAuthScopes,
+	isSupportedOAuthScope,
+} from "./oauth-scopes";
+import { z } from "zod";
 
 export const PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY = "passportAllowedAudiences";
 
@@ -16,42 +20,29 @@ export type OAuthResourceSeed = {
 	scopes: SupportedOAuthScope[];
 };
 
-type RawOAuthResourceSeed = {
-	identifier?: unknown;
-	name?: unknown;
-	scopes?: unknown;
-};
-
-function assertStringArray(value: unknown, source: string): string[] {
-	if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-		throw new TypeError(`${source} must be an array of strings.`);
-	}
-	return value.map((item) => item.trim()).filter(Boolean);
-}
+const oauthResourceSeedSchema = z.object({
+	identifier: z.string().trim().min(1),
+	name: z.string().trim().min(1),
+	scopes: z.array(z.string().trim().min(1)),
+});
+const allowedAudiencesMetadataSchema = z.record(z.string(), z.array(z.string()));
+type OAuthMetadata = z.input<typeof allowedAudiencesMetadataSchema>;
 
 export function parseOAuthResourceSeeds(value: string | undefined): OAuthResourceSeed[] {
 	if (!value) return [];
 
-	const parsed = JSON.parse(value) as unknown;
-	if (!Array.isArray(parsed)) {
+	const parsed = z.array(oauthResourceSeedSchema).safeParse(JSON.parse(value));
+	if (!parsed.success) {
 		throw new TypeError("OAUTH_RESOURCES must be a JSON array.");
 	}
 
-	return parsed.map((item, index) => {
-		const resource = item as RawOAuthResourceSeed;
-		const source = `OAUTH_RESOURCES[${index}]`;
-		if (typeof resource.identifier !== "string" || !resource.identifier.trim()) {
-			throw new TypeError(`${source}.identifier must be a non-empty string.`);
-		}
-		if (typeof resource.name !== "string" || !resource.name.trim()) {
-			throw new TypeError(`${source}.name must be a non-empty string.`);
-		}
-		const scopes = assertStringArray(resource.scopes, `${source}.scopes`);
+	return parsed.data.map((resource) => {
+		const scopes = resource.scopes;
 		assertSupportedOAuthScopes(scopes, "OAUTH_RESOURCES");
 		return {
-			identifier: resource.identifier.trim(),
-			name: resource.name.trim(),
-			scopes: scopes as SupportedOAuthScope[],
+			identifier: resource.identifier,
+			name: resource.name,
+			scopes: scopes.filter(isSupportedOAuthScope),
 		};
 	});
 }
@@ -68,22 +59,19 @@ export function metadataWithAllowedAudiences(allowedAudiences: string[] | undefi
 }
 
 export function allowedAudiencesFromMetadata(
-	metadata: unknown,
+	metadata: OAuthMetadata,
 ): string[] | undefined {
-	if (!metadata || typeof metadata !== "object") return undefined;
-	const value = (metadata as { [key: string]: unknown })[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY];
-	if (!Array.isArray(value)) return undefined;
-	const audiences = value
-		.filter((item): item is string => typeof item === "string")
+	const parsed = allowedAudiencesMetadataSchema.safeParse(metadata);
+	if (!parsed.success) return undefined;
+	const audiences = (parsed.data[PASSPORT_ALLOWED_AUDIENCES_METADATA_KEY] ?? [])
 		.map((item) => item.trim())
 		.filter(Boolean);
 	return audiences.length ? audiences : undefined;
 }
 
 function resourceValues(value: string | readonly string[] | undefined) {
-	if (typeof value === "string") {
-		return value.trim() ? [value.trim()] : [];
-	}
+	const scalar = z.string().safeParse(value);
+	if (scalar.success) return scalar.data.trim() ? [scalar.data.trim()] : [];
 	return value?.map((item) => item.trim()).filter(Boolean) ?? [];
 }
 

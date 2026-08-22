@@ -15,6 +15,7 @@ import { loadBillingPlans } from "./billing-plan-store";
 import {
 	buildBillingScopeClaims,
 	type BillingPurchaseClaimSource,
+	type BillingScopeClaimValue,
 	type BillingSubscriptionClaimSource,
 } from "./billing-claims";
 import { buildOAuthPolicyClaims } from "./oauth-policy";
@@ -95,6 +96,17 @@ export type OAuthClaimContext = {
 	billingPurchases: BillingPurchaseClaimSource[];
 	billingCatalog: BillingPlanCatalog;
 };
+
+type OrganizationRoleClaims = { [organizationId: string]: string };
+type OAuthScopeClaimValue =
+	| BillingScopeClaimValue
+	| string
+	| boolean
+	| OrganizationMembershipClaim[]
+	| TeamMembershipClaim[]
+	| ConnectionClaim[]
+	| OrganizationRoleClaims;
+type OAuthScopeClaims = { [claimURL: string]: OAuthScopeClaimValue };
 
 function hasScope(scopes: readonly string[], scope: string) {
 	return scopes.includes(scope);
@@ -230,22 +242,15 @@ function compactMembershipClaims(
 	]);
 	const teamIds = includeTeamIds ? unique(context.teams.map((team) => team.id)) : [];
 
-	return {
-		...(organizationIds.length
-			? { [oauthClaimURL(env, "organization_ids")]: organizationIds }
-			: {}),
-		...(includeOrganizationRoles
-			? {
-					[oauthClaimURL(env, "organization_roles")]: Object.fromEntries(
-						context.organizations.map((organization) => [
-							organization.id,
-							organization.role,
-						]),
-					),
-				}
-			: {}),
-		...(teamIds.length ? { [oauthClaimURL(env, "team_ids")]: teamIds } : {}),
-	};
+	const claims: OAuthScopeClaims = {};
+	if (organizationIds.length) claims[oauthClaimURL(env, "organization_ids")] = organizationIds;
+	if (includeOrganizationRoles) {
+		const roles: OrganizationRoleClaims = {};
+		for (const organization of context.organizations) roles[organization.id] = organization.role;
+		claims[oauthClaimURL(env, "organization_roles")] = roles;
+	}
+	if (teamIds.length) claims[oauthClaimURL(env, "team_ids")] = teamIds;
+	return claims;
 }
 
 function policyClaims(env: ClaimEnv, scopes: readonly string[], context: OAuthClaimContext) {
@@ -338,14 +343,13 @@ export function buildIDTokenScopeClaims(
 	env: ClaimEnv,
 	user: OAuthClaimUser,
 	scopes: readonly string[],
-): { [key: string]: unknown } {
-	return {
-		...buildAuthContextClaims(user),
-		...pictureClaim(env, user, scopes),
-		...usernameClaim(user, scopes),
-		...phoneClaim(user, scopes),
-		...platformAdminClaim(env, user, scopes),
-	};
+) {
+	const claims: OAuthScopeClaims = buildAuthContextClaims(user);
+	Object.assign(claims, pictureClaim(env, user, scopes));
+	Object.assign(claims, usernameClaim(user, scopes));
+	Object.assign(claims, phoneClaim(user, scopes));
+	Object.assign(claims, platformAdminClaim(env, user, scopes));
+	return claims;
 }
 
 export function buildUserInfoScopeClaims(
@@ -353,22 +357,20 @@ export function buildUserInfoScopeClaims(
 	user: OAuthClaimUser,
 	scopes: readonly string[],
 	context: OAuthClaimContext,
-): { [key: string]: unknown } {
-	return {
-		...pictureClaim(env, user, scopes),
-		...usernameClaim(user, scopes),
-		...phoneClaim(user, scopes),
-		...(hasScope(scopes, "organizations")
-			? { [oauthClaimURL(env, "organizations")]: context.organizations }
-			: {}),
-		...(hasScope(scopes, "teams") ? { [oauthClaimURL(env, "teams")]: context.teams } : {}),
-		...compactMembershipClaims(env, scopes, context),
-		...policyClaims(env, scopes, context),
-		...platformAdminClaim(env, user, scopes),
-		...accountSecurityClaims(env, user, scopes, context),
-		...connectionClaims(env, scopes, context),
-		...billingClaims(env, scopes, context),
-	};
+) {
+	const claims: OAuthScopeClaims = {};
+	Object.assign(claims, pictureClaim(env, user, scopes));
+	Object.assign(claims, usernameClaim(user, scopes));
+	Object.assign(claims, phoneClaim(user, scopes));
+	if (hasScope(scopes, "organizations")) claims[oauthClaimURL(env, "organizations")] = context.organizations;
+	if (hasScope(scopes, "teams")) claims[oauthClaimURL(env, "teams")] = context.teams;
+	Object.assign(claims, compactMembershipClaims(env, scopes, context));
+	Object.assign(claims, policyClaims(env, scopes, context));
+	Object.assign(claims, platformAdminClaim(env, user, scopes));
+	Object.assign(claims, accountSecurityClaims(env, user, scopes, context));
+	Object.assign(claims, connectionClaims(env, scopes, context));
+	Object.assign(claims, billingClaims(env, scopes, context));
+	return claims;
 }
 
 export function buildAccessTokenScopeClaims(
@@ -376,16 +378,16 @@ export function buildAccessTokenScopeClaims(
 	user: OAuthClaimUser | null | undefined,
 	scopes: readonly string[],
 	context: OAuthClaimContext,
-): { [key: string]: unknown } {
+) {
 	if (!user) return {};
 
-	return {
-		...compactMembershipClaims(env, scopes, context),
-		...policyClaims(env, scopes, context),
-		...platformAdminClaim(env, user, scopes),
-		...accountSecurityClaims(env, user, scopes, context),
-		...billingClaims(env, scopes, context),
-	};
+	const claims: OAuthScopeClaims = {};
+	Object.assign(claims, compactMembershipClaims(env, scopes, context));
+	Object.assign(claims, policyClaims(env, scopes, context));
+	Object.assign(claims, platformAdminClaim(env, user, scopes));
+	Object.assign(claims, accountSecurityClaims(env, user, scopes, context));
+	Object.assign(claims, billingClaims(env, scopes, context));
+	return claims;
 }
 
 export async function loadOAuthClaimContext(
@@ -508,18 +510,19 @@ export async function loadOAuthClaimContext(
 		security: {
 			passkeyEnabled: passkeys.length > 0,
 		},
-		connections: connections.map((connection) => {
+		connections: connections.map((connection): ConnectionClaim => {
 			const scopes = stringScopes(connection.scope);
 			const connectedAt = optionalISODate(connection.createdAt);
 			const updatedAt = optionalISODate(connection.updatedAt);
 
-			return {
+			const claim: ConnectionClaim = {
 				provider: connection.provider,
 				accountId: connection.accountId,
-				...(scopes.length ? { scopes } : {}),
-				...(connectedAt ? { connectedAt } : {}),
-				...(updatedAt ? { updatedAt } : {}),
 			};
+			if (scopes.length) claim.scopes = scopes;
+			if (connectedAt) claim.connectedAt = connectedAt;
+			if (updatedAt) claim.updatedAt = updatedAt;
+			return claim;
 		}),
 		billingSubscriptions: billingSubscriptions.map((subscription) => ({
 			...subscription,

@@ -12,6 +12,7 @@ import { type Status } from "@/components/auth/status";
 import { hasAdminRole } from "@/lib/admin-access";
 import type { BillingPlanCatalogEntry } from "@/lib/billing";
 import { groupPlansByApp, type PriceInfo } from "@/lib/billing-groups";
+import type { BillingRegistryInput } from "@/lib/billing-registry-store";
 import { fetchAPIJSON, queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
 
@@ -72,11 +73,11 @@ async function fetchBillingAdminData(): Promise<BillingAdminData> {
 		fetch("/api/admin/oauth-clients", { credentials: "same-origin" }),
 	]);
 	return {
-		plans: plansRes.ok ? ((await plansRes.json()) as { plans: AdminBillingPlan[] }).plans : [],
-		entitlements: entRes.ok ? ((await entRes.json()) as { items: EntitlementEntry[] }).items : [],
-		limits: limitRes.ok ? ((await limitRes.json()) as { items: LimitEntry[] }).items : [],
+		plans: plansRes.ok ? (await readJSON<{ plans: AdminBillingPlan[] }>(plansRes)).plans : [],
+		entitlements: entRes.ok ? (await readJSON<{ items: EntitlementEntry[] }>(entRes)).items : [],
+		limits: limitRes.ok ? (await readJSON<{ items: LimitEntry[] }>(limitRes)).items : [],
 		oauthClients: clientRes.ok
-			? ((await clientRes.json()) as { clients: { clientId: string; name: string }[] }).clients.map(
+			? (await readJSON<{ clients: OAuthClientLite[] }>(clientRes)).clients.map(
 					(client) => ({ clientId: client.clientId, name: client.name }),
 				)
 			: [],
@@ -88,7 +89,7 @@ async function fetchOrganizationsForBilling() {
 	if (result.error) {
 		throw new Error(result.error.message ?? "Could not load organizations.");
 	}
-	return (result.data ?? []) as OrganizationSummary[];
+	return result.data ?? [];
 }
 
 async function fetchBillingCustomer(target: BillingTarget): Promise<BillingCustomerData> {
@@ -258,11 +259,9 @@ export function useBilling() {
 				{
 					plan: plan.name,
 					annual,
-					...(selectedTarget.referenceId ? { referenceId: selectedTarget.referenceId } : {}),
+					referenceId: selectedTarget.referenceId,
 					customerType: selectedTarget.customerType,
-					...(activeSub?.stripeSubscriptionId
-						? { subscriptionId: activeSub.stripeSubscriptionId }
-						: {}),
+					subscriptionId: activeSub?.stripeSubscriptionId ?? undefined,
 					successUrl: "/billing?checkout=success",
 					cancelUrl: "/billing?checkout=cancel",
 					returnUrl: "/billing",
@@ -293,7 +292,7 @@ export function useBilling() {
 			const payload = await requestOneTimeCheckout({
 				plan: plan.name,
 				customerType: selectedTarget.customerType,
-				...(selectedTarget.referenceId ? { referenceId: selectedTarget.referenceId } : {}),
+				referenceId: selectedTarget.referenceId,
 				successUrl: "/billing?checkout=success",
 				cancelUrl: "/billing?checkout=cancel",
 			});
@@ -317,7 +316,7 @@ export function useBilling() {
 			const payload = await postSubscriptionAction<{ url?: string; redirect?: boolean }>(
 				"/subscription/billing-portal",
 				{
-					...(selectedTarget.referenceId ? { referenceId: selectedTarget.referenceId } : {}),
+					referenceId: selectedTarget.referenceId,
 					customerType: selectedTarget.customerType,
 					returnUrl: "/billing",
 					disableRedirect: false,
@@ -343,11 +342,9 @@ export function useBilling() {
 			const payload = await postSubscriptionAction<{ url?: string; redirect?: boolean }>(
 				"/subscription/cancel",
 				{
-					...(selectedTarget.referenceId ? { referenceId: selectedTarget.referenceId } : {}),
+					referenceId: selectedTarget.referenceId,
 					customerType: selectedTarget.customerType,
-					...(subscription.stripeSubscriptionId
-						? { subscriptionId: subscription.stripeSubscriptionId }
-						: {}),
+					subscriptionId: subscription.stripeSubscriptionId ?? undefined,
 					returnUrl: "/billing",
 					disableRedirect: false,
 				},
@@ -369,12 +366,10 @@ export function useBilling() {
 		setBusy(`restore-${subscription.id}`);
 		setStatus(null);
 		try {
-			await postSubscriptionAction<unknown>("/subscription/restore", {
-				...(selectedTarget.referenceId ? { referenceId: selectedTarget.referenceId } : {}),
+			await postSubscriptionAction<void>("/subscription/restore", {
+				referenceId: selectedTarget.referenceId,
 				customerType: selectedTarget.customerType,
-				...(subscription.stripeSubscriptionId
-					? { subscriptionId: subscription.stripeSubscriptionId }
-					: {}),
+				subscriptionId: subscription.stripeSubscriptionId ?? undefined,
 			});
 			await refreshCustomer();
 			setOpenSubscription(null);
@@ -455,9 +450,13 @@ export function useBilling() {
 		queryClient.setQueryData<BillingAdminData>(queryKeys.billingAdmin(), (current) => {
 			if (!current) return current;
 			const byId = new Map(current.plans.map((plan) => [plan.id, plan]));
+			const plans = orderedIds.flatMap((id) => {
+				const plan = byId.get(id);
+				return plan ? [plan] : [];
+			});
 			return {
 				...current,
-				plans: orderedIds.map((id) => byId.get(id)).filter(Boolean) as AdminBillingPlan[],
+				plans,
 			};
 		});
 		try {
@@ -468,8 +467,7 @@ export function useBilling() {
 				body: JSON.stringify({ order: orderedIds }),
 			});
 			if (!response.ok) {
-				const body = (await response.json().catch(() => null)) as { error?: string } | null;
-				throw new Error(body?.error ?? "Could not reorder billing plans.");
+				await readJSON(response);
 			}
 			await refreshCatalog();
 			setStatus({ tone: "success", message: "Plan order updated." });
@@ -484,7 +482,7 @@ export function useBilling() {
 
 	async function createRegistryEntry(
 		kind: "entitlements" | "limits",
-		input: { [key: string]: unknown },
+		input: BillingRegistryInput,
 	) {
 		const response = await fetch(`/api/admin/billing/${kind}`, {
 			method: "POST",
@@ -500,7 +498,7 @@ export function useBilling() {
 	async function updateRegistryEntry(
 		kind: "entitlements" | "limits",
 		id: string,
-		input: { [key: string]: unknown },
+		input: BillingRegistryInput,
 	) {
 		const response = await fetch(`/api/admin/billing/${kind}/${encodeURIComponent(id)}`, {
 			method: "PATCH",

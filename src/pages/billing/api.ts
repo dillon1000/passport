@@ -5,6 +5,7 @@
  * deeplink live under /api/billing.
  */
 import type { BillingPlanCatalogEntry } from "@/lib/billing";
+import { z } from "zod";
 
 import type {
 	BillingPlanCatalogResponse,
@@ -13,17 +14,35 @@ import type {
 	SubscriptionSummary,
 } from "./types";
 
+type BillingActionBody = {
+	plan?: string;
+	annual?: boolean;
+	referenceId?: string;
+	customerType: BillingTarget["customerType"];
+	subscriptionId?: string;
+	successUrl?: string;
+	cancelUrl?: string;
+	returnUrl?: string;
+	disableRedirect?: boolean;
+};
+type OneTimeCheckoutBody = {
+	plan: string;
+	customerType: BillingTarget["customerType"];
+	referenceId?: string;
+	successUrl: string;
+	cancelUrl: string;
+};
+const apiErrorSchema = z.object({ error: z.string().optional(), message: z.string().optional() });
+
 export async function readJSON<T>(response: Response): Promise<T> {
 	if (!response.ok) {
-		const payload = (await response.json().catch(() => null)) as
-			| { error?: string; message?: string }
-			| null;
-		throw new Error(payload?.error ?? payload?.message ?? response.statusText);
+		const payload = apiErrorSchema.safeParse(await response.json().catch(() => null));
+		throw new Error(payload.success ? payload.data.error ?? payload.data.message ?? response.statusText : response.statusText);
 	}
-	return (await response.json()) as T;
+	return response.json();
 }
 
-export async function postSubscriptionAction<T>(path: string, body: { [key: string]: unknown }) {
+export async function postSubscriptionAction<T>(path: string, body: BillingActionBody) {
 	const response = await fetch(`/api/auth${path}`, {
 		method: "POST",
 		credentials: "same-origin",
@@ -64,7 +83,7 @@ export async function fetchProduct(id: string) {
 	return payload.product;
 }
 
-export async function requestOneTimeCheckout(body: { [key: string]: unknown }) {
+export async function requestOneTimeCheckout(body: OneTimeCheckoutBody) {
 	const response = await fetch("/api/billing/checkout", {
 		method: "POST",
 		credentials: "same-origin",

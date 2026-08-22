@@ -113,7 +113,7 @@ export type OAuthScopeDefinition = {
 	category: "identity" | "account" | "organization";
 };
 
-export const OAUTH_SCOPE_DEFINITIONS: Record<SupportedOAuthScope, OAuthScopeDefinition> = {
+export const OAUTH_SCOPE_DEFINITIONS = {
 	openid: {
 		scope: "openid",
 		label: "Identity",
@@ -340,7 +340,7 @@ export const OAUTH_SCOPE_DEFINITIONS: Record<SupportedOAuthScope, OAuthScopeDefi
 		consent: "Manage your billing through Passport",
 		category: "account",
 	},
-};
+} satisfies Record<SupportedOAuthScope, OAuthScopeDefinition>;
 
 const supportedScopeSet = new Set<string>(SUPPORTED_OAUTH_SCOPES);
 

@@ -46,6 +46,7 @@ import {
 	XCircle,
 } from "@/lib/icons";
 import { Select, Tooltip } from "@cloudflare/kumo";
+import { z } from "zod";
 
 import { Field, FieldInput, FieldTextarea } from "@/components/auth/field";
 import { Badge } from "@/components/kumo/primitives/badge";
@@ -71,6 +72,7 @@ import {
 } from "@/components/kumo/primitives/sheet";
 import type { BillingPlanCatalogEntry } from "@/lib/billing";
 import { buildPricingMatrix, formatPriceInfo, type PriceInfo } from "@/lib/billing-groups";
+import type { BillingRegistryInput } from "@/lib/billing-registry-store";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -97,6 +99,10 @@ import {
 	planTitle,
 	statusLabel,
 } from "./utils";
+
+const stripeTaxBehaviorSchema = z.enum(["", "unspecified", "inclusive", "exclusive"]);
+const stripeIntervalSchema = z.enum(["day", "week", "month", "year"]);
+const stripeUsageTypeSchema = z.enum(["", "licensed", "metered"]);
 
 export function CustomerSelector({
 	value,
@@ -659,9 +665,10 @@ export function StripeProductFields({
 					<select
 						className={NATIVE_SELECT_CLASS}
 						value={draft.taxBehavior}
-						onChange={(event) =>
-							onPatch({ taxBehavior: event.target.value as StripeProductDraft["taxBehavior"] })
-						}
+						onChange={(event) => {
+							const taxBehavior = stripeTaxBehaviorSchema.safeParse(event.target.value);
+							if (taxBehavior.success) onPatch({ taxBehavior: taxBehavior.data });
+						}}
 					>
 						<option value="">Default</option>
 						<option value="unspecified">unspecified</option>
@@ -677,9 +684,10 @@ export function StripeProductFields({
 						<select
 							className={NATIVE_SELECT_CLASS}
 							value={draft.interval}
-							onChange={(event) =>
-								onPatch({ interval: event.target.value as StripeProductDraft["interval"] })
-							}
+							onChange={(event) => {
+								const interval = stripeIntervalSchema.safeParse(event.target.value);
+								if (interval.success) onPatch({ interval: interval.data });
+							}}
 						>
 							<option value="day">day</option>
 							<option value="week">week</option>
@@ -700,9 +708,10 @@ export function StripeProductFields({
 						<select
 							className={NATIVE_SELECT_CLASS}
 							value={draft.usageType}
-							onChange={(event) =>
-								onPatch({ usageType: event.target.value as StripeProductDraft["usageType"] })
-							}
+							onChange={(event) => {
+								const usageType = stripeUsageTypeSchema.safeParse(event.target.value);
+								if (usageType.success) onPatch({ usageType: usageType.data });
+							}}
 						>
 							<option value="">licensed (default)</option>
 							<option value="licensed">licensed</option>
@@ -833,14 +842,11 @@ export function PlanWorkspaceDrawer({
 	onSelectPlan: (plan: AdminBillingPlan) => void;
 	onNewPlan: () => void;
 	onReorder: (ids: string[]) => void;
-	onCreateRegistry: (
-		kind: "entitlements" | "limits",
-		input: { [key: string]: unknown },
-	) => Promise<EntitlementEntry | LimitEntry>;
+	onCreateRegistry: (kind: "entitlements" | "limits", input: BillingRegistryInput) => Promise<EntitlementEntry | LimitEntry>;
 	onUpdateRegistry: (
 		kind: "entitlements" | "limits",
 		id: string,
-		input: { [key: string]: unknown },
+		input: BillingRegistryInput,
 	) => Promise<EntitlementEntry | LimitEntry>;
 	onDeleteRegistry: (kind: "entitlements" | "limits", id: string) => Promise<void>;
 }) {
@@ -855,16 +861,28 @@ export function PlanWorkspaceDrawer({
 		() => Object.fromEntries(entitlements.map((entry) => [entry.key, entry.name])),
 		[entitlements],
 	);
-	const limitLabels = useMemo(
-		() =>
-			Object.fromEntries(
-				limits.map((entry) => [entry.key, { name: entry.name, ...(entry.unit ? { unit: entry.unit } : {}) }]),
-			),
-		[limits],
-	);
-
 	// Pricing table compares plans in the draft's group (or all when ungrouped).
 	const draftGroup = draft?.group ?? null;
+	const limitLabels = useMemo(() => {
+		const labels: CatalogLabels["limitLabels"] = {};
+		for (const entry of limits) {
+			const label: CatalogLabels["limitLabels"][string] = { name: entry.name };
+			if (entry.unit) label.unit = entry.unit;
+			labels[entry.key] = label;
+		}
+		return labels;
+	}, [limits]);
+	const appOptions = useMemo(() => {
+		const options = [
+			{ value: NO_GROUP_VALUE, label: "No app (Other)" },
+			...oauthClients.map((client) => ({ value: client.name, label: client.name })),
+		];
+		if (draftGroup && !oauthClients.some((client) => client.name === draftGroup)) {
+			options.push({ value: draftGroup, label: draftGroup });
+		}
+		return options;
+	}, [draftGroup, oauthClients]);
+
 	const groupPlans = useMemo(() => {
 		if (!draftGroup) return adminPlans;
 		return adminPlans.filter((plan) => (plan.group ?? "") === draftGroup);
@@ -974,11 +992,7 @@ export function PlanWorkspaceDrawer({
 										label="App"
 										hint="Sourced from your OAuth clients. Renaming a client won't rewrite saved plans."
 									>
-										<Select value={draft.group || NO_GROUP_VALUE} placeholder="Select an app" onValueChange={(value) => set({ group: value === NO_GROUP_VALUE ? "" : value ?? "" })} items={[
-											{ value: NO_GROUP_VALUE, label: "No app (Other)" },
-											...oauthClients.map((client) => ({ value: client.name, label: client.name })),
-											...(draft.group && !oauthClients.some((client) => client.name === draft.group) ? [{ value: draft.group, label: draft.group }] : []),
-										]} />
+										<Select value={draft.group || NO_GROUP_VALUE} placeholder="Select an app" onValueChange={(value) => set({ group: value === NO_GROUP_VALUE ? "" : value ?? "" })} items={appOptions} />
 									</Field>
 
 									<Field label="Description">
@@ -1319,8 +1333,8 @@ export function EntitlementsDrawer({
 	entitlements: EntitlementEntry[];
 	selected: string[];
 	onToggle: (key: string, on: boolean) => void;
-	onCreate: (input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
-	onUpdate: (id: string, input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
+	onCreate: (input: BillingRegistryInput) => Promise<EntitlementEntry | LimitEntry>;
+	onUpdate: (id: string, input: BillingRegistryInput) => Promise<EntitlementEntry | LimitEntry>;
 	onDelete: (id: string, key: string) => Promise<void>;
 }) {
 	const [name, setName] = useState("");
@@ -1412,8 +1426,8 @@ export function LimitsDrawer({
 	values: Record<string, string>;
 	onToggle: (key: string, on: boolean) => void;
 	onValue: (key: string, value: string) => void;
-	onCreate: (input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
-	onUpdate: (id: string, input: { [key: string]: unknown }) => Promise<EntitlementEntry | LimitEntry>;
+	onCreate: (input: BillingRegistryInput) => Promise<EntitlementEntry | LimitEntry>;
+	onUpdate: (id: string, input: BillingRegistryInput) => Promise<EntitlementEntry | LimitEntry>;
 	onDelete: (id: string, key: string) => Promise<void>;
 }) {
 	const [name, setName] = useState("");
@@ -1425,11 +1439,9 @@ export function LimitsDrawer({
 		if (!name.trim() || !key.trim()) return;
 		setCreating(true);
 		try {
-			const created = await onCreate({
-				key: key.trim(),
-				name: name.trim(),
-				...(unit.trim() ? { unit: unit.trim() } : {}),
-			});
+			const input: BillingRegistryInput = { key: key.trim(), name: name.trim() };
+			if (unit.trim()) input.unit = unit.trim();
+			const created = await onCreate(input);
 			onToggle(created.key, true);
 			setName("");
 			setKey("");
@@ -1543,11 +1555,9 @@ export function RegistryManageRow({
 		if (!draftName.trim() || !draftKey.trim()) return;
 		setBusy(true);
 		try {
-			await onSave({
-				key: draftKey.trim(),
-				name: draftName.trim(),
-				...(hasValue ? { unit: draftUnit.trim() } : {}),
-			});
+			const input: BillingRegistryInput = { key: draftKey.trim(), name: draftName.trim() };
+			if (hasValue) input.unit = draftUnit.trim();
+			await onSave(input);
 			setEditing(false);
 		} finally {
 			setBusy(false);

@@ -3,7 +3,12 @@
  * and date formatting, the customer-key convention, and conversions between the
  * admin plan record and the editor draft.
  */
-import type { BillingPlanCatalogEntry } from "@/lib/billing";
+import type {
+	BillingLimits,
+	BillingPlanCatalogEntry,
+	BillingPlanInput,
+	StripeProductInput,
+} from "@/lib/billing";
 import type { PriceInfo } from "@/lib/billing-groups";
 
 import type {
@@ -19,15 +24,15 @@ export const NO_GROUP_VALUE = "__none";
 export const PERSONAL_KEY = "user";
 
 // Where to find each Stripe identifier in the dashboard, surfaced as tooltips.
-export const STRIPE_HINTS: Record<string, string> = {
+export const STRIPE_HINTS = {
 	priceId: "Stripe → Product catalog → your product → Pricing → click a price → copy the API ID (price_…).",
 	lookupKey: "Stripe → Product catalog → Pricing → a price's Lookup key (set when creating the price).",
 	annualDiscountPriceId: "The annual price's API ID under the same product (price_…).",
 	annualDiscountLookupKey: "The annual price's Lookup key.",
 	seatPriceId: "A per-seat price's API ID (price_…) for metered/quantity team plans.",
-};
+} satisfies Record<string, string>;
 
-export const STATUS_TONE: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+export const STATUS_TONE = {
 	active: "default",
 	trialing: "secondary",
 	past_due: "destructive",
@@ -36,7 +41,7 @@ export const STATUS_TONE: Record<string, "default" | "secondary" | "outline" | "
 	paused: "outline",
 	incomplete: "outline",
 	incomplete_expired: "outline",
-};
+} satisfies Record<string, "default" | "secondary" | "outline" | "destructive">;
 
 export function statusLabel(status: string) {
 	return status.replaceAll("_", " ");
@@ -71,7 +76,7 @@ export function activeSubscription(subscriptions: readonly SubscriptionSummary[]
 	);
 }
 
-export function limitEntries(limits: { [key: string]: unknown } | undefined) {
+export function limitEntries(limits: BillingLimits | undefined) {
 	if (!limits) return [];
 	return Object.entries(limits).map(([key, value]) => ({ key, value: String(value) }));
 }
@@ -166,9 +171,11 @@ function trimmed(value: string) {
 	return normalized || undefined;
 }
 
+type BillingPlanDraftPayload = BillingPlanInput & { stripe?: StripeProductInput };
+
 export function planDraftToPayload(
 	draft: PlanDraft,
-): { value: { [key: string]: unknown } } | { error: string } {
+): { value: BillingPlanDraftPayload } | { error: string } {
 	const oneTime = draft.type === "one_time";
 	const freeTrialDays =
 		!oneTime && draft.freeTrialDays.trim() ? Number(draft.freeTrialDays) : undefined;
@@ -176,7 +183,7 @@ export function planDraftToPayload(
 		return { error: "Free trial days must be a non-negative integer." };
 	}
 
-	const limits: { [key: string]: unknown } = {};
+	const limits: BillingLimits = {};
 	for (const [key, raw] of Object.entries(draft.limits)) {
 		const value = raw.trim();
 		if (!value) continue;
@@ -187,36 +194,37 @@ export function planDraftToPayload(
 	const stripeBlock = draft.stripe.enabled ? buildStripePayload(draft) : undefined;
 	if (stripeBlock && "error" in stripeBlock) return stripeBlock;
 
-	return {
-		value: {
-			name: draft.name.trim(),
-			type: draft.type,
-			personalOnly: draft.personalOnly,
-			hidden: draft.hidden,
-			...(trimmed(draft.label) ? { label: trimmed(draft.label) } : {}),
-			...(trimmed(draft.description) ? { description: trimmed(draft.description) } : {}),
-			...(trimmed(draft.group) ? { group: trimmed(draft.group) } : {}),
-			...(trimmed(draft.priceId) ? { priceId: trimmed(draft.priceId) } : {}),
-			...(trimmed(draft.lookupKey) ? { lookupKey: trimmed(draft.lookupKey) } : {}),
-			// Annual, seat, proration, and trial only apply to recurring plans.
-			...(!oneTime && trimmed(draft.annualDiscountPriceId)
-				? { annualDiscountPriceId: trimmed(draft.annualDiscountPriceId) }
-				: {}),
-			...(!oneTime && trimmed(draft.annualDiscountLookupKey)
-				? { annualDiscountLookupKey: trimmed(draft.annualDiscountLookupKey) }
-				: {}),
-			...(!oneTime && trimmed(draft.seatPriceId)
-				? { seatPriceId: trimmed(draft.seatPriceId) }
-				: {}),
-			...(!oneTime && trimmed(draft.prorationBehavior)
-				? { prorationBehavior: trimmed(draft.prorationBehavior) }
-				: {}),
-			...(freeTrialDays !== undefined ? { freeTrialDays } : {}),
-			...(draft.entitlements.length ? { entitlements: draft.entitlements } : {}),
-			...(Object.keys(limits).length ? { limits } : {}),
-			...(stripeBlock ? { stripe: stripeBlock.value } : {}),
-		},
+	const value: BillingPlanDraftPayload = {
+		name: draft.name.trim(),
+		type: draft.type,
+		personalOnly: draft.personalOnly,
+		hidden: draft.hidden,
 	};
+	const label = trimmed(draft.label);
+	const description = trimmed(draft.description);
+	const group = trimmed(draft.group);
+	const priceId = trimmed(draft.priceId);
+	const lookupKey = trimmed(draft.lookupKey);
+	if (label) value.label = label;
+	if (description) value.description = description;
+	if (group) value.group = group;
+	if (priceId) value.priceId = priceId;
+	if (lookupKey) value.lookupKey = lookupKey;
+	if (!oneTime) {
+		const annualDiscountPriceId = trimmed(draft.annualDiscountPriceId);
+		const annualDiscountLookupKey = trimmed(draft.annualDiscountLookupKey);
+		const seatPriceId = trimmed(draft.seatPriceId);
+		const prorationBehavior = trimmed(draft.prorationBehavior);
+		if (annualDiscountPriceId) value.annualDiscountPriceId = annualDiscountPriceId;
+		if (annualDiscountLookupKey) value.annualDiscountLookupKey = annualDiscountLookupKey;
+		if (seatPriceId) value.seatPriceId = seatPriceId;
+		if (prorationBehavior) value.prorationBehavior = prorationBehavior;
+		if (freeTrialDays !== undefined) value.freeTrialDays = freeTrialDays;
+	}
+	if (draft.entitlements.length > 0) value.entitlements = draft.entitlements;
+	if (Object.keys(limits).length > 0) value.limits = limits;
+	if (stripeBlock) value.stripe = stripeBlock.value;
+	return { value };
 }
 
 function optionalTrimmed(value: string) {
@@ -229,7 +237,7 @@ function optionalTrimmed(value: string) {
 // can surface it before hitting the server.
 function buildStripePayload(
 	draft: PlanDraft,
-): { value: { [key: string]: unknown } } | { error: string } {
+): { value: StripeProductInput } | { error: string } {
 	const oneTime = draft.type === "one_time";
 	const stripe = draft.stripe;
 
@@ -258,40 +266,36 @@ function buildStripePayload(
 		return { error: "Seat price must be a non-negative amount." };
 	}
 
-	return {
-		value: {
-			amount,
-			currency,
-			...(optionalTrimmed(stripe.productName)
-				? { productName: optionalTrimmed(stripe.productName) }
-				: {}),
-			...(optionalTrimmed(stripe.statementDescriptor)
-				? { statementDescriptor: optionalTrimmed(stripe.statementDescriptor) }
-				: {}),
-			...(optionalTrimmed(stripe.unitLabel)
-				? { unitLabel: optionalTrimmed(stripe.unitLabel) }
-				: {}),
-			...(optionalTrimmed(stripe.taxCode) ? { taxCode: optionalTrimmed(stripe.taxCode) } : {}),
-			...(optionalTrimmed(stripe.url) ? { url: optionalTrimmed(stripe.url) } : {}),
-			...(optionalTrimmed(stripe.nickname)
-				? { nickname: optionalTrimmed(stripe.nickname) }
-				: {}),
-			...(optionalTrimmed(stripe.lookupKey)
-				? { lookupKey: optionalTrimmed(stripe.lookupKey) }
-				: {}),
-			...(stripe.taxBehavior ? { taxBehavior: stripe.taxBehavior } : {}),
-			// Recurring shape, annual, and seat pricing only apply to subscriptions.
-			...(!oneTime ? { interval: stripe.interval } : {}),
-			...(!oneTime && intervalCount !== undefined ? { intervalCount } : {}),
-			...(!oneTime && stripe.usageType ? { usageType: stripe.usageType } : {}),
-			...(!oneTime && annualAmount !== undefined ? { annualAmount } : {}),
-			...(!oneTime && annualAmount !== undefined && optionalTrimmed(stripe.annualLookupKey)
-				? { annualLookupKey: optionalTrimmed(stripe.annualLookupKey) }
-				: {}),
-			...(!oneTime && seatAmount !== undefined ? { seatAmount } : {}),
-			...(!oneTime && seatAmount !== undefined && optionalTrimmed(stripe.seatLookupKey)
-				? { seatLookupKey: optionalTrimmed(stripe.seatLookupKey) }
-				: {}),
-		},
-	};
+	const value: StripeProductInput = { amount, currency };
+	const productName = optionalTrimmed(stripe.productName);
+	const statementDescriptor = optionalTrimmed(stripe.statementDescriptor);
+	const unitLabel = optionalTrimmed(stripe.unitLabel);
+	const taxCode = optionalTrimmed(stripe.taxCode);
+	const url = optionalTrimmed(stripe.url);
+	const nickname = optionalTrimmed(stripe.nickname);
+	const lookupKey = optionalTrimmed(stripe.lookupKey);
+	if (productName) value.productName = productName;
+	if (statementDescriptor) value.statementDescriptor = statementDescriptor;
+	if (unitLabel) value.unitLabel = unitLabel;
+	if (taxCode) value.taxCode = taxCode;
+	if (url) value.url = url;
+	if (nickname) value.nickname = nickname;
+	if (lookupKey) value.lookupKey = lookupKey;
+	if (stripe.taxBehavior) value.taxBehavior = stripe.taxBehavior;
+	if (!oneTime) {
+		value.interval = stripe.interval;
+		if (intervalCount !== undefined) value.intervalCount = intervalCount;
+		if (stripe.usageType) value.usageType = stripe.usageType;
+		if (annualAmount !== undefined) {
+			value.annualAmount = annualAmount;
+			const annualLookupKey = optionalTrimmed(stripe.annualLookupKey);
+			if (annualLookupKey) value.annualLookupKey = annualLookupKey;
+		}
+		if (seatAmount !== undefined) {
+			value.seatAmount = seatAmount;
+			const seatLookupKey = optionalTrimmed(stripe.seatLookupKey);
+			if (seatLookupKey) value.seatLookupKey = seatLookupKey;
+		}
+	}
+	return { value };
 }

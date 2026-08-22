@@ -121,14 +121,14 @@ export function consentScopeGroups(
 		group(
 			"organization",
 			"See your orgs, teams, and roles",
-			"Memberships and permissions, not contents",
+			"Memberships and permissions.",
 			organizations,
 			optionalScopeSet,
 		),
 		group(
 			"security",
 			"See your other connected apps and security setup",
-			"Which apps you’ve linked, whether 2FA is on",
+			"Which apps you’ve linked, if 2FA is on",
 			security,
 			optionalScopeSet,
 		),

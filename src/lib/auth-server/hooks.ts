@@ -7,6 +7,7 @@
 import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import type { BetterAuthOptions } from "better-auth/minimal";
 import { and, eq, ne } from "drizzle-orm";
+import { z } from "zod";
 
 import * as schema from "../../db/schema";
 import { sendSecurityAlertEmail } from "../../email";
@@ -35,10 +36,6 @@ type HookUser = {
 	email: string;
 };
 
-type HookSession = {
-	user?: HookUser;
-};
-
 type HookNewSession = {
 	session?: {
 		token?: string | null;
@@ -53,22 +50,33 @@ type SessionIPAddressSummary = {
 	ipAddress?: string | null;
 };
 
+type AccountActivityMetadata = { [key: string]: string };
+
+const hookUserSchema = z.object({ id: z.string().min(1), email: z.string().min(1) });
+const hookSessionSchema = z.object({ user: hookUserSchema.optional() });
+const hookNewSessionSchema = z.object({
+	session: z.object({ token: z.string().nullable().optional() }).optional(),
+	user: hookUserSchema.extend({ twoFactorEnabled: z.boolean().nullable().optional() }).optional(),
+});
+const credentialBodySchema = z.object({
+	email: z.string().optional(),
+	username: z.string().optional(),
+	phoneNumber: z.string().optional(),
+}).passthrough();
+const phoneUpdateBodySchema = z.object({ phoneNumber: z.string().nullable().optional() }).passthrough();
+const errorMessageSchema = z.object({ message: z.string() });
+
 const CREDENTIAL_SIGN_IN_PATHS = new Set(["/sign-in/email"]);
 const LOCKOUT_ERROR_MESSAGE = "Too many sign-in attempts. Try again later.";
 
-function hookSessionUser(value: unknown): HookUser | null {
-	if (!value || typeof value !== "object") return null;
-	const session = value as HookSession;
-	const user = session.user;
-	if (!user?.id || !user.email) return null;
-	return user;
+function hookSessionUser(value: z.input<typeof hookSessionSchema>): HookUser | null {
+	const session = hookSessionSchema.safeParse(value);
+	return session.success && session.data.user ? session.data.user : null;
 }
 
-function hookNewSession(value: unknown): HookNewSession | null {
-	if (!value || typeof value !== "object") return null;
-	const newSession = value as HookNewSession;
-	if (!newSession.user?.id || !newSession.user.email) return null;
-	return newSession;
+function hookNewSession(value: z.input<typeof hookNewSessionSchema>): HookNewSession | null {
+	const session = hookNewSessionSchema.safeParse(value);
+	return session.success && session.data.user ? session.data : null;
 }
 
 function normalizeIPAddress(value: string | null | undefined) {
@@ -76,11 +84,10 @@ function normalizeIPAddress(value: string | null | undefined) {
 	return normalized || null;
 }
 
-function credentialIdentifierFromBody(value: unknown) {
-	if (!value || typeof value !== "object") return null;
-	const body = value as { [key: string]: unknown };
-	const identifier = body.email ?? body.username ?? body.phoneNumber;
-	return typeof identifier === "string" ? identifier : null;
+function credentialIdentifierFromBody(value: z.input<typeof credentialBodySchema>) {
+	const body = credentialBodySchema.safeParse(value);
+	if (!body.success) return null;
+	return body.data.email ?? body.data.username ?? body.data.phoneNumber ?? null;
 }
 
 function isCredentialSignInPath(path: string | undefined) {
@@ -125,8 +132,9 @@ async function sendSecurityNotification(
 		user.email,
 		event,
 		requestMetadataFromRequest(request),
-	).catch((error: unknown) => {
-		console.warn("Security alert email failed.", error);
+	).catch((error) => {
+		const message = errorMessageSchema.safeParse(error);
+		console.warn("Security alert email failed.", message.success ? message.data.message : "Unknown error.");
 	});
 }
 
@@ -166,7 +174,7 @@ async function recordAccountActivity(
 	userId: string,
 	type: AccountActivityType,
 	request: Request | undefined,
-	metadata?: Record<string, string>,
+	metadata?: AccountActivityMetadata,
 ) {
 	await db
 		.insert(schema.accountActivityEvent)
@@ -179,8 +187,9 @@ async function recordAccountActivity(
 			userAgent: request?.headers.get("user-agent") ?? null,
 			metadata: metadata ? JSON.stringify(metadata) : null,
 		})
-		.catch((error: unknown) => {
-			console.warn("Account activity log write failed.", error);
+		.catch((error) => {
+			const message = errorMessageSchema.safeParse(error);
+			console.warn("Account activity log write failed.", message.success ? message.data.message : "Unknown error.");
 		});
 }
 
@@ -277,9 +286,11 @@ export function accountSecurityEmailPlugin(env: AuthEnv, db: AuthDatabase) {
 							await maybeSendNewIPAddressNotification(env, db, newSession, ctx.request);
 						}
 
-						const updateBody = ctx.body as { [key: string]: unknown } | null | undefined;
+						const updateBody = phoneUpdateBodySchema.safeParse(ctx.body);
 						const phoneRemoved =
-							ctx.path === "/update-user" && updateBody && "phoneNumber" in updateBody;
+							ctx.path === "/update-user" &&
+							updateBody.success &&
+							Object.hasOwn(updateBody.data, "phoneNumber");
 						const activityType: AccountActivityType | null = phoneRemoved
 							? ACCOUNT_ACTIVITY_TYPES.PHONE_REMOVED
 							: accountActivityTypeForPath(ctx.path);

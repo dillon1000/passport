@@ -7,6 +7,7 @@
  * session cleanup without translating bearer tokens into browser sessions.
  */
 import { and, count, eq, inArray, or } from "drizzle-orm";
+import { z } from "zod";
 
 import type { createDb } from "../db/client";
 import * as schema from "../db/schema";
@@ -90,19 +91,25 @@ type ResourceServiceOptions = {
 	sendInvitation?: (delivery: DelegatedInvitationDelivery) => void | Promise<void>;
 };
 
+type MetadataValue = string | number | boolean | null | MetadataValue[] | { [key: string]: MetadataValue };
+type OrganizationMetadata = { [key: string]: MetadataValue };
+const metadataValueSchema: z.ZodType<MetadataValue> = z.lazy(() => z.union([
+	z.string(), z.number(), z.boolean(), z.null(), z.array(metadataValueSchema), z.record(z.string(), metadataValueSchema),
+]));
+const organizationMetadataSchema = z.record(z.string(), metadataValueSchema);
+const databaseErrorSchema = z.object({ code: z.string() });
+
 function ISODate(value: Date | string | null | undefined) {
 	if (!value) return null;
 	const date = value instanceof Date ? value : new Date(value);
 	return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function parseMetadata(value: string | null | undefined): { [key: string]: unknown } | null {
+function parseMetadata(value: string | null | undefined): OrganizationMetadata | null {
 	if (!value) return null;
 	try {
-		const parsed: unknown = JSON.parse(value);
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? (parsed as { [key: string]: unknown })
-			: null;
+		const metadata = organizationMetadataSchema.safeParse(JSON.parse(value));
+		return metadata.success ? metadata.data : null;
 	} catch {
 		return null;
 	}
@@ -130,10 +137,9 @@ function invitationTeamIDs(value: string | null | undefined) {
 		: [];
 }
 
-function databaseErrorCode(error: unknown) {
-	return error && typeof error === "object" && "code" in error && typeof error.code === "string"
-		? error.code
-		: undefined;
+function databaseErrorCode(error: z.input<typeof databaseErrorSchema>) {
+	const databaseError = databaseErrorSchema.safeParse(error);
+	return databaseError.success ? databaseError.data.code : undefined;
 }
 
 async function serializableTransaction<T>(
@@ -286,15 +292,16 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		metadata: string | null;
 		role?: string;
 	}) {
-		return {
+		const organization = {
 			id: row.id,
 			name: row.name,
 			slug: row.slug,
 			logo: absoluteImage(row.logo),
 			createdAt: ISODate(row.createdAt),
 			metadata: parseMetadata(row.metadata),
-			...(row.role ? { role: row.role } : {}),
 		};
+		if (row.role) organization.role = row.role;
+		return organization;
 	}
 
 	function teamDTO(row: typeof schema.team.$inferSelect) {
@@ -368,13 +375,7 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		try {
 			const rows = await options.db
 				.update(schema.user)
-				.set({
-					...(name === undefined ? {} : { name }),
-					...(input.username === undefined
-						? {}
-						: { username, displayUsername }),
-					updatedAt: now(),
-				})
+				.set({ name, username, displayUsername, updatedAt: now() })
 				.where(eq(schema.user.id, actor.userID))
 				.returning({
 					id: schema.user.id,
@@ -626,10 +627,7 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		try {
 			const rows = await options.db
 				.update(schema.organization)
-				.set({
-					...(name === undefined ? {} : { name }),
-					...(slug === undefined ? {} : { slug }),
-				})
+				.set({ name, slug })
 				.where(eq(schema.organization.id, organizationID))
 				.returning();
 			if (!rows[0]) {

@@ -3,7 +3,7 @@
  * admin-only plan record, registry entries, per-customer subscription and
  * purchase summaries, and the plan-editor draft used by the admin workspace.
  */
-import type { BillingPlanCatalogEntry } from "@/lib/billing";
+import type { BillingLimits, BillingPlanCatalogEntry, BillingPlanLineItem } from "@/lib/billing";
 
 export type CatalogLabels = {
 	entitlementLabels: Record<string, string>;
@@ -31,9 +31,9 @@ export type AdminBillingPlan = {
 	personalOnly: boolean;
 	hidden: boolean;
 	displayOrder: number;
-	limits: { [key: string]: unknown } | null;
+	limits: BillingLimits | null;
 	entitlements: string[] | null;
-	lineItems: { [key: string]: unknown }[] | null;
+	lineItems: BillingPlanLineItem[] | null;
 };
 
 export type EntitlementEntry = { id: string; key: string; name: string; description: string | null };
@@ -57,7 +57,7 @@ export type SubscriptionSummary = {
 	seats?: number | null;
 	billingInterval?: string | null;
 	stripeScheduleId?: string | null;
-	limits?: { [key: string]: unknown };
+	limits?: BillingLimits;
 };
 
 export type PurchaseSummary = {

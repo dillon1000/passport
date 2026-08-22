@@ -136,15 +136,6 @@ type ClientDraft = {
 	backchannelLogoutUri: string;
 };
 
-type OAuthProxyStatus = {
-	configured: boolean;
-	productionURL: string;
-	currentURL: string;
-	sharedSecretConfigured: boolean;
-	proxyActive: boolean;
-	trustedOrigins: string[];
-	callbackPath: string;
-};
 
 type PagePayload = {
 	limit: number;
@@ -180,7 +171,6 @@ type OIDCConfiguration = {
 	introspection_endpoint?: string;
 	end_session_endpoint?: string;
 	scopes_supported?: string[];
-	[key: string]: unknown;
 };
 
 // Endpoints shown in the discovery drawer, in the order a client developer
@@ -279,7 +269,7 @@ async function fetchOAuthProxyStatus() {
 	const response = await fetch("/api/admin/oauth-proxy");
 	if (response.status === 403 || response.status === 401) return null;
 	if (!response.ok) return null;
-	const payload = (await response.json()) as { oauthProxy: OAuthProxyStatus };
+	const payload = await response.json();
 	return payload.oauthProxy;
 }
 
@@ -312,15 +302,15 @@ export function Applications() {
 	const [copiedKey, setCopiedKey] = useState<string | null>(null);
 	const applicationsQuery = useInfiniteQuery({
 		queryKey: queryKeys.applications(),
-		queryFn: ({ pageParam }) => fetchApplicationsPage(pageParam as string | null),
-		initialPageParam: null as string | null,
+		queryFn: ({ pageParam }) => fetchApplicationsPage(pageParam),
+		initialPageParam: null,
 		getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
 		enabled: Boolean(session?.user),
 	});
 	const clientsQuery = useInfiniteQuery({
 		queryKey: queryKeys.managedOAuthClients(),
-		queryFn: ({ pageParam }) => fetchOAuthClientsPage(pageParam as string | null),
-		initialPageParam: null as string | null,
+		queryFn: ({ pageParam }) => fetchOAuthClientsPage(pageParam),
+		initialPageParam: null,
 		getNextPageParam: (lastPage) => lastPage.page?.nextCursor ?? undefined,
 		enabled: Boolean(session?.user),
 	});
@@ -356,9 +346,9 @@ export function Applications() {
 	const queryStatus =
 		status ??
 		(applicationsQuery.error instanceof Error
-			? { tone: "error" as const, message: applicationsQuery.error.message }
+			? { tone: "error" satisfies Status["tone"], message: applicationsQuery.error.message }
 			: clientsQuery.error instanceof Error
-				? { tone: "error" as const, message: clientsQuery.error.message }
+				? { tone: "error" satisfies Status["tone"], message: clientsQuery.error.message }
 				: null);
 	const applicationsRefreshing =
 		applicationsQuery.isFetching && !applicationsQuery.isFetchingNextPage;
@@ -416,7 +406,7 @@ export function Applications() {
 		setBusy(null);
 		setRevokeTarget(null);
 		if (!response.ok) {
-			const payload = (await response.json()) as { error?: string };
+			const payload = await response.json();
 			setStatus({ tone: "error", message: payload.error ?? "Could not revoke application." });
 			return;
 		}
@@ -459,7 +449,7 @@ export function Applications() {
 			}),
 		});
 		setBusy(null);
-		const payload = (await response.json()) as { client?: OAuthClientSummary; error?: string };
+		const payload = await response.json();
 		if (!response.ok || !payload.client) {
 			setStatus({ tone: "error", message: payload.error ?? "Could not create OAuth client." });
 			return;
@@ -505,7 +495,7 @@ export function Applications() {
 			}),
 		});
 		setBusy(null);
-		const payload = (await response.json()) as { error?: string };
+		const payload = await response.json();
 		if (!response.ok) {
 			setStatus({ tone: "error", message: payload.error ?? "Could not update OAuth client." });
 			return;
@@ -524,7 +514,7 @@ export function Applications() {
 			{ method: "POST" },
 		);
 		setBusy(null);
-		const payload = (await response.json()) as { client?: OAuthClientSummary; error?: string };
+		const payload = await response.json();
 		if (!response.ok || !payload.client) {
 			setStatus({ tone: "error", message: payload.error ?? "Could not rotate client secret." });
 			return;
@@ -541,7 +531,7 @@ export function Applications() {
 			{ method: "POST" },
 		);
 		setBusy(null);
-		const payload = (await response.json()) as { error?: string };
+		const payload = await response.json();
 		if (!response.ok) {
 			setStatus({ tone: "error", message: payload.error ?? "Could not update client status." });
 			return;
@@ -612,7 +602,7 @@ export function Applications() {
 		SECTIONS[0],
 		...(canManageClients ? [SECTIONS[1]] : []),
 		...(canViewOAuthProxy ? [SECTIONS[2]] : []),
-	].filter(Boolean) as Section[];
+	].filter((section): section is Section => section !== false);
 
 	return (
 		<DashboardShell

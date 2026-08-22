@@ -5,7 +5,8 @@
  * OAuth claims. Safe configuration points are plan JSON, checkout defaults, and
  * Stripe API version env values.
  */
-import type { CheckoutSessionLineItem, StripePlan } from "@better-auth/stripe";
+import type { StripePlan } from "@better-auth/stripe";
+import { z } from "zod";
 
 import { optionalEnv, parseOptionalBoolean } from "./auth-server/env";
 
@@ -78,6 +79,16 @@ export type StripeCheckoutDefaults = {
 	customTextSubmitMessage?: string;
 };
 
+/** A plan limit is either a numeric quota or its explicit text value. */
+export type BillingLimitValue = number | string;
+export type BillingLimits = { [key: string]: BillingLimitValue };
+
+/** Stored Stripe line items support the price-based checkout path this app exposes. */
+export type BillingPlanLineItem = {
+	price: string;
+	quantity?: number;
+};
+
 export type BillingPlanDefinition = {
 	name: string;
 	label?: string;
@@ -86,12 +97,12 @@ export type BillingPlanDefinition = {
 	lookupKey?: string;
 	annualDiscountPriceId?: string;
 	annualDiscountLookupKey?: string;
-	limits?: { [key: string]: unknown };
+	limits?: BillingLimits;
 	entitlements?: string[];
 	group?: string;
 	seatPriceId?: string;
 	prorationBehavior?: StripeProrationBehavior;
-	lineItems?: CheckoutSessionLineItem[];
+	lineItems?: BillingPlanLineItem[];
 	freeTrialDays?: number;
 	type?: BillingPlanType;
 	personalOnly?: boolean;
@@ -117,7 +128,7 @@ export type BillingPlanCatalogEntry = {
 	label?: string;
 	description?: string;
 	group?: string;
-	limits?: { [key: string]: unknown };
+	limits?: BillingLimits;
 	entitlements: string[];
 	hasFreeTrial: boolean;
 	hasAnnualDiscount: boolean;
@@ -132,89 +143,87 @@ export type BillingPlanCatalogEntry = {
 
 export type BillingPlanCatalog = Record<string, BillingPlanCatalogEntry>;
 
-function isRecord(value: unknown): value is { [key: string]: unknown } {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+export type BillingPlanInput = {
+	name?: string;
+	label?: string;
+	description?: string;
+	priceId?: string;
+	lookupKey?: string;
+	annualDiscountPriceId?: string;
+	annualDiscountLookupKey?: string;
+	limits?: BillingLimits;
+	entitlements?: string[];
+	group?: string;
+	seatPriceId?: string;
+	prorationBehavior?: string;
+	lineItems?: BillingPlanLineItem[];
+	freeTrialDays?: number;
+	type?: string;
+	personalOnly?: boolean;
+	hidden?: boolean;
+};
 
-function optionalString(value: unknown) {
-	const normalized = typeof value === "string" ? value.trim() : "";
-	return normalized || undefined;
-}
+export type StripeProductInput = Omit<StripeProductProvisionInput, "amount"> & {
+	amount: number | string;
+	annualAmount?: number | string;
+	seatAmount?: number | string;
+	interval?: string;
+	usageType?: string;
+	taxBehavior?: string;
+};
 
-function optionalRecord(value: unknown, name: string) {
-	if (value === undefined || value === null) return undefined;
-	if (isRecord(value)) return value;
-	throw new TypeError(`${name} must be an object.`);
-}
+const optionalText = z.string().trim().min(1).optional();
+const billingLimitSchema = z.union([z.string(), z.number()]);
+const billingPlanInputSchema = z.object({
+	name: z.string().trim().min(1),
+	label: optionalText,
+	description: optionalText,
+	priceId: optionalText,
+	lookupKey: optionalText,
+	annualDiscountPriceId: optionalText,
+	annualDiscountLookupKey: optionalText,
+	limits: z.record(z.string(), billingLimitSchema).optional(),
+	entitlements: z.array(z.string().trim().min(1)).optional(),
+	group: optionalText,
+	seatPriceId: optionalText,
+	prorationBehavior: z.enum(STRIPE_PRORATION_BEHAVIORS).optional(),
+	lineItems: z
+		.array(
+			z.object({
+				price: z.string().trim().min(1),
+				quantity: z.number().int().min(1).optional(),
+			}),
+		)
+		.optional(),
+	freeTrialDays: z.number().int().nonnegative().optional(),
+	type: z.enum(BILLING_PLAN_TYPES).optional(),
+	personalOnly: z.boolean().optional(),
+	hidden: z.boolean().optional(),
+});
 
-function optionalStringArray(value: unknown, name: string) {
-	if (value === undefined || value === null) return undefined;
-	if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-		throw new TypeError(`${name} must be an array of strings.`);
-	}
-	return value.map((item) => item.trim()).filter(Boolean);
-}
-
-function optionalNonNegativeInteger(value: unknown, name: string) {
-	if (value === undefined || value === null) return undefined;
-	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-		throw new TypeError(`${name} must be a non-negative integer.`);
-	}
-	return value;
-}
-
-function optionalBoolean(value: unknown, name: string) {
-	if (value === undefined || value === null) return undefined;
-	if (typeof value !== "boolean") {
-		throw new TypeError(`${name} must be a boolean.`);
-	}
-	return value;
-}
-
-function optionalPlanType(value: unknown, name: string): BillingPlanType | undefined {
-	if (value === undefined || value === null) return undefined;
-	if (typeof value !== "string" || !BILLING_PLAN_TYPES.includes(value as BillingPlanType)) {
-		throw new TypeError(`${name} must be one of: ${BILLING_PLAN_TYPES.join(", ")}.`);
-	}
-	return value as BillingPlanType;
-}
-
-function optionalProrationBehavior(value: unknown, name: string) {
-	const behavior = optionalString(value);
-	if (!behavior) return undefined;
-	if (STRIPE_PRORATION_BEHAVIORS.includes(behavior as StripeProrationBehavior)) {
-		return behavior as StripeProrationBehavior;
-	}
-	throw new TypeError(
-		`${name} must be one of: ${STRIPE_PRORATION_BEHAVIORS.join(", ")}.`,
-	);
-}
-
-function optionalLineItems(value: unknown, name: string) {
-	if (value === undefined || value === null) return undefined;
-	if (!Array.isArray(value)) {
-		throw new TypeError(`${name} must be an array.`);
-	}
-	for (const [index, item] of value.entries()) {
-		if (!isRecord(item)) {
-			throw new TypeError(`${name}[${index}] must be an object.`);
-		}
-		if (!optionalString(item.price)) {
-			throw new TypeError(`${name}[${index}].price is required.`);
-		}
-		const quantity = item.quantity;
-		if (
-			quantity !== undefined &&
-			quantity !== null &&
-			(typeof quantity !== "number" ||
-				!Number.isInteger(quantity) ||
-				quantity < 1)
-		) {
-			throw new TypeError(`${name}[${index}].quantity must be a positive integer.`);
-		}
-	}
-	return value as CheckoutSessionLineItem[];
-}
+const stripeAmountSchema = z
+	.union([z.number(), z.string().trim().min(1).transform(Number)])
+	.pipe(z.number().finite().nonnegative());
+const stripeProductInputSchema = z.object({
+	productName: optionalText,
+	description: optionalText,
+	statementDescriptor: optionalText,
+	unitLabel: optionalText,
+	taxCode: optionalText,
+	url: optionalText,
+	amount: stripeAmountSchema,
+	currency: z.string().trim().regex(/^[a-z]{3}$/i).transform((value) => value.toLowerCase()),
+	interval: z.enum(STRIPE_PRICE_INTERVALS).optional(),
+	intervalCount: z.number().int().nonnegative().optional(),
+	usageType: z.enum(STRIPE_USAGE_TYPES).optional(),
+	nickname: optionalText,
+	lookupKey: optionalText,
+	taxBehavior: z.enum(STRIPE_TAX_BEHAVIORS).optional(),
+	annualAmount: stripeAmountSchema.optional(),
+	annualLookupKey: optionalText,
+	seatAmount: stripeAmountSchema.optional(),
+	seatLookupKey: optionalText,
+});
 
 /**
  * Validate and normalize a single plan object into a BillingPlanDefinition.
@@ -222,106 +231,15 @@ function optionalLineItems(value: unknown, name: string) {
  * (`STRIPE_BILLING_PLANS[2]` for env parsing, `plan` for admin DB writes).
  */
 export function validateBillingPlanInput(
-	value: unknown,
+	value: BillingPlanInput,
 	label: string,
 ): BillingPlanDefinition {
-	if (!isRecord(value)) {
-		throw new TypeError(`${label} must be an object.`);
-	}
-
-	const name = optionalString(value.name);
-	if (!name) {
-		throw new TypeError(`${label}.name is required.`);
-	}
-
-	const priceId = optionalString(value.priceId);
-	const lookupKey = optionalString(value.lookupKey);
-	if (!priceId && !lookupKey) {
+	const parsed = billingPlanInputSchema.safeParse(value);
+	if (!parsed.success) throw new TypeError(`${label}: ${parsed.error.issues[0]?.message ?? "is invalid"}.`);
+	if (!parsed.data.priceId && !parsed.data.lookupKey) {
 		throw new TypeError(`${label} must define priceId or lookupKey.`);
 	}
-
-	const type = optionalPlanType(value.type, `${label}.type`);
-	const personalOnly = optionalBoolean(value.personalOnly, `${label}.personalOnly`);
-	const hidden = optionalBoolean(value.hidden, `${label}.hidden`);
-	const freeTrialDays = optionalNonNegativeInteger(value.freeTrialDays, `${label}.freeTrialDays`);
-
-	return {
-		name,
-		...(optionalString(value.label) ? { label: optionalString(value.label) } : {}),
-		...(optionalString(value.description)
-			? { description: optionalString(value.description) }
-			: {}),
-		...(priceId ? { priceId } : {}),
-		...(lookupKey ? { lookupKey } : {}),
-		...(optionalString(value.annualDiscountPriceId)
-			? { annualDiscountPriceId: optionalString(value.annualDiscountPriceId) }
-			: {}),
-		...(optionalString(value.annualDiscountLookupKey)
-			? { annualDiscountLookupKey: optionalString(value.annualDiscountLookupKey) }
-			: {}),
-		...(optionalRecord(value.limits, `${label}.limits`)
-			? { limits: optionalRecord(value.limits, `${label}.limits`) }
-			: {}),
-		...(optionalStringArray(value.entitlements, `${label}.entitlements`)
-			? {
-					entitlements: optionalStringArray(
-						value.entitlements,
-						`${label}.entitlements`,
-					),
-				}
-			: {}),
-		...(optionalString(value.group) ? { group: optionalString(value.group) } : {}),
-		...(optionalString(value.seatPriceId)
-			? { seatPriceId: optionalString(value.seatPriceId) }
-			: {}),
-		...(optionalProrationBehavior(value.prorationBehavior, `${label}.prorationBehavior`)
-			? {
-					prorationBehavior: optionalProrationBehavior(
-						value.prorationBehavior,
-						`${label}.prorationBehavior`,
-					),
-				}
-			: {}),
-		...(optionalLineItems(value.lineItems, `${label}.lineItems`)
-			? {
-					lineItems: optionalLineItems(value.lineItems, `${label}.lineItems`),
-				}
-			: {}),
-		...(freeTrialDays !== undefined ? { freeTrialDays } : {}),
-		...(type ? { type } : {}),
-		...(personalOnly !== undefined ? { personalOnly } : {}),
-		...(hidden !== undefined ? { hidden } : {}),
-	};
-}
-
-function optionalEnumValue<T extends string>(
-	value: unknown,
-	name: string,
-	allowed: readonly T[],
-): T | undefined {
-	const normalized = optionalString(value);
-	if (!normalized) return undefined;
-	if (!allowed.includes(normalized as T)) {
-		throw new TypeError(`${name} must be one of: ${allowed.join(", ")}.`);
-	}
-	return normalized as T;
-}
-
-function optionalAmount(value: unknown, name: string) {
-	if (value === undefined || value === null || value === "") return undefined;
-	const amount = typeof value === "number" ? value : Number(value);
-	if (!Number.isFinite(amount) || amount < 0) {
-		throw new TypeError(`${name} must be a non-negative amount.`);
-	}
-	return amount;
-}
-
-function requiredAmount(value: unknown, name: string) {
-	const amount = optionalAmount(value, name);
-	if (amount === undefined) {
-		throw new TypeError(`${name} is required.`);
-	}
-	return amount;
+	return parsed.data;
 }
 
 /**
@@ -330,102 +248,46 @@ function requiredAmount(value: unknown, name: string) {
  * are decimal major units; the Stripe provisioner converts them to minor units.
  */
 export function validateStripeProductInput(
-	value: unknown,
+	value: StripeProductInput,
 	label: string,
 ): StripeProductProvisionInput {
-	if (!isRecord(value)) {
-		throw new TypeError(`${label} must be an object.`);
-	}
-
-	const currency = optionalString(value.currency)?.toLowerCase();
-	if (!currency || !/^[a-z]{3}$/.test(currency)) {
-		throw new TypeError(`${label}.currency must be a 3-letter ISO currency code.`);
-	}
-
-	return {
-		amount: requiredAmount(value.amount, `${label}.amount`),
-		currency,
-		...(optionalString(value.productName)
-			? { productName: optionalString(value.productName) }
-			: {}),
-		...(optionalString(value.description)
-			? { description: optionalString(value.description) }
-			: {}),
-		...(optionalString(value.statementDescriptor)
-			? { statementDescriptor: optionalString(value.statementDescriptor) }
-			: {}),
-		...(optionalString(value.unitLabel) ? { unitLabel: optionalString(value.unitLabel) } : {}),
-		...(optionalString(value.taxCode) ? { taxCode: optionalString(value.taxCode) } : {}),
-		...(optionalString(value.url) ? { url: optionalString(value.url) } : {}),
-		...(optionalEnumValue(value.interval, `${label}.interval`, STRIPE_PRICE_INTERVALS)
-			? { interval: optionalEnumValue(value.interval, `${label}.interval`, STRIPE_PRICE_INTERVALS) }
-			: {}),
-		...(optionalNonNegativeInteger(value.intervalCount, `${label}.intervalCount`)
-			? { intervalCount: optionalNonNegativeInteger(value.intervalCount, `${label}.intervalCount`) }
-			: {}),
-		...(optionalEnumValue(value.usageType, `${label}.usageType`, STRIPE_USAGE_TYPES)
-			? { usageType: optionalEnumValue(value.usageType, `${label}.usageType`, STRIPE_USAGE_TYPES) }
-			: {}),
-		...(optionalString(value.nickname) ? { nickname: optionalString(value.nickname) } : {}),
-		...(optionalString(value.lookupKey) ? { lookupKey: optionalString(value.lookupKey) } : {}),
-		...(optionalEnumValue(value.taxBehavior, `${label}.taxBehavior`, STRIPE_TAX_BEHAVIORS)
-			? {
-					taxBehavior: optionalEnumValue(
-						value.taxBehavior,
-						`${label}.taxBehavior`,
-						STRIPE_TAX_BEHAVIORS,
-					),
-				}
-			: {}),
-		...(optionalAmount(value.annualAmount, `${label}.annualAmount`) !== undefined
-			? { annualAmount: optionalAmount(value.annualAmount, `${label}.annualAmount`) }
-			: {}),
-		...(optionalString(value.annualLookupKey)
-			? { annualLookupKey: optionalString(value.annualLookupKey) }
-			: {}),
-		...(optionalAmount(value.seatAmount, `${label}.seatAmount`) !== undefined
-			? { seatAmount: optionalAmount(value.seatAmount, `${label}.seatAmount`) }
-			: {}),
-		...(optionalString(value.seatLookupKey)
-			? { seatLookupKey: optionalString(value.seatLookupKey) }
-			: {}),
-	};
-}
-
-function parseBillingPlan(value: unknown, index: number): BillingPlanDefinition {
-	return validateBillingPlanInput(value, `STRIPE_BILLING_PLANS[${index}]`);
+	const parsed = stripeProductInputSchema.safeParse(value);
+	if (!parsed.success) throw new TypeError(`${label}: ${parsed.error.issues[0]?.message ?? "is invalid"}.`);
+	return parsed.data;
 }
 
 export function parseStripeBillingPlans(value: string | undefined) {
 	const raw = optionalEnv(value);
 	if (!raw) return [];
-	const parsed = JSON.parse(raw) as unknown;
-	if (!Array.isArray(parsed)) {
+	const decoded: unknown = JSON.parse(raw);
+	const parsed = z.array(billingPlanInputSchema).safeParse(decoded);
+	if (!parsed.success) {
 		throw new TypeError("STRIPE_BILLING_PLANS must be a JSON array.");
 	}
-	return parsed.map(parseBillingPlan);
+	return parsed.data.map((plan, index) =>
+		validateBillingPlanInput(plan, `STRIPE_BILLING_PLANS[${index}]`),
+	);
 }
 
 export function stripePlansFromBillingPlans(
 	plans: readonly BillingPlanDefinition[],
 ): StripePlan[] {
-	return plans.map((plan) => ({
-		name: plan.name,
-		...(plan.priceId ? { priceId: plan.priceId } : {}),
-		...(plan.lookupKey ? { lookupKey: plan.lookupKey } : {}),
-		...(plan.annualDiscountPriceId
-			? { annualDiscountPriceId: plan.annualDiscountPriceId }
-			: {}),
-		...(plan.annualDiscountLookupKey
-			? { annualDiscountLookupKey: plan.annualDiscountLookupKey }
-			: {}),
-		...(plan.limits ? { limits: plan.limits } : {}),
-		...(plan.group ? { group: plan.group } : {}),
-		...(plan.seatPriceId ? { seatPriceId: plan.seatPriceId } : {}),
-		...(plan.prorationBehavior ? { prorationBehavior: plan.prorationBehavior } : {}),
-		...(plan.lineItems ? { lineItems: plan.lineItems } : {}),
-		...(plan.freeTrialDays ? { freeTrial: { days: plan.freeTrialDays } } : {}),
-	}));
+	return plans.map((plan) => {
+		const stripePlan: StripePlan = { name: plan.name };
+		if (plan.priceId) stripePlan.priceId = plan.priceId;
+		if (plan.lookupKey) stripePlan.lookupKey = plan.lookupKey;
+		if (plan.annualDiscountPriceId) stripePlan.annualDiscountPriceId = plan.annualDiscountPriceId;
+		if (plan.annualDiscountLookupKey) {
+			stripePlan.annualDiscountLookupKey = plan.annualDiscountLookupKey;
+		}
+		if (plan.limits) stripePlan.limits = plan.limits;
+		if (plan.group) stripePlan.group = plan.group;
+		if (plan.seatPriceId) stripePlan.seatPriceId = plan.seatPriceId;
+		if (plan.prorationBehavior) stripePlan.prorationBehavior = plan.prorationBehavior;
+		if (plan.lineItems) stripePlan.lineItems = plan.lineItems;
+		if (plan.freeTrialDays !== undefined) stripePlan.freeTrial = { days: plan.freeTrialDays };
+		return stripePlan;
+	});
 }
 
 /**
@@ -443,22 +305,23 @@ export function billingPlanCatalogEntry(
 	const annualPrice = plan.annualDiscountPriceId
 		? prices?.[plan.annualDiscountPriceId]
 		: undefined;
-	return {
-		...(id ? { id } : {}),
+	const entry: BillingPlanCatalogEntry = {
 		name: plan.name.toLowerCase(),
-		...(plan.label ? { label: plan.label } : {}),
-		...(plan.description ? { description: plan.description } : {}),
-		...(plan.group ? { group: plan.group } : {}),
-		...(plan.limits ? { limits: plan.limits } : {}),
 		entitlements: plan.entitlements ?? [],
 		hasFreeTrial: Boolean(plan.freeTrialDays),
 		hasAnnualDiscount: Boolean(plan.annualDiscountPriceId ?? plan.annualDiscountLookupKey),
 		type: plan.type ?? "subscription",
 		personalOnly: plan.personalOnly ?? false,
 		hidden: plan.hidden ?? false,
-		...(price ? { price } : {}),
-		...(annualPrice ? { annualPrice } : {}),
 	};
+	if (id) entry.id = id;
+	if (plan.label) entry.label = plan.label;
+	if (plan.description) entry.description = plan.description;
+	if (plan.group) entry.group = plan.group;
+	if (plan.limits) entry.limits = plan.limits;
+	if (price) entry.price = price;
+	if (annualPrice) entry.annualPrice = annualPrice;
+	return entry;
 }
 
 export function billingPlanCatalog(
@@ -487,66 +350,33 @@ export function catalogPriceIds(plans: readonly BillingPlanDefinition[]): string
 export function stripeCheckoutDefaults(
 	env: StripeCheckoutDefaultsEnv,
 ): StripeCheckoutDefaults {
-	const billingAddressCollection = optionalEnv(
-		env.STRIPE_CHECKOUT_BILLING_ADDRESS_COLLECTION,
-	);
-	if (
-		billingAddressCollection &&
-		billingAddressCollection !== "auto" &&
-		billingAddressCollection !== "required"
-	) {
+	const billingAddressCollection = z
+		.enum(["auto", "required"])
+		.optional()
+		.safeParse(optionalEnv(env.STRIPE_CHECKOUT_BILLING_ADDRESS_COLLECTION));
+	if (!billingAddressCollection.success) {
 		throw new TypeError(
 			"STRIPE_CHECKOUT_BILLING_ADDRESS_COLLECTION must be auto or required.",
 		);
 	}
-
-	return {
-		...(parseOptionalBoolean(
-			env.STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES,
-			"STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES",
-		) !== undefined
-			? {
-					allowPromotionCodes: parseOptionalBoolean(
-						env.STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES,
-						"STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES",
-					),
-				}
-			: {}),
-		...(parseOptionalBoolean(
-			env.STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED,
-			"STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED",
-		) !== undefined
-			? {
-					automaticTaxEnabled: parseOptionalBoolean(
-						env.STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED,
-						"STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED",
-					),
-				}
-			: {}),
-		...(parseOptionalBoolean(
-			env.STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED,
-			"STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED",
-		) !== undefined
-			? {
-					taxIDCollectionEnabled: parseOptionalBoolean(
-						env.STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED,
-						"STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED",
-					),
-				}
-			: {}),
-		...(billingAddressCollection
-			? {
-					billingAddressCollection: billingAddressCollection as
-						| "auto"
-						| "required",
-				}
-			: {}),
-		...(optionalEnv(env.STRIPE_CHECKOUT_CUSTOM_TEXT_SUBMIT_MESSAGE)
-			? {
-					customTextSubmitMessage: optionalEnv(
-						env.STRIPE_CHECKOUT_CUSTOM_TEXT_SUBMIT_MESSAGE,
-					),
-				}
-			: {}),
-	};
+	const defaults: StripeCheckoutDefaults = {};
+	const allowPromotionCodes = parseOptionalBoolean(
+		env.STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES,
+		"STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES",
+	);
+	const automaticTaxEnabled = parseOptionalBoolean(
+		env.STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED,
+		"STRIPE_CHECKOUT_AUTOMATIC_TAX_ENABLED",
+	);
+	const taxIDCollectionEnabled = parseOptionalBoolean(
+		env.STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED,
+		"STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED",
+	);
+	const customTextSubmitMessage = optionalEnv(env.STRIPE_CHECKOUT_CUSTOM_TEXT_SUBMIT_MESSAGE);
+	if (allowPromotionCodes !== undefined) defaults.allowPromotionCodes = allowPromotionCodes;
+	if (automaticTaxEnabled !== undefined) defaults.automaticTaxEnabled = automaticTaxEnabled;
+	if (taxIDCollectionEnabled !== undefined) defaults.taxIDCollectionEnabled = taxIDCollectionEnabled;
+	if (billingAddressCollection.data) defaults.billingAddressCollection = billingAddressCollection.data;
+	if (customTextSubmitMessage) defaults.customTextSubmitMessage = customTextSubmitMessage;
+	return defaults;
 }
