@@ -27,7 +27,7 @@ const oauthResourceSeedSchema = z.object({
 	scopes: z.array(z.string().trim().min(1)),
 });
 const allowedAudiencesMetadataSchema = z.record(z.string(), z.array(z.string()));
-type OAuthMetadata = z.input<typeof allowedAudiencesMetadataSchema>;
+type OAuthMetadata = z.infer<ReturnType<typeof z.json>> | undefined;
 
 export function parseOAuthResourceSeeds(value: string | undefined): OAuthResourceSeed[] {
 	if (!value) return [];

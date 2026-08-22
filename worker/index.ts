@@ -206,7 +206,7 @@ function mapDatabaseClient(client: typeof schema.oauthClient.$inferSelect): OAut
 		enableEndSession: client.enableEndSession ?? undefined,
 		backchannelLogoutUri: client.backchannelLogoutUri ?? null,
 		grantTypes: oauthGrantTypesFromDatabase(client.grantTypes),
-		allowedAudiences: allowedAudiencesFromMetadata(client.metadata),
+		allowedAudiences: allowedAudiencesFromMetadata(z.json().safeParse(client.metadata).data),
 	};
 }
 
@@ -804,12 +804,12 @@ const app = createWorkerApp({
 			const user = await getAdminUser(env, request.headers, userId);
 			await emitWebhookEvent(env, createDb(env), WEBHOOK_EVENT_TYPES.USER_ROLE_CHANGED, {
 				userId: user.id,
-				email: user.email,
+				email: user.email ?? null,
 				role: user.role ?? role,
 			});
 			return {
 				userId: user.id,
-				email: user.email,
+				email: user.email ?? null,
 				role: user.role ?? role,
 			};
 		},
@@ -825,13 +825,13 @@ const app = createWorkerApp({
 			const user = await getAdminUser(env, request.headers, userId);
 			await emitWebhookEvent(env, createDb(env), WEBHOOK_EVENT_TYPES.USER_BANNED, {
 				userId: user.id,
-				email: user.email,
+				email: user.email ?? null,
 				banReason: input.banReason ?? null,
 			});
 			await propagateBackchannelLogout(env, user.id);
 			return {
 				userId: user.id,
-				email: user.email,
+				email: user.email ?? null,
 				banned: user.banned ?? true,
 			};
 		},
@@ -845,7 +845,7 @@ const app = createWorkerApp({
 			const user = await getAdminUser(env, request.headers, userId);
 			await emitWebhookEvent(env, createDb(env), WEBHOOK_EVENT_TYPES.USER_UNBANNED, {
 				userId: user.id,
-				email: user.email,
+				email: user.email ?? null,
 			});
 			return {
 				userId: user.id,
@@ -1087,7 +1087,7 @@ const app = createWorkerApp({
 						clientId: field.clientId,
 						backchannelLogoutUri: field.backchannelLogoutUri,
 						grantTypes: oauthGrantTypesFromDatabase(field.grantTypes),
-						allowedAudiences: allowedAudiencesFromMetadata(field.allowedAudiences),
+							allowedAudiences: allowedAudiencesFromMetadata(z.json().safeParse(field.allowedAudiences).data),
 						optionalScopes: field.optionalScopes,
 						platformAdminOnly: field.platformAdminOnly,
 						verified: field.verified,

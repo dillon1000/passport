@@ -24,24 +24,24 @@ export const NO_GROUP_VALUE = "__none";
 export const PERSONAL_KEY = "user";
 
 // Where to find each Stripe identifier in the dashboard, surfaced as tooltips.
-export const STRIPE_HINTS = {
-	priceId: "Stripe → Product catalog → your product → Pricing → click a price → copy the API ID (price_…).",
-	lookupKey: "Stripe → Product catalog → Pricing → a price's Lookup key (set when creating the price).",
-	annualDiscountPriceId: "The annual price's API ID under the same product (price_…).",
-	annualDiscountLookupKey: "The annual price's Lookup key.",
-	seatPriceId: "A per-seat price's API ID (price_…) for metered/quantity team plans.",
-} satisfies Record<string, string>;
+export const STRIPE_HINTS = new Map<string, string>([
+	["priceId", "Stripe → Product catalog → your product → Pricing → click a price → copy the API ID (price_…)."],
+	["lookupKey", "Stripe → Product catalog → Pricing → a price's Lookup key (set when creating a price)."],
+	["annualDiscountPriceId", "The annual price's API ID under the same product (price_…)."],
+	["annualDiscountLookupKey", "The annual price's Lookup key."],
+	["seatPriceId", "A per-seat price's API ID (price_…) for metered/quantity team plans."],
+]);
 
-export const STATUS_TONE = {
-	active: "default",
-	trialing: "secondary",
-	past_due: "destructive",
-	unpaid: "destructive",
-	canceled: "outline",
-	paused: "outline",
-	incomplete: "outline",
-	incomplete_expired: "outline",
-} satisfies Record<string, "default" | "secondary" | "outline" | "destructive">;
+export const STATUS_TONE = new Map<string, "default" | "secondary" | "outline" | "destructive">([
+	["active", "default"],
+	["trialing", "secondary"],
+	["past_due", "destructive"],
+	["unpaid", "destructive"],
+	["canceled", "outline"],
+	["paused", "outline"],
+	["incomplete", "outline"],
+	["incomplete_expired", "outline"],
+]);
 
 export function statusLabel(status: string) {
 	return status.replaceAll("_", " ");

@@ -188,7 +188,7 @@ export function SubscriptionRow({
 					<span className="truncate text-sm font-medium">
 						{planTitle(plan, subscription.plan)}
 					</span>
-					<Badge variant={STATUS_TONE[subscription.status] ?? "outline"} className="capitalize">
+					<Badge variant={STATUS_TONE.get(subscription.status) ?? "outline"} className="capitalize">
 						{statusLabel(subscription.status)}
 					</Badge>
 					{pendingChange ? <Badge variant="secondary">Pending change</Badge> : null}
@@ -227,7 +227,7 @@ export function PurchaseRow({
 					<span className="truncate text-sm font-medium">
 						{planTitle(plan, purchase.plan)}
 					</span>
-					<Badge variant={STATUS_TONE[purchase.status] ?? "outline"} className="capitalize">
+					<Badge variant={STATUS_TONE.get(purchase.status) ?? "outline"} className="capitalize">
 						{statusLabel(purchase.status)}
 					</Badge>
 					{purchase.quantity > 1 ? <Badge variant="outline">×{purchase.quantity}</Badge> : null}
@@ -371,7 +371,7 @@ export function SubscriptionDrawer({
 						<SheetBody className="space-y-5">
 							<div className="flex flex-wrap items-center gap-2">
 								<Badge
-									variant={STATUS_TONE[subscription.status] ?? "outline"}
+									variant={STATUS_TONE.get(subscription.status) ?? "outline"}
 									className="capitalize"
 								>
 									{statusLabel(subscription.status)}
@@ -1717,7 +1717,7 @@ export function StripeLabel({ field, children }: { field: string; children: Reac
 	return (
 		<span className="inline-flex items-center gap-1.5">
 			{children}
-			<Tooltip content={STRIPE_HINTS[field]} render={
+			<Tooltip content={STRIPE_HINTS.get(field)} render={
 					<button type="button" className="text-muted-foreground" aria-label="Where to find this in Stripe">
 						<HelpCircle className="size-3.5" />
 					</button>

@@ -9,7 +9,7 @@ const R2_MAX_MULTIPART_PARTS = 10_000;
 
 type MultipartUpload = {
 	abort(): Promise<void>;
-	complete(uploadedParts: R2UploadedPart[]): Promise<unknown>;
+	complete(uploadedParts: R2UploadedPart[]): Promise<R2Object>;
 	uploadPart(partNumber: number, value: Uint8Array): Promise<R2UploadedPart>;
 };
 
@@ -81,7 +81,7 @@ export async function uploadStreamWithR2Multipart({
 
 		return await upload.complete(uploadedParts);
 	} catch (error) {
-		await upload.abort().catch((abortError: unknown) => {
+		await upload.abort().catch((abortError) => {
 			console.warn("R2 multipart upload abort failed.", abortError);
 		});
 		throw error;

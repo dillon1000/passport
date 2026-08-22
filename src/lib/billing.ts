@@ -201,6 +201,10 @@ const billingPlanInputSchema = z.object({
 	hidden: z.boolean().optional(),
 });
 
+const billingPlanWriteInputSchema = billingPlanInputSchema.extend({
+	displayOrder: z.number().int().nonnegative().optional(),
+});
+
 const stripeAmountSchema = z
 	.union([z.number(), z.string().trim().min(1).transform(Number)])
 	.pipe(z.number().finite().nonnegative());
@@ -239,6 +243,13 @@ export function validateBillingPlanInput(
 	if (!parsed.data.priceId && !parsed.data.lookupKey) {
 		throw new TypeError(`${label} must define priceId or lookupKey.`);
 	}
+	return parsed.data;
+}
+
+/** Parse an admin plan write at the HTTP boundary before it reaches storage. */
+export function parseBillingPlanWriteInput(value: unknown): BillingPlanInput & { displayOrder?: number } {
+	const parsed = billingPlanWriteInputSchema.safeParse(value);
+	if (!parsed.success) throw new TypeError(parsed.error.issues[0]?.message ?? "Invalid billing plan.");
 	return parsed.data;
 }
 

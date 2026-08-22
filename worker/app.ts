@@ -31,13 +31,17 @@ import {
 } from "../src/lib/notification-preferences";
 import {
 	billingPlanCatalog,
+	parseBillingPlanWriteInput,
 	parseStripeBillingPlans,
 	type BillingPlanCatalogEntry,
 	type BillingLimits,
 	type BillingPlanLineItem,
 } from "../src/lib/billing";
 import type { BillingPlanWriteInput } from "../src/lib/billing-plan-store";
-import type { BillingRegistryInput } from "../src/lib/billing-registry-store";
+import {
+	parseBillingRegistryInput,
+	type BillingRegistryInput,
+} from "../src/lib/billing-registry-store";
 import type { RequestLocation } from "../src/lib/request-location";
 import { isAdminOperator } from "../src/lib/admin-access";
 import { createClientAPI } from "./client-api";
@@ -896,7 +900,7 @@ function imageExtension(type: string) {
 	return Object.entries(IMAGE_EXTENSIONS).find(([imageType]) => imageType === type)?.[1];
 }
 
-function imagePurposeSegment(value: FormDataEntryValue | null) {
+function imagePurposeSegment(value: string | Blob | null) {
 	if (value === null || value === "") return "";
 	const purpose = z.enum(PROFILE_IMAGE_PURPOSES).safeParse(value);
 	return purpose.success ? purpose.data : null;
@@ -1369,7 +1373,7 @@ async function handleAdminBillingPlans(
 
 	if (request.method === "POST") {
 		return billingPlanResponse(async () => {
-			const plan = await billingPlans.create(env, await readJSON(request));
+			const plan = await billingPlans.create(env, parseBillingPlanWriteInput(await readJSON(request)));
 			return Response.json({ plan }, { status: 201 });
 		});
 	}
@@ -1396,7 +1400,7 @@ async function handleAdminBillingPlanAction(
 
 	if (request.method === "PATCH") {
 		return billingPlanResponse(async () => {
-			const plan = await billingPlans.update(env, id, await readJSON(request));
+			const plan = await billingPlans.update(env, id, parseBillingPlanWriteInput(await readJSON(request)));
 			if (!plan) return jsonError("Billing plan not found.", 404);
 			return Response.json({ plan });
 		});
@@ -1484,7 +1488,7 @@ async function handleAdminRegistryCollection<T>(
 	}
 	if (request.method === "POST") {
 		return billingPlanResponse(async () => {
-			const item = await slice.create(env, await readJSON(request));
+			const item = await slice.create(env, parseBillingRegistryInput(await readJSON(request)));
 			return Response.json({ item }, { status: 201 });
 		});
 	}
@@ -1510,7 +1514,7 @@ async function handleAdminRegistryItem<T>(
 
 	if (request.method === "PATCH") {
 		return billingPlanResponse(async () => {
-			const item = await slice.update(env, id, await readJSON(request));
+			const item = await slice.update(env, id, parseBillingRegistryInput(await readJSON(request)));
 			if (!item) return jsonError("Registry entry not found.", 404);
 			return Response.json({ item });
 		});

@@ -31,11 +31,16 @@ const billingRegistryInputSchema = z.object({
 	unit: z.string().trim().min(1).optional(),
 });
 
-/** Decode an admin registry write before it reaches either database table. */
-function parseBillingRegistryInput(input: BillingRegistryInput) {
-	const parsed = billingRegistryInputSchema.safeParse(input);
+/** Parse an admin registry write at the HTTP boundary before it reaches storage. */
+export function parseBillingRegistryInput(value: unknown): BillingRegistryInput {
+	const parsed = billingRegistryInputSchema.safeParse(value);
 	if (!parsed.success) throw new TypeError(parsed.error.issues[0]?.message ?? "Invalid registry entry.");
 	return parsed.data;
+}
+
+/** Decode an admin registry write before it reaches either database table. */
+function normalizeBillingRegistryInput(input: BillingRegistryInput) {
+	return parseBillingRegistryInput(input);
 }
 
 // --- Entitlements ---
@@ -48,7 +53,7 @@ export async function listEntitlements(db: AuthDatabase) {
 }
 
 export async function createEntitlement(db: AuthDatabase, input: BillingRegistryInput) {
-	const value = parseBillingRegistryInput(input);
+	const value = normalizeBillingRegistryInput(input);
 	const [row] = await db
 		.insert(schema.billingEntitlement)
 		.values({
@@ -62,7 +67,7 @@ export async function createEntitlement(db: AuthDatabase, input: BillingRegistry
 }
 
 export async function updateEntitlement(db: AuthDatabase, id: string, input: BillingRegistryInput) {
-	const value = parseBillingRegistryInput(input);
+	const value = normalizeBillingRegistryInput(input);
 	const [row] = await db
 		.update(schema.billingEntitlement)
 		.set({
@@ -90,7 +95,7 @@ export async function listLimits(db: AuthDatabase) {
 }
 
 export async function createLimit(db: AuthDatabase, input: BillingRegistryInput) {
-	const value = parseBillingRegistryInput(input);
+	const value = normalizeBillingRegistryInput(input);
 	const [row] = await db
 		.insert(schema.billingLimit)
 		.values({
@@ -104,7 +109,7 @@ export async function createLimit(db: AuthDatabase, input: BillingRegistryInput)
 }
 
 export async function updateLimit(db: AuthDatabase, id: string, input: BillingRegistryInput) {
-	const value = parseBillingRegistryInput(input);
+	const value = normalizeBillingRegistryInput(input);
 	const [row] = await db
 		.update(schema.billingLimit)
 		.set({

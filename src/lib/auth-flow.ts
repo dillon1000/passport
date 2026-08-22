@@ -10,7 +10,7 @@ const passwordSignInResultSchema = z.object({
 });
 
 export function shouldCompletePasswordSignIn(
-	result: z.input<typeof passwordSignInResultSchema>,
+	result: { data?: object },
 ) {
 	const parsed = passwordSignInResultSchema.safeParse(result);
 	return parsed.success ? parsed.data.data?.twoFactorRedirect !== true : true;
