@@ -205,12 +205,15 @@ export function oauthResourceAuthorizationPlugin(env: AuthEnv, db: AuthDatabase)
 							.where(eq(schema.oauthClient.clientId, clientId))
 							.limit(1);
 						if (!client) return;
+						const metadata = z.record(z.string(), z.array(z.string())).safeParse(client.metadata);
 
 						try {
 							assertOAuthClientResourceAccess({
 								resources,
 								resource: body.resource,
-								allowedAudiences: allowedAudiencesFromMetadata(client.metadata),
+								allowedAudiences: metadata.success
+									? allowedAudiencesFromMetadata(metadata.data)
+									: undefined,
 								clientScopes: client.scopes ?? undefined,
 								requestedScopes: body.scope?.split(" ").filter(Boolean),
 							});

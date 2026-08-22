@@ -42,7 +42,7 @@ const requestLocationInputSchema = z.object({
 	region: z.string().optional(),
 	regionCode: z.string().optional(),
 	timezone: z.string().optional(),
-}).passthrough();
+});
 type RequestLocationInput = z.input<typeof requestLocationInputSchema>;
 type ParsedRequestLocationInput = z.output<typeof requestLocationInputSchema>;
 
@@ -65,9 +65,11 @@ function hasLocationValue(location: RequestLocation) {
 	return Object.values(location).some((value) => value !== undefined);
 }
 
-export function parseRequestLocation(value: RequestLocationInput): RequestLocation | null {
+export function parseRequestLocation(value: RequestLocationInput | null | undefined): RequestLocation | null {
+	if (!value) return null;
+	const stringValue = z.string().safeParse(value);
 	const source = requestLocationInputSchema.safeParse(
-		z.string().safeParse(value).success ? parseJSONRecord(value) : value,
+		stringValue.success ? parseJSONRecord(stringValue.data) : value,
 	);
 	if (!source.success) return null;
 
@@ -91,7 +93,8 @@ export function requestLocationFromRequest(request?: RequestWithCloudflareMetada
 	return parseRequestLocation(request.cf);
 }
 
-export function formatRequestLocation(value: RequestLocationInput) {
+export function formatRequestLocation(value: RequestLocationInput | null | undefined) {
+	if (!value) return null;
 	const location = parseRequestLocation(value);
 	if (!location) return null;
 

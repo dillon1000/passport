@@ -336,7 +336,8 @@ async function emitBillingWebhook(
 async function reconcileSubscriptionCustomer(db: AuthDatabase, subscription: Stripe.Subscription) {
 	const stripeSubscriptionId = subscription.id;
 	const customer = z.string().safeParse(subscription.customer);
-	const customerId = customer.success ? customer.data : subscription.customer.id;
+	const customerObject = z.object({ id: z.string() }).safeParse(subscription.customer);
+	const customerId = customer.success ? customer.data : customerObject.success ? customerObject.data.id : null;
 	if (!stripeSubscriptionId || !customerId) return;
 	await db
 		.update(schema.subscription)
@@ -587,10 +588,14 @@ export async function recordOneTimePurchase(
 
 	const customer = z.string().safeParse(session.customer);
 	const paymentIntent = z.string().safeParse(session.payment_intent);
-	const customerId = customer.success ? customer.data : (session.customer?.id ?? null);
+	const customerObject = z.object({ id: z.string() }).safeParse(session.customer);
+	const customerId = customer.success ? customer.data : customerObject.success ? customerObject.data.id : null;
+	const paymentIntentObject = z.object({ id: z.string() }).safeParse(session.payment_intent);
 	const paymentIntentId = paymentIntent.success
 		? paymentIntent.data
-		: (session.payment_intent?.id ?? null);
+		: paymentIntentObject.success
+			? paymentIntentObject.data.id
+			: null;
 
 	const [row] = await db
 		.insert(schema.oneTimePurchase)
