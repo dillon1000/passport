@@ -33,8 +33,8 @@ describe("uploadImageAsset", () => {
 		await expect(uploadProfileImageAsset(file)).resolves.toBe(
 			"http://localhost/api/profile-images/profile-images/user/avatar.png",
 		);
-		expect(uploadedBody).toBeInstanceOf(FormData);
-		expect((uploadedBody as FormData).get("image")).toBe(file);
-		expect((uploadedBody as FormData).has("purpose")).toBe(false);
+		if (!(uploadedBody instanceof FormData)) throw new Error("Expected a form-data upload.");
+		expect(uploadedBody.get("image")).toBe(file);
+		expect(uploadedBody.has("purpose")).toBe(false);
 	});
 });
