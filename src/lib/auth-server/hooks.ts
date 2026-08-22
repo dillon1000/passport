@@ -69,12 +69,12 @@ const errorMessageSchema = z.object({ message: z.string() });
 const CREDENTIAL_SIGN_IN_PATHS = new Set(["/sign-in/email"]);
 const LOCKOUT_ERROR_MESSAGE = "Too many sign-in attempts. Try again later.";
 
-function hookSessionUser(value: z.input<typeof hookSessionSchema>): HookUser | null {
+function hookSessionUser(value: z.input<typeof hookSessionSchema> | null | undefined): HookUser | null {
 	const session = hookSessionSchema.safeParse(value);
 	return session.success && session.data.user ? session.data.user : null;
 }
 
-function hookNewSession(value: z.input<typeof hookNewSessionSchema>): HookNewSession | null {
+function hookNewSession(value: z.input<typeof hookNewSessionSchema> | null | undefined): HookNewSession | null {
 	const session = hookNewSessionSchema.safeParse(value);
 	return session.success && session.data.user ? session.data : null;
 }

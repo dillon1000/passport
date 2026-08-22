@@ -9,6 +9,7 @@
 import {
 	assertSupportedOAuthScopes,
 	isSupportedOAuthScope,
+	type SupportedOAuthScope,
 } from "./oauth-scopes";
 import { z } from "zod";
 
@@ -72,7 +73,8 @@ export function allowedAudiencesFromMetadata(
 function resourceValues(value: string | readonly string[] | undefined) {
 	const scalar = z.string().safeParse(value);
 	if (scalar.success) return scalar.data.trim() ? [scalar.data.trim()] : [];
-	return value?.map((item) => item.trim()).filter(Boolean) ?? [];
+	const values = z.array(z.string()).safeParse(value);
+	return values.success ? values.data.map((item) => item.trim()).filter(Boolean) : [];
 }
 
 function resourceForIdentifier(

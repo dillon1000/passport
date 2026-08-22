@@ -137,8 +137,8 @@ function invitationTeamIDs(value: string | null | undefined) {
 		: [];
 }
 
-function databaseErrorCode(error: z.input<typeof databaseErrorSchema>) {
-	const databaseError = databaseErrorSchema.safeParse(error);
+function databaseErrorCode(...[value]: Parameters<typeof databaseErrorSchema.safeParse>) {
+	const databaseError = databaseErrorSchema.safeParse(value);
 	return databaseError.success ? databaseError.data.code : undefined;
 }
 
@@ -300,8 +300,7 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			createdAt: ISODate(row.createdAt),
 			metadata: parseMetadata(row.metadata),
 		};
-		if (row.role) organization.role = row.role;
-		return organization;
+		return row.role ? { ...organization, role: row.role } : organization;
 	}
 
 	function teamDTO(row: typeof schema.team.$inferSelect) {

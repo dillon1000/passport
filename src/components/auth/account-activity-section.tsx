@@ -7,6 +7,7 @@
  * large Security page does not need to thread additional state.
  */
 import { useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 import { History, RefreshCw } from "@/lib/icons";
 
 import { SettingsCard, SettingsCardFooter } from "@/components/auth/settings-card";
@@ -33,8 +34,11 @@ function locationSummary(event: AccountActivitySummary) {
 
 function connectedAppSummary(event: AccountActivitySummary) {
 	if (event.type !== "connected_app_action" || !event.metadata) return null;
-	const client = typeof event.metadata.clientName === "string" ? event.metadata.clientName : null;
-	const action = typeof event.metadata.action === "string" ? event.metadata.action : null;
+	const metadata = z
+		.object({ clientName: z.string().optional(), action: z.string().optional() })
+		.safeParse(event.metadata);
+	if (!metadata.success) return null;
+	const { clientName: client = null, action = null } = metadata.data;
 	if (!client && !action) return null;
 	return [client, action].filter(Boolean).join(" · ");
 }

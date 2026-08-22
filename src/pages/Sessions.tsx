@@ -65,25 +65,23 @@ type SessionIconAsset = {
 	src: PublicIconSource;
 	label: string;
 };
-type SessionIconMap = { [name: string]: SessionIconAsset };
+const BROWSER_ICONS = new Map<string, SessionIconAsset>([
+	["Chrome or Chromium based browser", { label: "Chrome", src: "/icons/chrome.svg" }],
+	["Edge", { label: "Edge", src: "/icons/edge.svg" }],
+	["Firefox", { label: "Firefox", src: "/icons/firefox.svg" }],
+	["Opera", { label: "Opera", src: "/icons/opera.svg" }],
+	["Safari", { label: "Safari", src: "/icons/safari.svg" }],
+]);
 
-const BROWSER_ICONS: SessionIconMap = {
-	"Chrome or Chromium based browser": { label: "Chrome", src: "/icons/chrome.svg" },
-	Edge: { label: "Edge", src: "/icons/edge.svg" },
-	Firefox: { label: "Firefox", src: "/icons/firefox.svg" },
-	Opera: { label: "Opera", src: "/icons/opera.svg" },
-	Safari: { label: "Safari", src: "/icons/safari.svg" },
-};
-
-const PLATFORM_ICONS: SessionIconMap = {
-	Android: { label: "Android", src: "/icons/android.svg" },
-	ChromeOS: { label: "ChromeOS", src: "/icons/chrome.svg" },
-	iOS: { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } },
-	iPadOS: { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } },
-	Linux: { label: "Linux", src: "/icons/linux.svg" },
-	macOS: { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } },
-	Windows: { label: "Windows", src: "/icons/windows.svg" },
-};
+const PLATFORM_ICONS = new Map<string, SessionIconAsset>([
+	["Android", { label: "Android", src: "/icons/android.svg" }],
+	["ChromeOS", { label: "ChromeOS", src: "/icons/chrome.svg" }],
+	["iOS", { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } }],
+	["iPadOS", { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } }],
+	["Linux", { label: "Linux", src: "/icons/linux.svg" }],
+	["macOS", { label: "Apple", src: { light: "/icons/apple_light.svg", dark: "/icons/apple_dark.svg" } }],
+	["Windows", { label: "Windows", src: "/icons/windows.svg" }],
+]);
 
 type ListedSession = {
 	id: string;
@@ -592,8 +590,8 @@ function SessionAgentIcon({
 	os: string;
 	deviceType: DeviceType;
 }) {
-	const browserIcon = BROWSER_ICONS[browser];
-	const platformIcon = PLATFORM_ICONS[os];
+	const browserIcon = BROWSER_ICONS.get(browser);
+	const platformIcon = PLATFORM_ICONS.get(os);
 	const primary = browserIcon ?? platformIcon;
 	const secondary = browserIcon ? platformIcon : undefined;
 

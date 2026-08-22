@@ -84,17 +84,15 @@ function initials(value: string) {
 	);
 }
 
-type RoleToneMap = { [role: string]: "default" | "secondary" | "outline" };
-
-const ROLE_TONE: RoleToneMap = {
-	owner: "default",
-	admin: "secondary",
-	member: "outline",
-};
+const ROLE_TONE = new Map<string, "default" | "secondary" | "outline">([
+	["owner", "default"],
+	["admin", "secondary"],
+	["member", "outline"],
+]);
 
 function RoleBadge({ role }: { role: string }) {
 	return (
-		<Badge variant={ROLE_TONE[role] ?? "outline"} className="capitalize">
+		<Badge variant={ROLE_TONE.get(role) ?? "outline"} className="capitalize">
 			{role}
 		</Badge>
 	);
