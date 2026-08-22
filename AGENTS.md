@@ -34,6 +34,8 @@ When a page has multiple similarly named sections, place requested UI actions in
 
 When an authentication loading surface replaces a form, every recoverable error must reverse the same transition and return to the populated form. Transition declarations must include the CSS property changed by the movement utility.
 
+When an external OAuth authorization starts an authentication flow, preserve its complete signed continuation across every sign-in, sign-up, recovery, account-selection, two-factor, and email-link path. Completed authentication must return to OAuth consent or the requesting application, never a dashboard fallback.
+
 Drawer and sheet surfaces must animate on both enter and exit. Use the transition attributes emitted by the active component library, verify the movement property is included in `transition-property`, and preserve the reduced-motion behavior.
 
 ### Fight for the "obvious" solution
