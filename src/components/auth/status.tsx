@@ -31,6 +31,8 @@ export function StatusBanner({ status }: { status: Status | null }) {
 	const lastStatusKey = useRef("");
 	const errorDialogOpen = status?.tone === "error" && dismissedStatus !== status;
 
+	// Status changes synchronize React state with the external toast system.
+	/* oxlint-disable react-you-might-not-need-an-effect/no-event-handler */
 	useEffect(() => {
 		if (!status) {
 			lastStatusKey.current = "";
@@ -46,6 +48,7 @@ export function StatusBanner({ status }: { status: Status | null }) {
 			id: statusKey,
 		});
 	}, [status]);
+	/* oxlint-enable react-you-might-not-need-an-effect/no-event-handler */
 
 	return (
 		<Dialog

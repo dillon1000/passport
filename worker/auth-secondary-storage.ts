@@ -22,7 +22,7 @@ type NextExpiration = {
 export class AuthSecondaryStorage extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
-		ctx.blockConcurrencyWhile(async () => {
+		void ctx.blockConcurrencyWhile(async () => {
 			this.ctx.storage.sql.exec(`
 				CREATE TABLE IF NOT EXISTS auth_values (
 					key TEXT PRIMARY KEY,
