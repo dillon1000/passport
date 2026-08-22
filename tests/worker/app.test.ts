@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
-import { createWorkerApp, type RequestTracer, type TraceSpan } from "./app";
+import { createWorkerApp, type BillingPlanService, type RequestTracer, type TraceSpan } from "./app";
 
 function createEnv() {
+	// SAFETY: the Worker requires production bindings that these route tests never read; this fixture supplies every binding the tested paths use.
 	return {
 		ASSETS: {
 			fetch: vi.fn(() => new Response("asset")),
@@ -20,7 +22,7 @@ function createEnv() {
 			get: vi.fn(() => null),
 			put: vi.fn(),
 		},
-	} as unknown as Env & {
+	} as Env & {
 		PROFILE_IMAGES: {
 			get: ReturnType<typeof vi.fn>;
 			put: ReturnType<typeof vi.fn>;
@@ -28,11 +30,11 @@ function createEnv() {
 	};
 }
 
-const env = {
-	ASSETS: {
-		fetch: vi.fn(() => new Response("asset")),
-	},
-} as unknown as Env;
+const env = createEnv();
+
+async function responseJSON<T extends z.ZodType>(response: Response, schema: T): Promise<z.output<T>> {
+	return schema.parse(await response.json());
+}
 
 describe("createWorkerApp", () => {
 	it("wraps request handling in a custom trace span", async () => {
@@ -248,16 +250,16 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(200);
-		const payload = (await response.json()) as { image: string };
+		const payload = await responseJSON(response, z.object({ image: z.string() }));
 		expect(payload.image).toMatch(
 			/^\/api\/profile-images\/profile-images\/user_123\/[a-f0-9-]+\.png$/,
 		);
 		expect(requestEnv.PROFILE_IMAGES.put).toHaveBeenCalledOnce();
-		const [key, value, options] = requestEnv.PROFILE_IMAGES.put.mock.calls[0] as [
-			string,
-			File,
-			{ httpMetadata: { contentType: string } },
-		];
+		const [key, value, options] = z.tuple([
+			z.string(),
+			z.instanceof(File),
+			z.object({ httpMetadata: z.object({ contentType: z.string() }) }),
+		]).parse(requestEnv.PROFILE_IMAGES.put.mock.calls[0]);
 		expect(key).toBe(payload.image.replace("/api/profile-images/", ""));
 		expect(await value.text()).toBe("image-bytes");
 		expect(options.httpMetadata.contentType).toBe("image/png");
@@ -304,7 +306,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(200);
-		const payload = (await response.json()) as { events: { type: string }[] };
+		const payload = await responseJSON(response, z.object({ events: z.array(z.object({ type: z.string() })) }));
 		expect(payload.events).toHaveLength(1);
 		expect(payload.events[0]?.type).toBe("sign_in");
 		expect(list).toHaveBeenCalledOnce();
@@ -399,7 +401,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(201);
-		const payload = (await response.json()) as { endpoint: { secret: string } };
+		const payload = await responseJSON(response, z.object({ endpoint: z.object({ secret: z.string() }) }));
 		expect(payload.endpoint.secret).toBe("whsec_abc");
 		expect(create).toHaveBeenCalledOnce();
 	});
@@ -420,17 +422,17 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(200);
-		const payload = (await response.json()) as { image: string; url: string };
+		const payload = await responseJSON(response, z.object({ image: z.string(), url: z.string() }));
 		expect(payload.image).toBe(payload.url);
 		expect(payload.image).toMatch(
 			/^\/api\/profile-images\/profile-images\/user_123\/organization-logo\/[a-f0-9-]+\.webp$/,
 		);
 		expect(requestEnv.PROFILE_IMAGES.put).toHaveBeenCalledOnce();
-		const [key, value, options] = requestEnv.PROFILE_IMAGES.put.mock.calls[0] as [
-			string,
-			File,
-			{ httpMetadata: { contentType: string } },
-		];
+		const [key, value, options] = z.tuple([
+			z.string(),
+			z.instanceof(File),
+			z.object({ httpMetadata: z.object({ contentType: z.string() }) }),
+		]).parse(requestEnv.PROFILE_IMAGES.put.mock.calls[0]);
 		expect(key).toBe(payload.image.replace("/api/profile-images/", ""));
 		expect(await value.text()).toBe("logo-bytes");
 		expect(options.httpMetadata.contentType).toBe("image/webp");
@@ -1204,7 +1206,7 @@ describe("createWorkerApp", () => {
 			OAUTH_PROXY_PRODUCTION_URL: "https://passport.example.com",
 			OAUTH_PROXY_SECRET: "shared-proxy-secret",
 			TRUSTED_ORIGINS: "http://localhost:5177,https://preview.example.com",
-		} as Env;
+		};
 		const app = createWorkerApp({
 			authHandler: vi.fn(() => new Response("auth")),
 			getSession: vi.fn(() => ({ user: { id: "admin_123", email: "admin@example.com" } })),
@@ -1255,7 +1257,7 @@ describe("createWorkerApp", () => {
 		const requestEnv = {
 			...createEnv(),
 			ADMIN_EMAILS: "bootstrap@example.com",
-		} as Env;
+		};
 		const adminAudit = {
 			list: vi.fn(() => ({ items: [] })),
 			record: vi.fn(),
@@ -1399,7 +1401,7 @@ describe("createWorkerApp", () => {
 			...createEnv(),
 			ADMIN_EMAILS: "",
 			ADMIN_USER_IDS: "admin_123",
-		} as Env;
+		};
 		const adminOAuth = {
 			list: vi.fn(() => ({ items: [] })),
 			create: vi.fn(),
@@ -1436,7 +1438,7 @@ describe("createWorkerApp", () => {
 		const requestEnv = {
 			...createEnv(),
 			ADMIN_EMAILS: "bootstrap@example.com",
-		} as Env;
+		};
 		const adminOAuth = {
 			list: vi.fn(),
 			create: vi.fn(),
@@ -1779,7 +1781,7 @@ describe("createWorkerApp", () => {
 
 		expect(response.status).toBe(201);
 		expect(adminAudit.record).toHaveBeenCalledOnce();
-		const [, event] = adminAudit.record.mock.calls[0] as [unknown, { metadata?: unknown }];
+		const [, event] = z.tuple([z.unknown(), z.object({ metadata: z.json().optional() })]).parse(adminAudit.record.mock.calls[0]);
 		expect(event).toMatchObject({
 			action: "oauth_client.create",
 			targetType: "oauth_client",
@@ -2391,7 +2393,7 @@ describe("createWorkerApp", () => {
 		]);
 	});
 
-	function billingPlanService(overrides: { [key: string]: unknown } = {}) {
+	function billingPlanService(overrides: Partial<BillingPlanService> = {}) {
 		return {
 			catalog: vi.fn(() => []),
 			product: vi.fn(() => null),
@@ -2423,7 +2425,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(200);
-		const payload = (await response.json()) as { plans: { name: string }[] };
+		const payload = await responseJSON(response, z.object({ plans: z.array(z.object({ name: z.string() })) }));
 		expect(payload.plans).toEqual([expect.objectContaining({ name: "pro" })]);
 		expect(billingPlans.catalog).toHaveBeenCalledOnce();
 	});
@@ -2446,7 +2448,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(200);
-		const payload = (await response.json()) as { plans: { name: string }[] };
+		const payload = await responseJSON(response, z.object({ plans: z.array(z.object({ name: z.string() })) }));
 		expect(payload.plans.map((plan) => plan.name)).toEqual(["pro"]);
 	});
 
@@ -2472,7 +2474,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(200);
-		const payload = (await response.json()) as { product: { name: string; hidden: boolean } };
+		const payload = await responseJSON(response, z.object({ product: z.object({ name: z.string(), hidden: z.boolean() }) }));
 		expect(payload.product).toEqual(expect.objectContaining({ name: "secret", hidden: true }));
 		expect(product).toHaveBeenCalledWith(expect.anything(), "prod_secret");
 	});
@@ -2530,7 +2532,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(201);
-		const payload = (await response.json()) as { plan: { id: string } };
+		const payload = await responseJSON(response, z.object({ plan: z.object({ id: z.string() }) }));
 		expect(payload.plan.id).toBe("plan_1");
 		expect(create).toHaveBeenCalledOnce();
 	});
@@ -2555,7 +2557,7 @@ describe("createWorkerApp", () => {
 		);
 
 		expect(response.status).toBe(400);
-		const payload = (await response.json()) as { error: string };
+		const payload = await responseJSON(response, z.object({ error: z.string() }));
 		expect(payload.error).toContain("priceId or lookupKey");
 	});
 
