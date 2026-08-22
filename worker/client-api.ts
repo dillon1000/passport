@@ -1049,7 +1049,7 @@ export function createClientAPI() {
 						body: {
 							plan: definition.name,
 							annual: claimed.annual ?? false,
-							seats: claimed.seats,
+							seats: claimed.seats ?? undefined,
 							customerType,
 							referenceId: customerType === "organization" ? claimed.referenceId : undefined,
 							successUrl: claimed.successUrl ?? context.env.BETTER_AUTH_URL,
