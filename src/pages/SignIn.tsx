@@ -9,6 +9,7 @@ import { AtSign, Fingerprint, LogIn, Mail, MailCheck, Pencil } from "@/lib/icons
 import { useQuery } from "@tanstack/react-query";
 
 import { AuthShell } from "@/components/auth/auth-shell";
+import { FastAuthSpinner } from "@/components/auth/fast-auth-spinner";
 import { AccountChoice } from "@/components/auth/account-choice";
 import { Badge } from "@/components/kumo/primitives/badge";
 import { Field, FieldInput, FieldPasswordInput } from "@/components/auth/field";
@@ -60,6 +61,7 @@ import {
 	discoverSignInMethods,
 	type SignInMethods,
 } from "@/lib/sign-in-methods";
+import { MagicLinkPending } from "@/pages/MagicLinkPending";
 
 type Mode = "signin" | "signup" | "recovery" | "reset";
 type SignInStep = "identifier" | "methods";
@@ -77,6 +79,11 @@ interface VerificationState {
 	resendWithUsername: boolean;
 	flow: EmailLinkFlow;
 }
+
+type WaitingEmailLink = EmailLinkFlow & {
+	kind: "magic-link" | "password-reset";
+	email: string;
+};
 
 /** A same-browser session that can become the active Passport account. */
 type DeviceAccount = {
@@ -176,7 +183,7 @@ export function SignIn() {
 	const [signupStep, setSignupStep] = useState<SignupStep>("details");
 	const [signupUsername, setSignupUsername] = useState("");
 	const [verification, setVerification] = useState<VerificationState | null>(null);
-	const [waitingEmailLink, setWaitingEmailLink] = useState<EmailLinkFlow | null>(null);
+	const [waitingEmailLink, setWaitingEmailLink] = useState<WaitingEmailLink | null>(null);
 	const [fieldError, setFieldError] = useState<FieldError | null>(null);
 	const [captchaToken, setCaptchaToken] = useState("");
 	const [captchaResetKey, setCaptchaResetKey] = useState(0);
@@ -672,7 +679,7 @@ export function SignIn() {
 		setLoading(false);
 		resetCaptcha();
 		if (result.error) void cancelEmailLinkFlow(emailLinkFlow.flow);
-		setWaitingEmailLink(result.error ? null : emailLinkFlow);
+		setWaitingEmailLink(result.error ? null : { ...emailLinkFlow, kind: "magic-link", email });
 		setStatus(
 			result.error
 				? { tone: "error", message: result.error.message ?? "Could not send magic link." }
@@ -719,7 +726,7 @@ export function SignIn() {
 		setLoading(false);
 		resetCaptcha();
 		if (result.error) void cancelEmailLinkFlow(emailLinkFlow.flow);
-		setWaitingEmailLink(result.error ? null : emailLinkFlow);
+		setWaitingEmailLink(result.error ? null : { ...emailLinkFlow, kind: "password-reset", email });
 
 		setStatus(
 			result.error
@@ -830,6 +837,27 @@ export function SignIn() {
 					? "Enter your password"
 					: "Choose how to sign in"
 				: titleFor(mode, addingAccount);
+
+	if (waitingEmailLink?.kind === "magic-link") {
+		return (
+			<AuthShell focused>
+				<MagicLinkPending
+					email={waitingEmailLink.email}
+					loading={loading}
+					status={status}
+					onResend={() => {
+						void cancelEmailLinkFlow(waitingEmailLink.flow);
+						void sendMagicLink();
+					}}
+					onBack={() => {
+						void cancelEmailLinkFlow(waitingEmailLink.flow);
+						setWaitingEmailLink(null);
+						setStatus(null);
+					}}
+				/>
+			</AuthShell>
+		);
+	}
 
 	return (
 		<AuthShell focused>
@@ -1329,28 +1357,5 @@ function VerificationStep({
 				Back to sign in
 			</button>
 		</div>
-	);
-}
-
-/** Rotates every 550ms so auth progress reads faster than the shared two-second loader. */
-function FastAuthSpinner() {
-	return (
-		<svg
-			aria-hidden="true"
-			className="size-8 animate-spin [animation-duration:550ms] motion-reduce:animate-none"
-			viewBox="0 0 24 24"
-		>
-			<circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.1" />
-			<circle
-				cx="12"
-				cy="12"
-				r="9.5"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="2"
-				strokeLinecap="round"
-				strokeDasharray="42 60"
-			/>
-		</svg>
 	);
 }
