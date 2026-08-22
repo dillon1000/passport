@@ -109,7 +109,7 @@ describe("createBillingPlan", () => {
 			entitlements: ["api"],
 			displayOrder: 3,
 		});
-		expect(typeof captured?.id).toBe("string");
+		expect(captured?.id).toBeTypeOf("string");
 	});
 
 	it("rejects a negative display order", async () => {

@@ -30,7 +30,7 @@ describe("logout token claims", () => {
 		expect(claims.sub).toBe("user_123");
 		expect(claims.events).toEqual({ [BACKCHANNEL_LOGOUT_EVENT]: {} });
 		expect(claims).not.toHaveProperty("nonce");
-		expect(typeof claims.jti).toBe("string");
+		expect(claims.jti).toBeTypeOf("string");
 		expect(claims.sid).toBeUndefined();
 		expect((claims.exp as number) - (claims.iat as number)).toBe(LOGOUT_TOKEN_TTL_SECONDS);
 	});
