@@ -364,7 +364,10 @@ export function unsupportedOAuthScopesMessage(scopes: readonly string[]) {
 	return `Unsupported OAuth scope${unsupported.length === 1 ? "" : "s"}: ${unsupported.join(", ")}`;
 }
 
-export function assertSupportedOAuthScopes(scopes: readonly string[], source: string) {
+export function assertSupportedOAuthScopes(
+	scopes: readonly string[],
+	source: string,
+): asserts scopes is SupportedOAuthScope[] {
 	const unsupported = unsupportedOAuthScopes(scopes);
 	if (unsupported.length === 0) return;
 	throw new TypeError(

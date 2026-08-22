@@ -10,6 +10,7 @@ import {
 	getSessionFromCtx,
 } from "better-auth/api";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 import * as schema from "../../db/schema";
 import type { AuthEnv } from "../../env";
@@ -38,7 +39,6 @@ import {
 	DEFAULT_CLIENT_REGISTRATION_SCOPES,
 	SUPPORTED_OAUTH_SCOPES,
 	assertSupportedOAuthScopes,
-	type SupportedOAuthScope,
 } from "../oauth-scopes";
 import type { AuthDatabase } from "./types";
 
@@ -73,7 +73,7 @@ const emptyOAuthClaimContext: OAuthClaimContext = {
 function supportedClientScopes(scopes: string[] | undefined) {
 	if (!scopes) return undefined;
 	assertSupportedOAuthScopes(scopes, "OAUTH_CLIENTS");
-	return scopes as SupportedOAuthScope[];
+	return scopes;
 }
 
 function needsOAuthClaimContext(scopes: readonly string[]) {
@@ -107,20 +107,12 @@ function clientIdFromBasicAuth(authorization: string | null) {
 	}
 }
 
-function tokenRequestValue(value: unknown) {
-	return typeof value === "string" ? value : undefined;
-}
-
-function tokenRequestValues(value: unknown) {
-	if (Array.isArray(value)) {
-		return value.filter((item): item is string => typeof item === "string");
-	}
-	return typeof value === "string" ? value : undefined;
-}
-
-function oauthTokenRequestBody(value: unknown) {
-	return value && typeof value === "object" ? (value as { [key: string]: unknown }) : {};
-}
+const oauthTokenRequestSchema = z.object({
+	grant_type: z.string().optional(),
+	client_id: z.string().optional(),
+	resource: z.union([z.string(), z.array(z.string())]).optional(),
+	scope: z.string().optional(),
+});
 
 async function oauthClientIdFromInteraction(context: OAuthInteractionContext) {
 	if (context.query?.client_id) return context.query.client_id;
@@ -193,11 +185,13 @@ export function oauthResourceAuthorizationPlugin(env: AuthEnv, db: AuthDatabase)
 				{
 					matcher: (ctx: { path?: string }) => ctx.path === "/oauth2/token",
 					handler: createAuthMiddleware(async (ctx) => {
-						const body = oauthTokenRequestBody(ctx.body);
+						const parsedBody = oauthTokenRequestSchema.safeParse(ctx.body);
+						if (!parsedBody.success) return;
+						const body = parsedBody.data;
 						if (body.grant_type !== "client_credentials") return;
 
 						const clientId =
-							tokenRequestValue(body.client_id) ??
+							body.client_id ??
 							clientIdFromBasicAuth(ctx.request?.headers.get("authorization") ?? null);
 						if (!clientId) return;
 
@@ -215,10 +209,10 @@ export function oauthResourceAuthorizationPlugin(env: AuthEnv, db: AuthDatabase)
 						try {
 							assertOAuthClientResourceAccess({
 								resources,
-								resource: tokenRequestValues(body.resource),
+								resource: body.resource,
 								allowedAudiences: allowedAudiencesFromMetadata(client.metadata),
 								clientScopes: client.scopes ?? undefined,
-								requestedScopes: tokenRequestValue(body.scope)?.split(" ").filter(Boolean),
+								requestedScopes: body.scope?.split(" ").filter(Boolean),
 							});
 						} catch (error) {
 							throw new APIError("BAD_REQUEST", {

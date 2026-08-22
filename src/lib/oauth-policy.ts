@@ -5,6 +5,8 @@
  * Safe configuration point: update the string prefixes here if downstream
  * policy consumers need a versioned claim format.
  */
+import { z } from "zod";
+
 export type PolicyOrganizationMembership = {
 	id: string;
 	role: string;
@@ -22,7 +24,8 @@ export type OAuthPolicyOutput = {
 	entitlements: string[];
 };
 
-type PermissionObject = Record<string, string[]>;
+const permissionListSchema = z.array(z.string());
+const permissionObjectSchema = z.record(z.string(), permissionListSchema);
 
 function uniqueSorted(values: string[]) {
 	return [...new Set(values)].sort((a, b) => a.localeCompare(b));
@@ -35,25 +38,17 @@ function roleNames(value: string) {
 		.filter(Boolean);
 }
 
-function isPermissionObject(value: unknown): value is PermissionObject {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-	return Object.values(value).every(
-		(actions) =>
-			Array.isArray(actions) && actions.every((action) => typeof action === "string"),
-	);
-}
-
 export function permissionsFromRoleValue(value: string) {
 	const trimmed = value.trim();
 	if (!trimmed) return [];
 
 	try {
-		const parsed = JSON.parse(trimmed) as unknown;
-		if (Array.isArray(parsed)) {
-			return parsed.filter((permission): permission is string => typeof permission === "string");
-		}
-		if (isPermissionObject(parsed)) {
-			return Object.entries(parsed).flatMap(([resource, actions]) =>
+		const parsed = JSON.parse(trimmed);
+		const permissionList = permissionListSchema.safeParse(parsed);
+		if (permissionList.success) return permissionList.data;
+		const permissionObject = permissionObjectSchema.safeParse(parsed);
+		if (permissionObject.success) {
+			return Object.entries(permissionObject.data).flatMap(([resource, actions]) =>
 				actions.map((action) => `${resource}:${action}`),
 			);
 		}
