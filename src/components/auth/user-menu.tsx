@@ -284,7 +284,7 @@ function ProfileFlair({ name, email }: { name: string; email: string }) {
 		// Pinned to one field: show it settled (no swipe), but keep the date and
 		// time fresh while it's the chosen text.
 		if (mode !== "rotate") {
-			// eslint-disable-next-line react-hooks/set-state-in-effect
+			// oxlint-disable-next-line react/set-state-in-effect
 			setAnim(null);
 			setText(contentFor(mode));
 			if (mode !== "datetime") return;
@@ -307,7 +307,7 @@ function ProfileFlair({ name, email }: { name: string; email: string }) {
 			clearInterval(cycle);
 			clearTimeout(swap);
 		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		// oxlint-disable-next-line react/exhaustive-deps
 	}, [name, email, mode, fields, location, provider]);
 
 	// Measure how far the current text overruns the fixed track so the marquee

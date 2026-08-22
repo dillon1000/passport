@@ -1,3 +1,5 @@
+// This component intentionally exposes its variant helpers from the same module.
+/* oxlint-disable react/only-export-components */
 import type { ReactNode } from "react";
 import { Tabs, cn, type TabsItem } from "@cloudflare/kumo";
 

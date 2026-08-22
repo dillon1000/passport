@@ -1,7 +1,7 @@
 {
 	"name": "passport",
 	"private": true,
-	"version": "0.0.175",
+	"version": "0.0.176",
 	"description": "Standalone identity provider for Cloudflare Workers.",
 	"author": "Dillon Ring <dillon@dillonring.com>",
 	"license": "MIT",
@@ -23,7 +23,7 @@
 	"scripts": {
 		"dev": "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgresql://postgres:postgres@localhost:55432/passport vite",
 		"build": "tsc -b && vite build",
-		"lint": "eslint .",
+		"lint": "oxlint",
 		"test": "vitest run --config vitest.config.ts",
 		"db:start": "./scripts/start-db.sh",
 		"db:generate": "node --env-file-if-exists=.dev.vars node_modules/drizzle-kit/bin.cjs generate",
@@ -75,19 +75,14 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.53.1",
-		"@eslint/js": "^10.0.1",
 		"@types/node": "^26.2.0",
 		"@types/pg": "^8.23.1",
 		"@types/react": "^19.2.18",
 		"@types/react-dom": "^19.2.4",
 		"@vitejs/plugin-react": "^6.1.0",
 		"drizzle-kit": "^0.31.10",
-		"eslint": "^10.9.0",
-		"eslint-plugin-react-hooks": "^7.1.1",
-		"eslint-plugin-react-refresh": "^0.5.4",
-		"globals": "^17.11.0",
+		"oxlint": "^1.79.0",
 		"typescript": "~6.0.3",
-		"typescript-eslint": "^8.67.0",
 		"vite": "^8.2.2",
 		"vitest": "^4.1.11",
 		"wrangler": "^4.125.0"
