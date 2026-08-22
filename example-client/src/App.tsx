@@ -25,7 +25,8 @@ import { Separator } from "@/components/kumo/primitives/separator";
 
 import "./App.css";
 
-type ClaimGroup = { [key: string]: unknown };
+type JSONValue = boolean | null | number | string | JSONValue[] | { [key: string]: JSONValue };
+type ClaimGroup = { [key: string]: JSONValue };
 
 type PassportConnectionClaim = {
 	provider: string;
@@ -40,7 +41,7 @@ type PassportClaimHighlights = {
 	phoneNumber?: string;
 	phoneNumberVerified?: boolean;
 	organizationIds: string[];
-	organizationRoles: Record<string, string>;
+	organizationRoles: { [organizationId: string]: string };
 	teamIds: string[];
 	roles: string[];
 	permissions: string[];
@@ -121,6 +122,7 @@ const fieldClassName =
 	"h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
 
 async function delegatedData<T>(response: Response) {
+	// SAFETY: Passport's delegated API wraps each typed endpoint payload in this envelope.
 	const payload = (await response.json()) as { data?: T } & DelegatedError;
 	if (!response.ok || payload.data === undefined) {
 		throw new Error(payload.error?.message || `Passport returned ${response.status}.`);
@@ -571,6 +573,7 @@ function App() {
 		setLoading(true);
 		try {
 			const response = await fetch("/api/session");
+			// SAFETY: `/api/session` is this client's typed session endpoint.
 			setSession((await response.json()) as SessionPayload);
 		} catch {
 			setSession({ authenticated: false });
@@ -588,7 +591,10 @@ function App() {
 	useEffect(() => {
 		let active = true;
 		fetch("/api/session")
-			.then((response) => response.json() as Promise<SessionPayload>)
+			.then((response) => {
+				// SAFETY: `/api/session` is this client's typed session endpoint.
+				return response.json() as Promise<SessionPayload>;
+			})
 			.then((payload) => {
 				if (!active) return;
 				setSession(payload);

@@ -18,7 +18,7 @@ import {
 } from "./billing";
 import type { AuthDatabase } from "./auth-server/types";
 
-type BillingPlanRow = typeof schema.billingPlan.$inferSelect;
+export type BillingPlanRow = typeof schema.billingPlan.$inferSelect;
 
 function optionalText(value: string | null | undefined) {
 	const normalized = value?.trim();
@@ -79,7 +79,19 @@ function definitionToColumns(plan: BillingPlanDefinition) {
 	};
 }
 
-async function readPlanRows(db: AuthDatabase) {
+export type BillingPlanInsert = ReturnType<typeof definitionToColumns> & {
+	id: string;
+	displayOrder: number;
+};
+
+export type BillingPlanStoreDependencies = {
+	readRows?: () => Promise<BillingPlanRow[]>;
+	insertPlan?: (input: BillingPlanInsert) => Promise<BillingPlanRow>;
+};
+
+async function readPlanRows(db: AuthDatabase | undefined, readRows?: () => Promise<BillingPlanRow[]>) {
+	if (readRows) return readRows();
+	if (!db) throw new TypeError("A database is required when no plan reader is supplied.");
 	return db
 		.select()
 		.from(schema.billingPlan)
@@ -92,9 +104,10 @@ async function readPlanRows(db: AuthDatabase) {
  */
 export async function loadBillingPlans(
 	env: { STRIPE_BILLING_PLANS?: string },
-	db: AuthDatabase,
+	db: AuthDatabase | undefined,
+	dependencies: BillingPlanStoreDependencies = {},
 ): Promise<BillingPlanDefinition[]> {
-	const rows = await readPlanRows(db);
+	const rows = await readPlanRows(db, dependencies.readRows);
 	if (rows.length === 0) {
 		return parseStripeBillingPlans(env.STRIPE_BILLING_PLANS);
 	}
@@ -133,16 +146,23 @@ function normalizeDisplayOrder(value: number | undefined) {
 	return value;
 }
 
-export async function createBillingPlan(db: AuthDatabase, input: BillingPlanWriteInput) {
+export async function createBillingPlan(
+	db: AuthDatabase | undefined,
+	input: BillingPlanWriteInput,
+	dependencies: BillingPlanStoreDependencies = {},
+) {
 	const plan = validateBillingPlanInput(input, "plan");
 	const displayOrder = normalizeDisplayOrder(input.displayOrder) ?? 0;
+	const columns: BillingPlanInsert = {
+		id: newPlanId(),
+		...definitionToColumns(plan),
+		displayOrder,
+	};
+	if (dependencies.insertPlan) return dependencies.insertPlan(columns);
+	if (!db) throw new TypeError("A database is required when no plan writer is supplied.");
 	const [row] = await db
 		.insert(schema.billingPlan)
-		.values({
-			id: newPlanId(),
-			...definitionToColumns(plan),
-			displayOrder,
-		})
+		.values(columns)
 		.returning();
 	return row;
 }

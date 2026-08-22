@@ -2,18 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	PASSPORT_EXAMPLE_SCOPES,
+	type ClientEnv,
 	extractPassportClaimHighlights,
 	passportClaimNames,
 	passportResourceURL,
 } from "./auth";
 import app from "./index";
 import { fetchPassportResource } from "./passport-api";
-
-type TestEnv = Env & {
-	BETTER_AUTH_SECRET: string;
-	BETTER_AUTH_URL: string;
-	CLIENT_SECRET: string;
-};
 
 const env = {
 	ASSETS: {
@@ -26,7 +21,7 @@ const env = {
 	CLIENT_SECRET: "example-client-secret",
 	POST_LOGOUT_REDIRECT_URI: "https://client.test/",
 	REDIRECT_URI: "https://client.test/callback",
-} as TestEnv;
+} satisfies ClientEnv;
 
 const discovery = {
 	issuer: "https://passport.test",

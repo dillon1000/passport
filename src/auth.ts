@@ -59,7 +59,7 @@ function lazyCliAuthInstance() {
  * keeps Better Auth CLI/default-export compatibility without constructing
  * plugin internals during Worker module validation.
  */
-export const auth = new Proxy((env: AuthEnv) => createAuthInstance(env), {
+const authProxy = new Proxy(createAuthInstance, {
 	get: (target, property, receiver) => {
 		if (property in target) {
 			const descriptor = Object.getOwnPropertyDescriptor(target, property);
@@ -75,7 +75,10 @@ export const auth = new Proxy((env: AuthEnv) => createAuthInstance(env), {
 	getOwnPropertyDescriptor: (target, property) =>
 		Reflect.getOwnPropertyDescriptor(target, property) ??
 		Reflect.getOwnPropertyDescriptor(getCliAuthInstance(), property),
-// SAFETY: the callable proxy exposes the AuthFactory's function and auth-instance contracts.
-}) as AuthFactory;
+});
+
+// SAFETY: proxy traps expose the callable and instance contracts.
+const auth = authProxy as AuthFactory;
+export { auth };
 
 export default lazyCliAuthInstance();

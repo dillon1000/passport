@@ -61,6 +61,27 @@ type LiveClient = {
 	confidential: boolean;
 };
 
+type DelegatedGrantUser = { banned: boolean | null; banExpires: Date | null };
+type DelegatedGrantClient = {
+	clientId: string;
+	clientSecret: string | null;
+	disabled: boolean | null;
+	name: string | null;
+	public: boolean | null;
+	scopes: string[] | null;
+	skipConsent: boolean | null;
+	tokenEndpointAuthMethod: string | null;
+};
+export type DelegatedGrantDatabase = {
+	findUser: (userId: string) => Promise<DelegatedGrantUser | undefined>;
+	findClient: (clientId: string) => Promise<DelegatedGrantClient | undefined>;
+	findConsent: (input: { userId: string; clientId: string }) => Promise<{ scopes: string[] | null } | undefined>;
+};
+
+function isDelegatedGrantDatabase(db: AuthDatabase | DelegatedGrantDatabase): db is DelegatedGrantDatabase {
+	return "findUser" in db;
+}
+
 const rs256HeaderSchema = z.object({ alg: z.literal("RS256") }).passthrough();
 const verifiedAccessTokenSchema = z.object({
 	sub: z.string().min(1),
@@ -188,7 +209,7 @@ function scopesInclude(granted: readonly string[] | undefined, requested: readon
 }
 
 function userIsBanned(
-	user: { banned: boolean | null; banExpires: Date | null },
+	user: DelegatedGrantUser,
 	now: Date,
 ) {
 	return (
@@ -204,12 +225,20 @@ function userIsBanned(
  */
 export async function authorizeDelegatedGrant(
 	env: DelegatedClientAuthEnv,
-	db: AuthDatabase,
+	db: AuthDatabase | DelegatedGrantDatabase,
 	input: DelegatedGrantInput,
 ): Promise<DelegatedClientActor> {
 	const now = input.now ?? new Date();
-	const [users, databaseClients] = await Promise.all([
-		db
+	let currentUser: DelegatedGrantUser | undefined;
+	let databaseClient: DelegatedGrantClient | undefined;
+	if (isDelegatedGrantDatabase(db)) {
+		[currentUser, databaseClient] = await Promise.all([
+			db.findUser(input.userId),
+			db.findClient(input.clientId),
+		]);
+	} else {
+		const [users, clients] = await Promise.all([
+			db
 			.select({
 				id: schema.user.id,
 				banned: schema.user.banned,
@@ -218,7 +247,7 @@ export async function authorizeDelegatedGrant(
 			.from(schema.user)
 			.where(eq(schema.user.id, input.userId))
 			.limit(1),
-		db
+			db
 			.select({
 				clientId: schema.oauthClient.clientId,
 				clientSecret: schema.oauthClient.clientSecret,
@@ -232,14 +261,14 @@ export async function authorizeDelegatedGrant(
 			.from(schema.oauthClient)
 			.where(eq(schema.oauthClient.clientId, input.clientId))
 			.limit(1),
-	]);
-
-	const currentUser = users[0];
+		]);
+		currentUser = users[0];
+		databaseClient = clients[0];
+	}
 	if (!currentUser || userIsBanned(currentUser, now)) {
 		throw invalidClientAPITokenError(env.BETTER_AUTH_URL);
 	}
 
-	const databaseClient = databaseClients[0];
 	if (databaseClient?.disabled) {
 		throw invalidClientAPITokenError(env.BETTER_AUTH_URL);
 	}
@@ -269,17 +298,21 @@ export async function authorizeDelegatedGrant(
 			throw invalidClientAPITokenError(env.BETTER_AUTH_URL);
 		}
 	} else {
-		const [consent] = await db
-			.select({ scopes: schema.oauthConsent.scopes })
-			.from(schema.oauthConsent)
-			.where(
-				and(
-					eq(schema.oauthConsent.userId, input.userId),
-					eq(schema.oauthConsent.clientId, input.clientId),
-				),
-			)
-			.limit(1);
-		if (!consent || !scopesInclude(consent.scopes, input.scopes)) {
+		const consent = isDelegatedGrantDatabase(db)
+			? await db.findConsent({ userId: input.userId, clientId: input.clientId })
+			: (
+				await db
+					.select({ scopes: schema.oauthConsent.scopes })
+					.from(schema.oauthConsent)
+					.where(
+						and(
+							eq(schema.oauthConsent.userId, input.userId),
+							eq(schema.oauthConsent.clientId, input.clientId),
+						),
+					)
+					.limit(1)
+			)[0];
+		if (!consent || !scopesInclude(consent.scopes ?? undefined, input.scopes)) {
 			throw invalidClientAPITokenError(env.BETTER_AUTH_URL);
 		}
 	}

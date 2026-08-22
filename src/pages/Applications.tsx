@@ -62,7 +62,7 @@ import {
 import { Skeleton } from "@/components/kumo/primitives/skeleton";
 import { Loader } from "@/components/kumo/primitives/loader";
 import { Tooltip } from "@cloudflare/kumo";
-import { hasAdminRole } from "@/lib/admin-access";
+import { canShowManagedOAuthClients } from "./applications-permissions";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { uploadImageAsset } from "@/lib/image-upload";
 import { DEFAULT_CLIENT_REGISTRATION_SCOPES } from "@/lib/oauth-scopes";
@@ -155,10 +155,6 @@ type OAuthClientsPagePayload = {
 };
 
 type CreateClientStep = "details" | "policies";
-type ApplicationsSessionUser = {
-	role?: string | null;
-};
-
 // Discovery document served at /.well-known/openid-configuration. Only the
 // fields we surface as copyable rows are typed; the rest round-trip as unknown.
 type OIDCConfiguration = {
@@ -208,12 +204,6 @@ const OIDC_ENDPOINT_ROWS = [
 // Better Auth serves discovery under its base path, not the bare root.
 const OIDC_DISCOVERY_PATH = "/api/auth/.well-known/openid-configuration";
 
-function canShowManagedOAuthClients(
-	user: ApplicationsSessionUser | null | undefined,
-	state: { adminAvailable: boolean },
-) {
-	return hasAdminRole(user) || state.adminAvailable;
-}
 
 // The discovery document an external client should fetch lives at the issuer's
 // well-known path. Fall back to this origin before the document has loaded.

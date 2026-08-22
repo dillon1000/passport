@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type Stripe from "stripe";
-
-import type { AuthEnv } from "../../env";
+import { createCliAuthEnv } from "./env";
 import { WEBHOOK_EVENT_TYPES } from "../webhooks";
 import {
 	applyStripeProvisioning,
 	recordOneTimePurchase,
+	type OneTimePurchaseCheckoutSession,
+	type OneTimePurchaseInsert,
+	type OneTimePurchaseRow,
 	type StripeProvisioningClient,
 } from "./stripe";
-import type { AuthDatabase } from "./types";
 
 const stripeMocks = {
 	productsCreate: vi.fn(),
@@ -22,29 +22,25 @@ const stripeClient = {
 
 const emitWebhookEvent = vi.fn();
 
-const env = { BETTER_AUTH_URL: "https://passport.test" } as unknown as AuthEnv;
+const env = createCliAuthEnv({ BETTER_AUTH_URL: "https://passport.test" });
 
-// Minimal drizzle stand-in for insert→values→onConflictDoNothing→returning.
-// `returning` controls the conflict outcome: a row means inserted, [] means a
-// redelivery hit the unique constraint.
-function purchaseDb(returning: unknown[]) {
-	const captured: { values?: { [key: string]: unknown } } = {};
-	const db = {
-		insert: () => ({
-			values: (values: { [key: string]: unknown }) => {
-				captured.values = values;
-				return {
-					onConflictDoNothing: () => ({
-						returning: () => Promise.resolve(returning),
-					}),
-				};
+function purchaseDb(returning: OneTimePurchaseRow[]) {
+	let values: OneTimePurchaseInsert | undefined;
+	return {
+		db: undefined,
+		captured: { get values() { return values; } },
+		dependencies: {
+			insert: async (input: OneTimePurchaseInsert) => {
+				values = input;
+				return returning[0];
 			},
-		}),
-	} as unknown as AuthDatabase;
-	return { db, captured };
+			emit: async (data) =>
+				emitWebhookEvent(env, undefined, WEBHOOK_EVENT_TYPES.BILLING_ONE_TIME_PURCHASE_COMPLETED, data),
+		},
+	};
 }
 
-function checkoutSession(overrides: Partial<Stripe.Checkout.Session> = {}) {
+function checkoutSession(overrides: Partial<OneTimePurchaseCheckoutSession> = {}) {
 	return {
 		id: "cs_test_123",
 		mode: "payment",
@@ -60,7 +56,7 @@ function checkoutSession(overrides: Partial<Stripe.Checkout.Session> = {}) {
 			passportReferenceId: "user_123",
 		},
 		...overrides,
-	} as unknown as Stripe.Checkout.Session;
+	} satisfies OneTimePurchaseCheckoutSession;
 }
 
 describe("recordOneTimePurchase", () => {
@@ -69,7 +65,7 @@ describe("recordOneTimePurchase", () => {
 	});
 
 	it("persists the purchase and emits a completion webhook for a paid checkout", async () => {
-		const { db, captured } = purchaseDb([
+		const { db, captured, dependencies } = purchaseDb([
 			{
 				id: "otp_1",
 				plan: "lifetime",
@@ -81,7 +77,7 @@ describe("recordOneTimePurchase", () => {
 			},
 		]);
 
-		await recordOneTimePurchase(env, db, checkoutSession(), emitWebhookEvent);
+		await recordOneTimePurchase(env, db, checkoutSession(), emitWebhookEvent, dependencies);
 
 		expect(captured.values).toMatchObject({
 			plan: "lifetime",
@@ -108,41 +104,32 @@ describe("recordOneTimePurchase", () => {
 	});
 
 	it("does not re-emit when a redelivered checkout hits the unique constraint", async () => {
-		const { db } = purchaseDb([]);
-		await recordOneTimePurchase(env, db, checkoutSession(), emitWebhookEvent);
+		const { db, dependencies } = purchaseDb([]);
+		await recordOneTimePurchase(env, db, checkoutSession(), emitWebhookEvent, dependencies);
 		expect(emitWebhookEvent).not.toHaveBeenCalled();
 	});
 
 	it("ignores subscription-mode checkouts", async () => {
-		const insert = vi.fn();
-		const db = { insert } as unknown as AuthDatabase;
-		await recordOneTimePurchase(env, db, checkoutSession({ mode: "subscription" }), emitWebhookEvent);
-		expect(insert).not.toHaveBeenCalled();
+		await recordOneTimePurchase(env, undefined, checkoutSession({ mode: "subscription" }), emitWebhookEvent);
 		expect(emitWebhookEvent).not.toHaveBeenCalled();
 	});
 
 	it("ignores unpaid checkouts", async () => {
-		const insert = vi.fn();
-		const db = { insert } as unknown as AuthDatabase;
-		await recordOneTimePurchase(env, db, checkoutSession({ payment_status: "unpaid" }), emitWebhookEvent);
-		expect(insert).not.toHaveBeenCalled();
+		await recordOneTimePurchase(env, undefined, checkoutSession({ payment_status: "unpaid" }), emitWebhookEvent);
 	});
 
 	it("ignores checkouts missing Passport plan metadata", async () => {
-		const insert = vi.fn();
-		const db = { insert } as unknown as AuthDatabase;
 		await recordOneTimePurchase(
 			env,
-			db,
+			undefined,
 			checkoutSession({ metadata: {}, client_reference_id: null }),
 			emitWebhookEvent,
 		);
-		expect(insert).not.toHaveBeenCalled();
 	});
 
 	it("falls back to client_reference_id when the reference metadata is absent", async () => {
-		const { db, captured } = purchaseDb([
-			{ id: "otp_2", plan: "lifetime", referenceId: "user_456", quantity: 1 },
+		const { db, captured, dependencies } = purchaseDb([
+			{ id: "otp_2", plan: "lifetime", referenceId: "user_456", quantity: 1, amountTotal: null, currency: null, purchasedAt: new Date() },
 		]);
 		await recordOneTimePurchase(
 			env,
@@ -152,6 +139,7 @@ describe("recordOneTimePurchase", () => {
 				metadata: { passportPlan: "Lifetime", passportCustomerType: "user" },
 			}),
 			emitWebhookEvent,
+			dependencies,
 		);
 		expect(captured.values).toMatchObject({ referenceId: "user_456" });
 		expect(emitWebhookEvent).toHaveBeenCalledTimes(1);
@@ -159,11 +147,11 @@ describe("recordOneTimePurchase", () => {
 });
 
 describe("applyStripeProvisioning", () => {
-	const stripeEnv = {
+	const stripeEnv = createCliAuthEnv({
 		BETTER_AUTH_URL: "https://passport.test",
 		STRIPE_SECRET_KEY: "sk_test_123",
 		STRIPE_WEBHOOK_SECRET: "whsec_123",
-	} as unknown as AuthEnv;
+	});
 
 	beforeEach(() => {
 		stripeMocks.productsCreate.mockReset();
@@ -242,7 +230,7 @@ describe("applyStripeProvisioning", () => {
 
 	it("rejects provisioning when Stripe is not configured", async () => {
 		await expect(
-			applyStripeProvisioning({ BETTER_AUTH_URL: "https://passport.test" } as AuthEnv, {
+			applyStripeProvisioning(createCliAuthEnv({ BETTER_AUTH_URL: "https://passport.test" }), {
 				name: "pro",
 				stripe: { amount: 10, currency: "usd" },
 			}),

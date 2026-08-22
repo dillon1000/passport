@@ -1,12 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { AuthDatabase } from "./auth-server/types";
 import {
 	assertRS256ClientAPIJWT,
 	authorizeDelegatedGrant,
 	extractClientAPIBearerToken,
 	validateDelegatedAccessTokenClaims,
 } from "./client-api-auth";
+import type { DelegatedGrantDatabase } from "./client-api-auth";
 import { ClientAPIError } from "./client-api-http";
 
 const passportOrigin = "https://passport.test";
@@ -14,7 +14,9 @@ const issuer = `${passportOrigin}/api/auth`;
 const audience = `${passportOrigin}/api/v1`;
 const futureExpiration = Math.floor(Date.now() / 1_000) + 600;
 
-function encodedJSON(value: unknown) {
+type JSONValue = boolean | null | number | string | JSONValue[] | { [key: string]: JSONValue };
+
+function encodedJSON(value: JSONValue) {
 	return btoa(JSON.stringify(value))
 		.replaceAll("+", "-")
 		.replaceAll("/", "_")
@@ -25,7 +27,7 @@ function tokenWithAlgorithm(algorithm: string) {
 	return `${encodedJSON({ alg: algorithm, kid: "key_1" })}.${encodedJSON({})}.signature`;
 }
 
-function delegatedPayload(overrides: { [key: string]: unknown } = {}) {
+function delegatedPayload(overrides: { [claim: string]: JSONValue } = {}) {
 	return {
 		sub: "user_1",
 		azp: "client_1",
@@ -37,37 +39,34 @@ function delegatedPayload(overrides: { [key: string]: unknown } = {}) {
 	};
 }
 
-function expectClientAPIError(action: () => unknown, code: string) {
+function expectClientAPIError(action: () => void, code: string) {
 	try {
 		action();
 		throw new Error("Expected a ClientAPIError.");
 	} catch (error) {
 		expect(error).toBeInstanceOf(ClientAPIError);
-		expect((error as ClientAPIError).code).toBe(code);
+		if (!(error instanceof ClientAPIError)) throw error;
+		expect(error.code).toBe(code);
 	}
 }
 
-type MockSelectChain = {
-	from: ReturnType<typeof vi.fn>;
-	where: ReturnType<typeof vi.fn>;
-	limit: ReturnType<typeof vi.fn>;
-};
+type GrantUser = Awaited<ReturnType<DelegatedGrantDatabase["findUser"]>>;
+type GrantClient = Awaited<ReturnType<DelegatedGrantDatabase["findClient"]>>;
+type GrantConsent = Awaited<ReturnType<DelegatedGrantDatabase["findConsent"]>>;
 
-function databaseWithSelectResults(...results: unknown[][]) {
-	const select = vi.fn();
-	for (const rows of results) {
-		select.mockImplementationOnce(() => {
-			const chain = {} as MockSelectChain;
-			chain.from = vi.fn(() => chain);
-			chain.where = vi.fn(() => chain);
-			chain.limit = vi.fn(async () => rows);
-			return chain;
-		});
-	}
-	return { select } as unknown as AuthDatabase;
+function databaseWithSelectResults(
+	user: GrantUser,
+	client: GrantClient,
+	consent: GrantConsent = undefined,
+): DelegatedGrantDatabase {
+	return {
+		findUser: async () => user,
+		findClient: async () => client,
+		findConsent: async () => consent,
+	};
 }
 
-function currentDatabaseClient(overrides: { [key: string]: unknown } = {}) {
+function currentDatabaseClient(overrides: { [property: string]: string | boolean | null | string[] } = {}) {
 	return {
 		clientId: "client_1",
 		clientSecret: "encrypted-secret",
@@ -158,8 +157,8 @@ describe("delegated client API authorization", () => {
 
 	it("reauthorizes a confidential trusted client against current configured scopes", async () => {
 		const db = databaseWithSelectResults(
-			[{ id: "user_1", banned: false, banExpires: null }],
-			[],
+			{ banned: false, banExpires: null },
+			undefined,
 		);
 		const env = {
 			BETTER_AUTH_URL: passportOrigin,
@@ -192,9 +191,9 @@ describe("delegated client API authorization", () => {
 	it("rejects revoked consent and currently banned users", async () => {
 		const currentClient = currentDatabaseClient();
 		const revokedConsentDB = databaseWithSelectResults(
-			[{ id: "user_1", banned: false, banExpires: null }],
-			[currentClient],
-			[],
+			{ banned: false, banExpires: null },
+			currentClient,
+			undefined,
 		);
 		await expect(
 			authorizeDelegatedGrant(
@@ -205,8 +204,8 @@ describe("delegated client API authorization", () => {
 		).rejects.toMatchObject({ code: "invalid_token", status: 401 });
 
 		const bannedUserDB = databaseWithSelectResults(
-			[{ id: "user_1", banned: true, banExpires: null }],
-			[currentClient],
+			{ banned: true, banExpires: null },
+			currentClient,
 		);
 		await expect(
 			authorizeDelegatedGrant(
@@ -219,9 +218,9 @@ describe("delegated client API authorization", () => {
 
 	it("accepts a current consent grant for a confidential database client", async () => {
 		const db = databaseWithSelectResults(
-			[{ id: "user_1", banned: false, banExpires: null }],
-			[currentDatabaseClient()],
-			[{ scopes: ["teams:write"] }],
+			{ banned: false, banExpires: null },
+			currentDatabaseClient(),
+			{ scopes: ["teams:write"] },
 		);
 
 		await expect(
@@ -242,8 +241,8 @@ describe("delegated client API authorization", () => {
 		["public", { public: true, clientSecret: null, tokenEndpointAuthMethod: "none" }],
 	])("rejects a %s OAuth client", async (_label, overrides) => {
 		const db = databaseWithSelectResults(
-			[{ id: "user_1", banned: false, banExpires: null }],
-			[currentDatabaseClient(overrides)],
+			{ banned: false, banExpires: null },
+			currentDatabaseClient(overrides),
 		);
 
 		await expect(

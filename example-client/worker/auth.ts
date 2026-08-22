@@ -13,10 +13,14 @@ import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { decodeJwt } from "jose";
 import { z } from "zod";
 
-export type ClientEnv = Env & {
+export type ClientEnv = {
+	ASSETS: Fetcher;
+	AUTH_ISSUER: string;
 	BETTER_AUTH_SECRET: string;
 	BETTER_AUTH_URL: string;
+	CLIENT_ID: string;
 	CLIENT_SECRET: string;
+	POST_LOGOUT_REDIRECT_URI?: string;
 	REDIRECT_URI?: string;
 };
 

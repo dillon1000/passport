@@ -44,6 +44,7 @@ import {
 } from "./components";
 import { useBilling } from "./use-billing";
 import { emptyPlanDraft, planToDraft, PERSONAL_KEY } from "./utils";
+import { billingSection } from "./billing-section";
 
 export function Billing() {
 	const billing = useBilling();
@@ -98,11 +99,7 @@ export function Billing() {
 	// One component mounted under /billing/*; the row-3 sub-tabs are real routes,
 	// so the visible section follows the URL while state persists across them.
 	const { pathname } = useLocation();
-	const section = pathname.endsWith("/plans")
-		? "plans"
-		: pathname.endsWith("/purchases")
-			? "purchases"
-			: "overview";
+	const section = billingSection(pathname);
 
 	return (
 		<BillingShell
