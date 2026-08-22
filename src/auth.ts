@@ -37,16 +37,20 @@ function getCliAuthInstance() {
 }
 
 function getCliAuthProperty(property: string | symbol) {
-	return Reflect.get(getCliAuthInstance() as object, property);
+	const instance = getCliAuthInstance();
+	if (!(property in instance)) return undefined;
+	// SAFETY: `property in instance` proves this proxy trap reads a real auth instance key.
+	return instance[property as keyof AuthInstance];
 }
 
 function lazyCliAuthInstance() {
+	// SAFETY: the proxy forwards every operation to the lazily created AuthInstance.
 	return new Proxy({} as AuthInstance, {
 		get: (_target, property) => getCliAuthProperty(property),
 		has: (_target, property) => property in getCliAuthInstance(),
-		ownKeys: () => Reflect.ownKeys(getCliAuthInstance() as object),
+		ownKeys: () => Reflect.ownKeys(getCliAuthInstance()),
 		getOwnPropertyDescriptor: (_target, property) =>
-			Reflect.getOwnPropertyDescriptor(getCliAuthInstance() as object, property),
+			Reflect.getOwnPropertyDescriptor(getCliAuthInstance(), property),
 	});
 }
 
@@ -58,17 +62,20 @@ function lazyCliAuthInstance() {
 export const auth = new Proxy((env: AuthEnv) => createAuthInstance(env), {
 	get: (target, property, receiver) => {
 		if (property in target) {
-			return Reflect.get(target, property, receiver);
+			const descriptor = Object.getOwnPropertyDescriptor(target, property);
+			if (descriptor?.get) return descriptor.get.call(receiver);
+			return descriptor?.value;
 		}
 		return getCliAuthProperty(property);
 	},
 	has: (target, property) => property in target || property in getCliAuthInstance(),
 	ownKeys: (target) => [
-		...new Set([...Reflect.ownKeys(target), ...Reflect.ownKeys(getCliAuthInstance() as object)]),
+		...new Set([...Reflect.ownKeys(target), ...Reflect.ownKeys(getCliAuthInstance())]),
 	],
 	getOwnPropertyDescriptor: (target, property) =>
 		Reflect.getOwnPropertyDescriptor(target, property) ??
-		Reflect.getOwnPropertyDescriptor(getCliAuthInstance() as object, property),
+		Reflect.getOwnPropertyDescriptor(getCliAuthInstance(), property),
+// SAFETY: the callable proxy exposes the AuthFactory's function and auth-instance contracts.
 }) as AuthFactory;
 
 export default lazyCliAuthInstance();

@@ -53,7 +53,7 @@ export function parseOptionalBoolean(value: string | undefined, name: string) {
 }
 
 export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGlobal()): AuthEnv {
-	return {
+	const cliEnv = {
 		ASSETS: {
 			fetch: () => new Response(null, { status: 404 }),
 		},
@@ -139,5 +139,7 @@ export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGl
 		PRIMARY_COLOR: processEnv.PRIMARY_COLOR,
 		PRIMARY_FOREGROUND_COLOR: processEnv.PRIMARY_FOREGROUND_COLOR,
 		RING_COLOR: processEnv.RING_COLOR,
-	} as unknown as AuthEnv;
+	};
+	// SAFETY: Better Auth CLI only accesses bindings initialized above; deployment-only bindings are unused.
+	return cliEnv as AuthEnv;
 }
