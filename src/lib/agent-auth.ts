@@ -60,7 +60,9 @@ function agentAuthClient() {
 	// Better Auth plugin methods are installed at runtime. This narrow facade is
 	// the single bridge for methods that the local generated client type may not
 	// expose directly after plugin composition.
-	return authClient as unknown as AgentAuthRuntimeClient;
+	const runtimeClient: unknown = authClient;
+	// SAFETY: createAuthClient installs these methods from the agent-auth plugin above.
+	return runtimeClient as AgentAuthRuntimeClient;
 }
 
 export function parseCapabilityList(value: string) {

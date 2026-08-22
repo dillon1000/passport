@@ -7,12 +7,10 @@
  */
 import { flushSync } from "react-dom";
 
-type StartViewTransition = (callback: () => void) => unknown;
 export type ViewTransitionDirection = "forward" | "backward";
 
 const prefersReducedMotion = () =>
-	typeof window !== "undefined" &&
-	window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+	globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 export function withViewTransition(update: () => void): void {
 	startViewTransition(update);
@@ -34,8 +32,7 @@ function startViewTransition(
 	update: () => void,
 	direction?: ViewTransitionDirection,
 ): void {
-	const doc = document as Document & { startViewTransition?: StartViewTransition };
-	if (typeof doc.startViewTransition !== "function" || prefersReducedMotion()) {
+	if (!("startViewTransition" in document) || prefersReducedMotion()) {
 		update();
 		return;
 	}
@@ -49,9 +46,7 @@ function startViewTransition(
 		// React normally batches state updates. Commit inside the capture callback
 		// so the browser snapshots the complete next view instead of exposing it
 		// for one unmanaged frame after the transition starts.
-		const transition = doc.startViewTransition(() => flushSync(update)) as {
-			finished?: Promise<unknown>;
-		};
+		const transition = document.startViewTransition(() => flushSync(update));
 		if (transition.finished) {
 			void transition.finished.catch(() => undefined).finally(clearDirection);
 		} else {
