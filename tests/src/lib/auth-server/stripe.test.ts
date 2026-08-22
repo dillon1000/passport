@@ -3,33 +3,24 @@ import type Stripe from "stripe";
 
 import type { AuthEnv } from "../../env";
 import { WEBHOOK_EVENT_TYPES } from "../webhooks";
-import { applyStripeProvisioning, recordOneTimePurchase } from "./stripe";
+import {
+	applyStripeProvisioning,
+	recordOneTimePurchase,
+	type StripeProvisioningClient,
+} from "./stripe";
 import type { AuthDatabase } from "./types";
 
-// Mock the Stripe SDK so applyStripeProvisioning exercises the create flow
-// without network calls. The hoisted spies are asserted on in the tests below.
-const stripeMocks = vi.hoisted(() => ({
+const stripeMocks = {
 	productsCreate: vi.fn(),
 	pricesCreate: vi.fn(),
-}));
-vi.mock("stripe", () => {
-	class StripeMock {
-		products = { create: stripeMocks.productsCreate };
-		prices = { create: stripeMocks.pricesCreate };
-		static createFetchHttpClient() {
-			return {};
-		}
-	}
-	return { default: StripeMock };
-});
+};
 
-// Capture billing webhook emission without exercising the real delivery
-// pipeline; the fulfillment logic only cares that the right event is emitted.
+const stripeClient = {
+	products: { create: stripeMocks.productsCreate },
+	prices: { create: stripeMocks.pricesCreate },
+} as StripeProvisioningClient;
+
 const emitWebhookEvent = vi.fn();
-vi.mock("../webhooks", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../webhooks")>();
-	return { ...actual, emitWebhookEvent: (...args: unknown[]) => emitWebhookEvent(...args) };
-});
 
 const env = { BETTER_AUTH_URL: "https://passport.test" } as unknown as AuthEnv;
 
@@ -90,7 +81,7 @@ describe("recordOneTimePurchase", () => {
 			},
 		]);
 
-		await recordOneTimePurchase(env, db, checkoutSession());
+		await recordOneTimePurchase(env, db, checkoutSession(), emitWebhookEvent);
 
 		expect(captured.values).toMatchObject({
 			plan: "lifetime",
@@ -118,14 +109,14 @@ describe("recordOneTimePurchase", () => {
 
 	it("does not re-emit when a redelivered checkout hits the unique constraint", async () => {
 		const { db } = purchaseDb([]);
-		await recordOneTimePurchase(env, db, checkoutSession());
+		await recordOneTimePurchase(env, db, checkoutSession(), emitWebhookEvent);
 		expect(emitWebhookEvent).not.toHaveBeenCalled();
 	});
 
 	it("ignores subscription-mode checkouts", async () => {
 		const insert = vi.fn();
 		const db = { insert } as unknown as AuthDatabase;
-		await recordOneTimePurchase(env, db, checkoutSession({ mode: "subscription" }));
+		await recordOneTimePurchase(env, db, checkoutSession({ mode: "subscription" }), emitWebhookEvent);
 		expect(insert).not.toHaveBeenCalled();
 		expect(emitWebhookEvent).not.toHaveBeenCalled();
 	});
@@ -133,7 +124,7 @@ describe("recordOneTimePurchase", () => {
 	it("ignores unpaid checkouts", async () => {
 		const insert = vi.fn();
 		const db = { insert } as unknown as AuthDatabase;
-		await recordOneTimePurchase(env, db, checkoutSession({ payment_status: "unpaid" }));
+		await recordOneTimePurchase(env, db, checkoutSession({ payment_status: "unpaid" }), emitWebhookEvent);
 		expect(insert).not.toHaveBeenCalled();
 	});
 
@@ -144,6 +135,7 @@ describe("recordOneTimePurchase", () => {
 			env,
 			db,
 			checkoutSession({ metadata: {}, client_reference_id: null }),
+			emitWebhookEvent,
 		);
 		expect(insert).not.toHaveBeenCalled();
 	});
@@ -159,6 +151,7 @@ describe("recordOneTimePurchase", () => {
 				client_reference_id: "user_456",
 				metadata: { passportPlan: "Lifetime", passportCustomerType: "user" },
 			}),
+			emitWebhookEvent,
 		);
 		expect(captured.values).toMatchObject({ referenceId: "user_456" });
 		expect(emitWebhookEvent).toHaveBeenCalledTimes(1);
@@ -179,7 +172,7 @@ describe("applyStripeProvisioning", () => {
 
 	it("passes payloads without a stripe block through unchanged", async () => {
 		const input = { name: "pro", priceId: "price_existing" };
-		expect(await applyStripeProvisioning(stripeEnv, input)).toEqual(input);
+		expect(await applyStripeProvisioning(stripeEnv, input, { createClient: () => stripeClient })).toEqual(input);
 		expect(stripeMocks.productsCreate).not.toHaveBeenCalled();
 	});
 
@@ -202,7 +195,7 @@ describe("applyStripeProvisioning", () => {
 				seatAmount: 10,
 				annualLookupKey: "pro_yearly",
 			},
-		});
+		}, { createClient: () => stripeClient });
 
 		expect(result).toMatchObject({
 			name: "pro",
@@ -237,7 +230,7 @@ describe("applyStripeProvisioning", () => {
 			name: "lifetime",
 			type: "one_time",
 			stripe: { amount: 99, currency: "usd", annualAmount: 999 },
-		});
+		}, { createClient: () => stripeClient });
 
 		expect(result.priceId).toBe("price_lt");
 		// One-time products ignore recurring, annual, and seat inputs.
