@@ -1781,7 +1781,7 @@ describe("createWorkerApp", () => {
 
 		expect(response.status).toBe(201);
 		expect(adminAudit.record).toHaveBeenCalledOnce();
-		const [, event] = z.tuple([z.unknown(), z.object({ metadata: z.json().optional() })]).parse(adminAudit.record.mock.calls[0]);
+		const [, event] = z.tuple([z.unknown(), z.object({ metadata: z.json().optional() }).passthrough()]).parse(adminAudit.record.mock.calls[0]);
 		expect(event).toMatchObject({
 			action: "oauth_client.create",
 			targetType: "oauth_client",

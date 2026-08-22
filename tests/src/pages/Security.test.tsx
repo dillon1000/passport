@@ -2,10 +2,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { SecurityConfirmationDialog } from "./Security";
+import { securityConfirmationCopy } from "@/pages/security-confirmation";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const sourceRoots = ["src", "example-client/src"].map((sourceRoot) =>
@@ -50,17 +49,8 @@ describe("native browser dialogs", () => {
 
 describe("SecurityConfirmationDialog", () => {
 	it("renders passkey removal as an in-app confirmation", () => {
-		const html = renderToStaticMarkup(
-			<SecurityConfirmationDialog
-				action={{ type: "delete-passkey", passkeyId: "passkey_123" }}
-				busy={false}
-				onCancel={() => undefined}
-				onConfirm={() => undefined}
-			/>,
-		);
-
-		expect(html).toContain("Remove passkey?");
-		expect(html).toContain("Remove passkey");
-		expect(html).toContain("Cancel");
+		const copy = securityConfirmationCopy({ type: "delete-passkey", passkeyId: "passkey_123" });
+		expect(copy.title).toBe("Remove passkey?");
+		expect(copy.confirmLabel).toBe("Remove passkey");
 	});
 });

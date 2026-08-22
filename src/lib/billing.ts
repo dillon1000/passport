@@ -239,7 +239,14 @@ export function validateBillingPlanInput(
 	label: string,
 ): BillingPlanDefinition {
 	const parsed = billingPlanInputSchema.safeParse(value);
-	if (!parsed.success) throw new TypeError(`${label}: ${parsed.error.issues[0]?.message ?? "is invalid"}.`);
+	if (!parsed.success) {
+		const field = parsed.error.issues[0]?.path[0];
+		if (field === "freeTrialDays") {
+			throw new TypeError(`${label}.freeTrialDays must be a non-negative integer.`);
+		}
+		if (field === "type") throw new TypeError(`${label}.type must be one of: subscription, one_time.`);
+		throw new TypeError(`${label}: ${parsed.error.issues[0]?.message ?? "is invalid"}.`);
+	}
 	if (!parsed.data.priceId && !parsed.data.lookupKey) {
 		throw new TypeError(`${label} must define priceId or lookupKey.`);
 	}
@@ -262,8 +269,16 @@ export function validateStripeProductInput(
 	value: StripeProductInput,
 	label: string,
 ): StripeProductProvisionInput {
+	if (value.amount === undefined) throw new TypeError(`${label}.amount is required.`);
 	const parsed = stripeProductInputSchema.safeParse(value);
-	if (!parsed.success) throw new TypeError(`${label}: ${parsed.error.issues[0]?.message ?? "is invalid"}.`);
+	if (!parsed.success) {
+		const issue = parsed.error.issues[0];
+		const field = issue?.path[0];
+		if (field === "currency") throw new TypeError(`${label}.currency must be a 3-letter ISO currency code.`);
+		if (field === "amount") throw new TypeError(`${label}.amount must be a non-negative amount.`);
+		if (field === "interval") throw new TypeError(`${label}.interval must be one of: day, week, month, year.`);
+		throw new TypeError(`${label}: ${issue?.message ?? "is invalid"}.`);
+	}
 	return parsed.data;
 }
 

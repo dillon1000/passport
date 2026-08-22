@@ -70,6 +70,10 @@ import {
 import { queryKeys } from "@/lib/query-client";
 import { useRequireSession } from "@/lib/session";
 import { normalizeTwoFactorVerificationCode } from "@/lib/two-factor";
+import {
+	securityConfirmationCopy,
+	type SecurityConfirmationAction,
+} from "./security-confirmation";
 
 const SECTIONS: Section[] = [
 	{ id: "passkeys", label: "Passkeys" },
@@ -98,11 +102,6 @@ type LinkedAccountSummary = {
 	accountId: string;
 	createdAt?: string | Date | null;
 };
-
-export type SecurityConfirmationAction =
-	| { type: "delete-passkey"; passkeyId: string }
-	| { type: "unlink-provider"; account: LinkedAccountSummary }
-	| { type: "disable-two-factor" };
 
 type TwoFactorSetup = {
 	totpURI: string;
@@ -1297,13 +1296,6 @@ export function Security() {
 	);
 }
 
-type SecurityConfirmationCopy = {
-	title: string;
-	description: string;
-	confirmLabel: string;
-	Icon: React.ComponentType<{ className?: string }>;
-};
-
 /**
  * Confirmation dialog for destructive security mutations. The caller supplies
  * the pending action and owns the mutation; this component keeps native browser
@@ -1349,35 +1341,6 @@ export function SecurityConfirmationDialog({
 	);
 }
 
-function securityConfirmationCopy(action: SecurityConfirmationAction): SecurityConfirmationCopy {
-	if (action.type === "delete-passkey") {
-		return {
-			title: "Remove passkey?",
-			description:
-				"This removes the passkey from your account. You can add it again from this device later.",
-			confirmLabel: "Remove passkey",
-			Icon: Trash2,
-		};
-	}
-	if (action.type === "unlink-provider") {
-		return {
-			title: "Unlink account?",
-			description: `Unlink ${providerLabel(action.account.providerId)} from this Passport account. You can reconnect it later.`,
-			confirmLabel: "Unlink account",
-			Icon: Unlink,
-		};
-	}
-	return {
-		title: "Disable 2FA?",
-		description: "Password sign-ins will no longer require an authenticator code.",
-		confirmLabel: "Disable 2FA",
-		Icon: ShieldOff,
-	};
-}
-
-function providerLabel(providerId: string) {
-	return SOCIAL_PROVIDERS.find((provider) => provider.id === providerId)?.label ?? providerId;
-}
 
 /** Card title paired with a small status pill (dot + label). */
 function TitleWithPill({ text, tone, label }: { text: string; tone: DotTone; label: string }) {
