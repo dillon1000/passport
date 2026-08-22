@@ -8,10 +8,7 @@ import {
 
 describe("request location helpers", () => {
 	it("builds a coarse location snapshot from Cloudflare request metadata", () => {
-		const request = new Request("https://passport.test") as Request & {
-			cf?: { [key: string]: unknown };
-		};
-		request.cf = {
+		const request = Object.assign(new Request("https://passport.test"), { cf: {
 			asn: 395747,
 			asOrganization: "Google Cloud",
 			city: "Austin",
@@ -24,7 +21,7 @@ describe("request location helpers", () => {
 			region: "Texas",
 			regionCode: "TX",
 			timezone: "America/Chicago",
-		};
+		} });
 
 		expect(requestLocationFromRequest(request)).toEqual({
 			asn: 395747,
