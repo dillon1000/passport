@@ -101,6 +101,7 @@ import { socialProviders } from "../src/lib/auth-server/plugins";
 import type { SocialProviderId } from "../src/components/auth/social-provider-config";
 
 export { DataExportWorkflow };
+export { AuthSecondaryStorage } from "./auth-secondary-storage";
 export { WebhookDeliveryWorkflow } from "./webhooks";
 
 type OAuthClientAPIShape = {

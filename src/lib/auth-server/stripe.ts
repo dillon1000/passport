@@ -54,7 +54,7 @@ export function createStripeClient(env: AuthEnv, secretKey: string) {
 	const apiVersion = optionalEnv(env.STRIPE_API_VERSION) ?? DEFAULT_STRIPE_API_VERSION;
 	if (apiVersion !== DEFAULT_STRIPE_API_VERSION) {
 		throw new TypeError(
-			`STRIPE_API_VERSION must be ${DEFAULT_STRIPE_API_VERSION} for stripe@22.2.1.`,
+			`STRIPE_API_VERSION must be ${DEFAULT_STRIPE_API_VERSION} for stripe@22.5.0.`,
 		);
 	}
 	return new Stripe(secretKey, {

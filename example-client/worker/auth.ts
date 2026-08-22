@@ -146,7 +146,7 @@ function discoveryURL(env: Pick<ClientEnv, "AUTH_ISSUER">) {
 }
 
 export function betterAuthCallbackURL(env: Pick<ClientEnv, "BETTER_AUTH_URL">) {
-	return absoluteURL(env.BETTER_AUTH_URL, `/api/auth/oauth2/callback/${PASSPORT_PROVIDER_ID}`);
+	return absoluteURL(env.BETTER_AUTH_URL, `/api/auth/callback/${PASSPORT_PROVIDER_ID}`);
 }
 
 function redirectURI(env: Pick<ClientEnv, "BETTER_AUTH_URL" | "REDIRECT_URI">) {
@@ -388,11 +388,11 @@ export async function getExampleSessionPayload(
 }
 
 export async function startPassportLogin(request: Request, env: ClientEnv) {
-	const result = await createExampleAuth(env).api.signInWithOAuth2({
+	const result = await createExampleAuth(env).api.signInSocial({
 		headers: request.headers,
 		returnHeaders: true,
 		body: {
-			providerId: PASSPORT_PROVIDER_ID,
+			provider: PASSPORT_PROVIDER_ID,
 			callbackURL: "/?login=complete",
 			errorCallbackURL: "/?error=auth_failed",
 		},

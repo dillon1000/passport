@@ -369,7 +369,7 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 						banned: false,
 						banReason: null,
 						banExpires: null,
-					});
+					}, { method: "passkey" });
 					const session = await ctx.context.internalAdapter.createSession(createdUser.id);
 					if (!session) {
 						throw new APIError("BAD_REQUEST", { message: "Could not create an account session." });
