@@ -8,6 +8,12 @@ import { z } from "zod";
 const passkeySignupSchema = z.object({
 	name: z.string().trim().min(1).max(100),
 	email: z.email().max(320).transform((value) => value.toLowerCase()),
+	username: z
+		.string()
+		.trim()
+		.min(3)
+		.max(30)
+		.regex(/^[a-zA-Z0-9_.]+$/),
 	callbackURL: z
 		.string()
 		.refine(

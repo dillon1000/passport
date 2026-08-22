@@ -361,6 +361,8 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 						name: signup.name,
 						email: signup.email,
 						emailVerified: false,
+						username: signup.username,
+						displayUsername: signup.username,
 						role: "user",
 						banned: false,
 						banReason: null,
