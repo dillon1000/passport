@@ -50,4 +50,10 @@ describe("loading states", () => {
 	it("uses skeletons except for the sign-in card spinner and avoids visible loading copy", () => {
 		expect(findNonSkeletonLoadingIndicators()).toEqual([]);
 	});
+
+	it("swipes both sign-in card panels when loading ends", () => {
+		const signInSource = readFileSync("src/pages/SignIn.tsx", "utf8");
+
+		expect(signInSource.match(/transition-\[translate,opacity\]/g)).toHaveLength(2);
+	});
 });
