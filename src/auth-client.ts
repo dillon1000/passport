@@ -22,7 +22,7 @@ import {
 import { resolveAuthCallbackURL } from "@/lib/auth-flow";
 
 const authBaseURL =
-	typeof window === "undefined" ? "http://localhost" : window.location.origin;
+	globalThis.location?.origin ?? "http://localhost";
 
 export const authClient = createAuthClient({
 	baseURL: authBaseURL,
@@ -52,7 +52,7 @@ export const authClient = createAuthClient({
 		phoneNumberClient(),
 		twoFactorClient({
 			onTwoFactorRedirect() {
-				if (typeof window === "undefined") return;
+				if (!globalThis.location) return;
 
 				const searchParams = new URLSearchParams(window.location.search);
 				const callbackURL = resolveAuthCallbackURL(searchParams);
