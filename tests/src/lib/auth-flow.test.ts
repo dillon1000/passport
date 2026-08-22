@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	isEmailVerificationRequired,
 	resolveAddAccountURL,
 	resolveAuthCallbackURL,
 	resolvePasswordResetRedirectURL,
 	shouldCompletePasswordSignIn,
 } from "./auth-flow";
+
+describe("isEmailVerificationRequired", () => {
+	it("recognizes email and username sign-in verification responses", () => {
+		expect(isEmailVerificationRequired({ code: "EMAIL_NOT_VERIFIED" })).toBe(true);
+		expect(isEmailVerificationRequired({ message: "Email not verified" })).toBe(true);
+	});
+
+	it("does not classify invalid credentials as a verification response", () => {
+		expect(isEmailVerificationRequired({ code: "INVALID_EMAIL_OR_PASSWORD" })).toBe(false);
+	});
+});
 
 describe("shouldCompletePasswordSignIn", () => {
 	it("does not complete the normal redirect while two-factor auth is pending", () => {

@@ -142,6 +142,8 @@ export function createAuthOptions(env: AuthEnv, db: AuthDatabase) {
 		},
 		emailVerification: {
 			sendOnSignUp: true,
+			// Unverified credential sign-ins send the link used by the in-card verification step.
+			sendOnSignIn: true,
 			autoSignInAfterVerification: true,
 			sendVerificationEmail: async ({ user, url }) => {
 				await sendVerificationEmail(env, user.email, url);

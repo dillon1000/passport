@@ -16,6 +16,14 @@ export function shouldCompletePasswordSignIn(result: unknown) {
 	return data.twoFactorRedirect !== true;
 }
 
+/** Identifies the recoverable Better Auth response that requires email confirmation. */
+export function isEmailVerificationRequired(error: { code?: string; message?: string }) {
+	return (
+		error.code === "EMAIL_NOT_VERIFIED" ||
+		error.message?.trim().toLowerCase() === "email not verified"
+	);
+}
+
 function safeRelativeURL(value: string | null | undefined) {
 	if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
 		return undefined;
