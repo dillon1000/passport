@@ -5,6 +5,7 @@
  */
 import { createAccessControl } from "better-auth/plugins/access";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 
 import type { createDb } from "../db/client";
 import * as schema from "../db/schema";
@@ -58,19 +59,12 @@ export type OrganizationDynamicRoleRow = {
 
 type OrganizationAccessDatabase = ReturnType<typeof createDb>;
 type DynamicRoleStatements = Record<string, string[]>;
+const dynamicRoleStatementsSchema = z.record(z.string(), z.array(z.string()));
 
 function parseDynamicRoleStatements(value: string): DynamicRoleStatements | null {
 	try {
-		const parsed: unknown = JSON.parse(value);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-		const statements: DynamicRoleStatements = {};
-		for (const [resource, actions] of Object.entries(parsed)) {
-			if (!Array.isArray(actions) || actions.some((action) => typeof action !== "string")) {
-				return null;
-			}
-			statements[resource] = actions;
-		}
-		return statements;
+		const parsed = dynamicRoleStatementsSchema.safeParse(JSON.parse(value));
+		return parsed.success ? parsed.data : null;
 	} catch {
 		return null;
 	}

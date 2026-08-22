@@ -1,5 +1,6 @@
 import type { DataExportWorkflowPayload } from "./lib/data-export";
-import type { OAuthGrantType } from "./lib/oauth-grants";
+import { OAUTH_GRANT_TYPES, type OAuthGrantType } from "./lib/oauth-grants";
+import { z } from "zod";
 
 export type OAuthClientSeed = {
 	id: string;
@@ -15,6 +16,21 @@ export type OAuthClientSeed = {
 	public?: boolean;
 	skipConsent?: boolean;
 };
+
+const oauthClientSeedSchema = z.object({
+	id: z.string(),
+	secret: z.string().optional(),
+	name: z.string(),
+	redirectUris: z.array(z.string()),
+	postLogoutRedirectUris: z.array(z.string()).optional(),
+	uri: z.string().optional(),
+	scopes: z.array(z.string()).optional(),
+	optionalScopes: z.array(z.string()).optional(),
+	grantTypes: z.array(z.enum(OAUTH_GRANT_TYPES)).optional(),
+	allowedAudiences: z.array(z.string()).optional(),
+	public: z.boolean().optional(),
+	skipConsent: z.boolean().optional(),
+});
 
 export type AuthEnv = Env & {
 	ASSETS: Fetcher;
@@ -94,10 +110,10 @@ export function parseOAuthClientSeeds(value: string | undefined): OAuthClientSee
 		return [];
 	}
 
-	const parsed = JSON.parse(value) as OAuthClientSeed[];
-	if (!Array.isArray(parsed)) {
+	const parsed = z.array(oauthClientSeedSchema).safeParse(JSON.parse(value));
+	if (!parsed.success) {
 		throw new TypeError("OAUTH_CLIENTS must be a JSON array.");
 	}
 
-	return parsed;
+	return parsed.data;
 }

@@ -84,11 +84,13 @@ function initials(value: string) {
 	);
 }
 
-const ROLE_TONE = {
+type RoleToneMap = { [role: string]: "default" | "secondary" | "outline" };
+
+const ROLE_TONE: RoleToneMap = {
 	owner: "default",
 	admin: "secondary",
 	member: "outline",
-} satisfies Record<string, "default" | "secondary" | "outline">;
+};
 
 function RoleBadge({ role }: { role: string }) {
 	return (

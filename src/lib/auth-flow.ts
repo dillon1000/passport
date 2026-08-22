@@ -3,17 +3,17 @@
  * Inputs are client result objects; the output tells password sign-in whether
  * it should continue to the requested callback URL.
  */
-function isRecord(value: unknown): value is { [key: string]: unknown } {
-	return typeof value === "object" && value !== null;
-}
+import { z } from "zod";
 
-export function shouldCompletePasswordSignIn(result: unknown) {
-	if (!isRecord(result)) return true;
+const passwordSignInResultSchema = z.object({
+	data: z.object({ twoFactorRedirect: z.boolean().optional() }).optional(),
+});
 
-	const data = result.data;
-	if (!isRecord(data)) return true;
-
-	return data.twoFactorRedirect !== true;
+export function shouldCompletePasswordSignIn(
+	result: z.input<typeof passwordSignInResultSchema>,
+) {
+	const parsed = passwordSignInResultSchema.safeParse(result);
+	return parsed.success ? parsed.data.data?.twoFactorRedirect !== true : true;
 }
 
 /** Identifies the recoverable Better Auth response that requires email confirmation. */

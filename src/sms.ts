@@ -5,6 +5,7 @@
  * `AZURE_COMMUNICATION_CONNECTION_STRING` and `AZURE_COMMUNICATION_SMS_FROM`.
  */
 import type { AuthEnv } from "./env";
+import { z } from "zod";
 
 const ACS_SMS_API_VERSION = "2026-01-23";
 const ACS_SMS_PATH = `/sms?api-version=${ACS_SMS_API_VERSION}`;
@@ -113,51 +114,23 @@ async function hmacSHA256Base64(value: string, base64Key: string) {
 	return bytesToBase64(signature);
 }
 
-function isRecord(value: unknown): value is { [key: string]: unknown } {
-	return typeof value === "object" && value !== null;
-}
+const azureSMSResultSchema = z.object({
+	to: z.string(),
+	successful: z.boolean(),
+	messageId: z.string().optional(),
+	httpStatusCode: z.number().optional(),
+	errorMessage: z.string().optional(),
+});
+const azureSMSResponseSchema = z.object({ value: z.array(azureSMSResultSchema) });
 
-function stringField(record: { [key: string]: unknown }, key: string) {
-	const value = record[key];
-	return typeof value === "string" ? value : undefined;
-}
-
-function numberField(record: { [key: string]: unknown }, key: string) {
-	const value = record[key];
-	return typeof value === "number" ? value : undefined;
-}
-
-function booleanField(record: { [key: string]: unknown }, key: string) {
-	const value = record[key];
-	return typeof value === "boolean" ? value : undefined;
-}
-
-function parseAzureSMSResult(value: unknown): AzureSMSSendResult | undefined {
-	if (!isRecord(value)) return undefined;
-	const to = stringField(value, "to");
-	const successful = booleanField(value, "successful");
-	if (!to || successful === undefined) return undefined;
-
-	return {
-		to,
-		successful,
-		messageId: stringField(value, "messageId"),
-		httpStatusCode: numberField(value, "httpStatusCode"),
-		errorMessage: stringField(value, "errorMessage"),
-	};
-}
-
-function parseAzureSMSResponse(value: unknown) {
-	if (!isRecord(value) || !Array.isArray(value.value)) return [];
-	return value.value.flatMap((item) => {
-		const result = parseAzureSMSResult(item);
-		return result ? [result] : [];
-	});
+function parseAzureSMSResponse(value: z.input<typeof azureSMSResponseSchema>) {
+	const parsed = azureSMSResponseSchema.safeParse(value);
+	return parsed.success ? parsed.data.value : [];
 }
 
 function parseJSONResponse(text: string) {
 	try {
-		return JSON.parse(text) as unknown;
+		return JSON.parse(text);
 	} catch {
 		return undefined;
 	}
@@ -165,13 +138,10 @@ function parseJSONResponse(text: string) {
 
 function responseErrorMessage(responseText: string) {
 	const parsed = parseJSONResponse(responseText);
-	if (isRecord(parsed)) {
-		const error = parsed.error;
-		if (isRecord(error)) {
-			return stringField(error, "message") || stringField(error, "code");
-		}
-		return stringField(parsed, "title");
-	}
+	const parsedError = z
+		.object({ error: z.object({ message: z.string().optional(), code: z.string().optional() }).optional(), title: z.string().optional() })
+		.safeParse(parsed);
+	if (parsedError.success) return parsedError.data.error?.message || parsedError.data.error?.code || parsedError.data.title;
 	return optionalEnv(responseText);
 }
 

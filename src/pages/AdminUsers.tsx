@@ -67,21 +67,23 @@ async function fetchAdminUsers(input: {
 	offset: number;
 	search?: string;
 }): Promise<AdminUsersPayload> {
-	const result = await authClient.admin.listUsers({
-		query: {
-			limit: PAGE_SIZE,
-			offset: input.offset,
-			sortBy: "createdAt",
-			sortDirection: "desc",
-			...(input.search
-				? {
-						searchValue: input.search,
-						searchField: "email" as const,
-						searchOperator: "contains" as const,
-					}
-				: {}),
-		},
-	});
+	const query = input.search
+		? {
+				limit: PAGE_SIZE,
+				offset: input.offset,
+				sortBy: "createdAt" as const,
+				sortDirection: "desc" as const,
+				searchValue: input.search,
+				searchField: "email" as const,
+				searchOperator: "contains" as const,
+			}
+		: {
+				limit: PAGE_SIZE,
+				offset: input.offset,
+				sortBy: "createdAt" as const,
+				sortDirection: "desc" as const,
+			};
+	const result = await authClient.admin.listUsers({ query });
 	if (result.error) {
 		throw new Error(result.error.message ?? "No access to user administration.");
 	}
