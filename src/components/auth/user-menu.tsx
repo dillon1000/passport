@@ -284,7 +284,8 @@ function ProfileFlair({ name, email }: { name: string; email: string }) {
 		// Pinned to one field: show it settled (no swipe), but keep the date and
 		// time fresh while it's the chosen text.
 		if (mode !== "rotate") {
-			// oxlint-disable-next-line react/set-state-in-effect
+			// Pinned flair synchronizes animated state with the selected display mode.
+			// oxlint-disable-next-line react/set-state-in-effect, react-you-might-not-need-an-effect/no-adjust-state-on-prop-change
 			setAnim(null);
 			setText(contentFor(mode));
 			if (mode !== "datetime") return;
@@ -400,16 +401,14 @@ export function UserMenu({
 	const otherAccounts = accounts.filter((account) => account.user.id !== session?.user.id);
 	const callbackURL = window.location.pathname + window.location.search;
 
-	useEffect(() => {
-		if (!open) return;
+	function handleOpenChange(nextOpen: boolean) {
+		setOpen(nextOpen);
+		if (!nextOpen) return;
+
+		setAccountsLoading(true);
 		void loadDeviceAccounts()
 			.then(setAccounts)
 			.finally(() => setAccountsLoading(false));
-	}, [open]);
-
-	function handleOpenChange(nextOpen: boolean) {
-		setOpen(nextOpen);
-		if (nextOpen) setAccountsLoading(true);
 	}
 
 	/** Makes a browser account active, then reloads the current route under that session. */

@@ -285,6 +285,8 @@ export function SignIn() {
 		};
 	}, [verification?.flow, waitingEmailLink]);
 
+	// The conditional passkey handshake starts when its external prerequisites are ready.
+	/* oxlint-disable react-you-might-not-need-an-effect/no-event-handler */
 	useEffect(() => {
 		if (
 			mode !== "signin" ||
@@ -307,6 +309,7 @@ export function SignIn() {
 				if (!result.error) window.location.assign(callbackURL);
 			});
 	}, [callbackURL, captchaConfig, captchaToken, mode, signInStep]);
+	/* oxlint-enable react-you-might-not-need-an-effect/no-event-handler */
 
 	function switchMode(nextMode: Mode) {
 		setFieldError(null);
