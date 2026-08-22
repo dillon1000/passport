@@ -14,7 +14,7 @@ type CapWidgetElement = HTMLElement & {
 
 declare module "react" {
 	// React exposes custom element typing through this declaration namespace.
-	// eslint-disable-next-line @typescript-eslint/no-namespace
+	// oxlint-disable-next-line typescript/no-namespace
 	namespace JSX {
 		interface IntrinsicElements {
 			"cap-widget": {
