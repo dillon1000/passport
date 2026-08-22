@@ -51,6 +51,11 @@ type WebhookEndpoint = {
 };
 
 type WebhookEndpointWithSecret = WebhookEndpoint & { secret: string };
+type CreateWebhookEndpointBody = {
+	url: string;
+	events: string[];
+	description?: string;
+};
 
 type WebhookDelivery = {
 	id: string;
@@ -122,15 +127,16 @@ export function Webhooks() {
 		setBusy(true);
 		setStatus(null);
 		try {
+			const body: CreateWebhookEndpointBody = {
+				url,
+				events: selectedEvents,
+			};
+			if (description.trim()) body.description = description.trim();
 			const payload = await readAPIJSON<{ endpoint: WebhookEndpointWithSecret }>(
 				await fetch("/api/admin/webhooks", {
 					method: "POST",
 					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						url,
-						events: selectedEvents,
-						...(description.trim() ? { description: description.trim() } : {}),
-					}),
+					body: JSON.stringify(body),
 				}),
 			);
 			setRevealedSecret(payload.endpoint);
@@ -175,7 +181,7 @@ export function Webhooks() {
 			setStatus({ tone: "error", message: "Could not rotate secret." });
 			return;
 		}
-		const payload = (await response.json()) as { endpoint: WebhookEndpointWithSecret };
+		const payload = await readAPIJSON<{ endpoint: WebhookEndpointWithSecret }>(response);
 		setRevealedSecret(payload.endpoint);
 		setSecretCopied(false);
 		setStatus({ tone: "success", message: "Signing secret rotated." });

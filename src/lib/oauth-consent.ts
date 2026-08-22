@@ -32,11 +32,12 @@ export function oauthConsentRequestBody(
 	const oauthQuery = oauthQueryFromLocationSearch(search);
 	if (!oauthQuery) return null;
 
-	return {
+	const body: OAuthConsentRequestBody = {
 		accept,
 		oauth_query: oauthQuery,
-		...(accept && selectedScopes ? { scope: selectedScopes.join(" ") } : {}),
-	} satisfies OAuthConsentRequestBody;
+	};
+	if (accept && selectedScopes) body.scope = selectedScopes.join(" ");
+	return body;
 }
 
 export function oauthConsentRedirect(response: OAuthConsentResponseBody) {

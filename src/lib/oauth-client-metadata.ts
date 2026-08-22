@@ -55,15 +55,10 @@ function optionalBoolean(value: boolean | null | undefined) {
 export function consentMetadataFromRegisteredClient(
 	client: RegisteredClientForConsent,
 ): ConsentClientMetadata {
-	return {
+	const metadata: ConsentClientMetadata = {
 		clientId: client.clientId,
 		name: client.name?.trim() || client.clientId,
 		redirectUris: client.redirectUris ?? [],
-		...(optionalArray(client.postLogoutRedirectUris) ? { postLogoutRedirectUris: client.postLogoutRedirectUris ?? [] } : {}),
-		...(optionalArray(client.scopes) ? { scopes: client.scopes ?? [] } : {}),
-		...(optionalArray(client.optionalScopes)
-			? { optionalScopes: client.optionalScopes ?? [] }
-			: {}),
 		uri: client.uri,
 		icon: client.icon,
 		tos: client.tos,
@@ -74,23 +69,26 @@ export function consentMetadataFromRegisteredClient(
 		createdAt: client.createdAt,
 		source: "database",
 	};
+	if (optionalArray(client.postLogoutRedirectUris)) metadata.postLogoutRedirectUris = client.postLogoutRedirectUris ?? [];
+	if (optionalArray(client.scopes)) metadata.scopes = client.scopes ?? [];
+	if (optionalArray(client.optionalScopes)) metadata.optionalScopes = client.optionalScopes ?? [];
+	return metadata;
 }
 
 export function consentMetadataFromSeedClient(
 	client: OAuthClientSeed,
 ): ConsentClientMetadata {
-	return {
+	const metadata: ConsentClientMetadata = {
 		clientId: client.id,
 		name: client.name.trim() || client.id,
 		redirectUris: client.redirectUris,
-		...(optionalArray(client.postLogoutRedirectUris) ? { postLogoutRedirectUris: client.postLogoutRedirectUris ?? [] } : {}),
-		...(optionalArray(client.scopes) ? { scopes: client.scopes ?? [] } : {}),
-		...(optionalArray(client.optionalScopes)
-			? { optionalScopes: client.optionalScopes ?? [] }
-			: {}),
 		public: optionalBoolean(client.public),
 		disabled: false,
 		verified: true,
 		source: "seed",
 	};
+	if (optionalArray(client.postLogoutRedirectUris)) metadata.postLogoutRedirectUris = client.postLogoutRedirectUris ?? [];
+	if (optionalArray(client.scopes)) metadata.scopes = client.scopes ?? [];
+	if (optionalArray(client.optionalScopes)) metadata.optionalScopes = client.optionalScopes ?? [];
+	return metadata;
 }
