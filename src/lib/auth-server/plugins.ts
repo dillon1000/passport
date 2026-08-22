@@ -39,6 +39,7 @@ import {
 	platformAdminOnlyOAuthClientPlugin,
 } from "./oauth";
 import { optionalEnv, parseOptionalNumber } from "./env";
+import { emailLinkContinuity } from "./email-link-continuity";
 import { buildStripePlugins } from "./stripe";
 import type { AuthDatabase } from "./types";
 
@@ -209,6 +210,7 @@ function agentProviderDescription(env: AuthEnv) {
 export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 	return [
 		...captchaPlugins(env),
+		emailLinkContinuity(db),
 		lastLoginMethod({
 			storeInDatabase: true,
 		}),

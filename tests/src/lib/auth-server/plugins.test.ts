@@ -29,6 +29,21 @@ function isStripePlugin(plugin: AuthPlugin): plugin is StripePlugin {
 }
 
 describe("buildAuthPlugins", () => {
+	it("enables cross-device completion endpoints for email links", () => {
+		const plugins = buildAuthPlugins(createCliAuthEnv(), {} as AuthDatabase);
+		const plugin = plugins.find((candidate) => candidate.id === "email-link-continuity");
+
+		expect(plugin).toBeDefined();
+		expect(Object.keys(plugin?.endpoints ?? {})).toEqual(
+			expect.arrayContaining([
+				"startEmailLinkFlow",
+				"consumeEmailLinkFlow",
+				"pollEmailLinkFlow",
+				"cancelEmailLinkFlow",
+			]),
+		);
+	});
+
 	it("enables Better Auth multi-session endpoints with the documented device limit", () => {
 		const plugins = buildAuthPlugins(createCliAuthEnv(), {} as AuthDatabase);
 		const plugin = plugins.find(isMultiSessionPlugin);
