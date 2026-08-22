@@ -54,6 +54,9 @@ app.get("/callback", (c) => {
 
 app.get("/api/login", async (c) => {
 	const result = await startPassportLogin(c.req.raw, c.env);
+	if (!result.response.url) {
+		return c.json({ error: "Passport did not return an authorization URL." }, 502);
+	}
 	const response = c.redirect(result.response.url);
 	appendSetCookieHeaders(response.headers, result.headers);
 	return response;

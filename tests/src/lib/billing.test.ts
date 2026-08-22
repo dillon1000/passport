@@ -217,7 +217,7 @@ describe("Stripe billing configuration", () => {
 	});
 
 	it("builds checkout customization defaults from env", () => {
-		expect(DEFAULT_STRIPE_API_VERSION).toBe("2026-05-27.dahlia");
+		expect(DEFAULT_STRIPE_API_VERSION).toBe("2026-07-29.dahlia");
 		expect(
 			stripeCheckoutDefaults({
 				STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES: "true",

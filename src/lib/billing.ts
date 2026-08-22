@@ -9,7 +9,7 @@ import type { CheckoutSessionLineItem, StripePlan } from "@better-auth/stripe";
 
 import { optionalEnv, parseOptionalBoolean } from "./auth-server/env";
 
-export const DEFAULT_STRIPE_API_VERSION = "2026-05-27.dahlia";
+export const DEFAULT_STRIPE_API_VERSION = "2026-07-29.dahlia";
 
 const STRIPE_PRORATION_BEHAVIORS = [
 	"create_prorations",

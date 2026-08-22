@@ -2,7 +2,9 @@
 import * as React from "react";
 import { Badge as KumoBadge, cn } from "@cloudflare/kumo";
 
-type BadgeProps = Omit<React.ComponentProps<typeof KumoBadge>, "variant"> & {
+type BadgeProps = {
+	children: React.ReactNode;
+	className?: string;
 	variant?: "default" | "secondary" | "destructive" | "outline";
 };
 

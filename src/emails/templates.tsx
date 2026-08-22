@@ -14,7 +14,7 @@ import {
 	Preview,
 	Section,
 	Text,
-} from "@react-email/components";
+} from "react-email";
 
 import { brand } from "../lib/brand";
 import type { RequestMetadata } from "../lib/request-metadata";
@@ -136,7 +136,7 @@ function DetailList({ metadata }: { metadata: RequestMetadata }) {
 }
 
 function ActionButton({ url, label }: { url: string; label: string }) {
-	// Inline anchor (not @react-email/components Button) so we can also surface
+	// Inline anchor rather than React Email's Button so we can also surface
 	// the raw URL fallback below it for clients that strip the button.
 	return (
 		<Section style={{ margin: "24px 0" }}>

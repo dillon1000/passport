@@ -74,6 +74,15 @@ export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGl
 			put: async () => {},
 			delete: async () => {},
 		},
+		AUTH_SECONDARY_STORAGE_COORDINATOR: {
+			getByName: () => ({
+				getValue: async () => null,
+				setValue: async () => {},
+				deleteValue: async () => {},
+				getAndDeleteValue: async () => null,
+				incrementValue: async () => 1,
+			}),
+		},
 		BETTER_AUTH_SECRET:
 			processEnv.BETTER_AUTH_SECRET ?? "better-auth-cli-secret-for-schema-generation",
 		BETTER_AUTH_URL: processEnv.BETTER_AUTH_URL ?? "http://localhost:5173",

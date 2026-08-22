@@ -55,7 +55,7 @@
 		"ACCOUNT_LOCKOUT_THRESHOLD": "10",
 		"ACCOUNT_LOCKOUT_WINDOW_SECONDS": "900",
 		"ACCOUNT_LOCKOUT_COOLDOWN_SECONDS": "900",
-		"STRIPE_API_VERSION": "2026-05-27.dahlia",
+		"STRIPE_API_VERSION": "2026-07-29.dahlia",
 		"STRIPE_CREATE_CUSTOMER_ON_SIGN_UP": "true",
 		"STRIPE_BILLING_REQUIRE_EMAIL_VERIFICATION": "true",
 		"STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES": "true",
@@ -68,6 +68,20 @@
 		{
 			"binding": "HYPERDRIVE",
 			"id": "68caa3634bfa4e7fa760bdb20b88da43"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "AUTH_SECONDARY_STORAGE_COORDINATOR",
+				"class_name": "AuthSecondaryStorage"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["AuthSecondaryStorage"]
 		}
 	],
 	"kv_namespaces": [

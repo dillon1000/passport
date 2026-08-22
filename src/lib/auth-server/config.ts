@@ -16,7 +16,7 @@ import {
 import type { AuthEnv } from "../../env";
 import { splitCsv } from "../../env";
 import { AUTH_ERROR_PATH } from "../auth-error";
-import { createKVSecondaryStorage } from "../kv-secondary-storage";
+import { createAuthSecondaryStorage } from "../kv-secondary-storage";
 import { emitWebhookEvent, WEBHOOK_EVENT_TYPES } from "../webhooks";
 import { createAuthDatabaseHooks } from "./hooks";
 import { parseOptionalBoolean, parseOptionalInteger } from "./env";
@@ -117,7 +117,10 @@ export function createAuthOptions(env: AuthEnv, db: AuthDatabase) {
 			errorURL: AUTH_ERROR_PATH,
 		},
 		advanced: AUTH_ADVANCED_OPTIONS,
-		secondaryStorage: createKVSecondaryStorage(env.AUTH_SECONDARY_STORAGE),
+		secondaryStorage: createAuthSecondaryStorage(
+			env.AUTH_SECONDARY_STORAGE_COORDINATOR,
+			env.AUTH_SECONDARY_STORAGE,
+		),
 		rateLimit: buildAuthRateLimitOptions(env),
 		database: drizzleAdapter(db, {
 			provider: "pg",

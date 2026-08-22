@@ -402,11 +402,15 @@ export function UserMenu({
 
 	useEffect(() => {
 		if (!open) return;
-		setAccountsLoading(true);
 		void loadDeviceAccounts()
 			.then(setAccounts)
 			.finally(() => setAccountsLoading(false));
 	}, [open]);
+
+	function handleOpenChange(nextOpen: boolean) {
+		setOpen(nextOpen);
+		if (nextOpen) setAccountsLoading(true);
+	}
 
 	/** Makes a browser account active, then reloads the current route under that session. */
 	async function switchAccount(account: DeviceAccount) {
@@ -422,7 +426,7 @@ export function UserMenu({
 	}
 
 	return (
-		<DropdownMenu open={open} onOpenChange={setOpen}>
+		<DropdownMenu open={open} onOpenChange={handleOpenChange}>
 			<DropdownMenu.Trigger render={
 				<button
 					type="button"

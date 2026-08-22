@@ -4,7 +4,7 @@
  * authored here for deliverability; HTML bodies are rendered from the React Email
  * templates in `./emails/templates`, which escape dynamic content automatically.
  */
-import { render } from "@react-email/render";
+import { render } from "react-email";
 
 import {
 	ActionEmail,

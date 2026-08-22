@@ -7,8 +7,6 @@
  */
 import { createExampleAuth, passportResourceURL, type ClientEnv } from "./auth";
 
-const PASSPORT_PROVIDER_ID = "passport";
-
 type PassportAccess = {
 	accessToken: string;
 	headers?: Headers;
@@ -33,7 +31,7 @@ function delegatedError(code: string, message: string, status: number) {
  */
 async function getPassportAccess(request: Request, env: ClientEnv): Promise<PassportAccess> {
 	const result = await createExampleAuth(env).api.getAccessToken({
-		body: { providerId: PASSPORT_PROVIDER_ID },
+		body: { useAccountCookie: true },
 		headers: request.headers,
 		returnHeaders: true,
 	});

@@ -2,70 +2,75 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
 	AUTH_SECONDARY_STORAGE_KEY_PREFIX,
-	MIN_KV_EXPIRATION_TTL_SECONDS,
-	createKVSecondaryStorage,
+	createAuthSecondaryStorage,
 } from "./kv-secondary-storage";
 
-function createKVMock() {
-	return {
+function createStorageMocks() {
+	const stub = {
+		getValue: vi.fn<(_: string) => Promise<string | null>>(),
+		setValue: vi.fn<(_: string, __: string, ___?: number) => Promise<void>>(),
+		deleteValue: vi.fn<(_: string) => Promise<void>>(),
+		getAndDeleteValue: vi.fn<(_: string) => Promise<string | null>>(),
+		incrementValue: vi.fn<(_: string, __: number) => Promise<number>>(),
+	};
+	const namespace = {
+		getByName: vi.fn(() => stub),
+	};
+	const legacyKV = {
 		get: vi.fn<(_: string) => Promise<string | null>>(),
-		put: vi.fn<
-			(
-				_: string,
-				__: string,
-				___?: {
-					expirationTtl?: number;
-				},
-			) => Promise<void>
-		>(),
 		delete: vi.fn<(_: string) => Promise<void>>(),
 	};
+	return { stub, namespace, legacyKV };
 }
 
-describe("createKVSecondaryStorage", () => {
-	it("reads Better Auth values from prefixed KV keys", async () => {
-		const kv = createKVMock();
-		kv.get.mockResolvedValue("stored-value");
-		const storage = createKVSecondaryStorage(kv);
+describe("createAuthSecondaryStorage", () => {
+	it("reads new values from a deterministic Durable Object shard", async () => {
+		const { stub, namespace, legacyKV } = createStorageMocks();
+		stub.getValue.mockResolvedValue("stored-value");
+		const storage = createAuthSecondaryStorage(namespace, legacyKV);
 
 		await expect(storage.get("session:abc")).resolves.toBe("stored-value");
 
-		expect(kv.get).toHaveBeenCalledWith(`${AUTH_SECONDARY_STORAGE_KEY_PREFIX}session:abc`);
+		expect(namespace.getByName).toHaveBeenCalledWith(expect.stringMatching(/^auth-storage-[0-9a-f]{2}$/));
+		expect(stub.getValue).toHaveBeenCalledWith("session:abc");
+		expect(legacyKV.get).not.toHaveBeenCalled();
 	});
 
-	it("writes values without expiration when Better Auth does not provide a ttl", async () => {
-		const kv = createKVMock();
-		const storage = createKVSecondaryStorage(kv);
+	it("falls back to prefixed KV values written before the migration", async () => {
+		const { stub, namespace, legacyKV } = createStorageMocks();
+		stub.getValue.mockResolvedValue(null);
+		legacyKV.get.mockResolvedValue("legacy-value");
+		const storage = createAuthSecondaryStorage(namespace, legacyKV);
 
-		await storage.set("verification:abc", "payload");
+		await expect(storage.get("session:abc")).resolves.toBe("legacy-value");
 
-		expect(kv.put).toHaveBeenCalledWith(
-			`${AUTH_SECONDARY_STORAGE_KEY_PREFIX}verification:abc`,
-			"payload",
-		);
-	});
-
-	it("clamps ttl values to Cloudflare KV's minimum expiration ttl", async () => {
-		const kv = createKVMock();
-		const storage = createKVSecondaryStorage(kv);
-
-		await storage.set("rate-limit:abc", "1", 10);
-
-		expect(kv.put).toHaveBeenCalledWith(
-			`${AUTH_SECONDARY_STORAGE_KEY_PREFIX}rate-limit:abc`,
-			"1",
-			{ expirationTtl: MIN_KV_EXPIRATION_TTL_SECONDS },
-		);
-	});
-
-	it("deletes prefixed KV keys", async () => {
-		const kv = createKVMock();
-		const storage = createKVSecondaryStorage(kv);
-
-		await storage.delete("session:abc");
-
-		expect(kv.delete).toHaveBeenCalledWith(
+		expect(legacyKV.get).toHaveBeenCalledWith(
 			`${AUTH_SECONDARY_STORAGE_KEY_PREFIX}session:abc`,
 		);
+	});
+
+	it("writes through the coordinator and removes the legacy value", async () => {
+		const { stub, namespace, legacyKV } = createStorageMocks();
+		const storage = createAuthSecondaryStorage(namespace, legacyKV);
+
+		await storage.set("verification:abc", "payload", 90);
+
+		expect(stub.setValue).toHaveBeenCalledWith("verification:abc", "payload", 90);
+		expect(legacyKV.delete).toHaveBeenCalledWith(
+			`${AUTH_SECONDARY_STORAGE_KEY_PREFIX}verification:abc`,
+		);
+	});
+
+	it("delegates atomic consume and increment operations", async () => {
+		const { stub, namespace, legacyKV } = createStorageMocks();
+		stub.getAndDeleteValue.mockResolvedValue("single-use-value");
+		stub.incrementValue.mockResolvedValue(2);
+		const storage = createAuthSecondaryStorage(namespace, legacyKV);
+
+		await expect(storage.getAndDelete("verification:abc")).resolves.toBe("single-use-value");
+		await expect(storage.increment("rate-limit:abc", 60)).resolves.toBe(2);
+
+		expect(stub.getAndDeleteValue).toHaveBeenCalledWith("verification:abc");
+		expect(stub.incrementValue).toHaveBeenCalledWith("rate-limit:abc", 60);
 	});
 });

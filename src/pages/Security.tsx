@@ -263,8 +263,7 @@ export function Security() {
 		setStatus(null);
 		setBusy(true);
 		const result = await authClient.unlinkAccount({
-			providerId: account.providerId,
-			accountId: account.accountId,
+			accountId: account.id,
 		});
 		setBusy(false);
 		setStatus(
