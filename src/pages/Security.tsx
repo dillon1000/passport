@@ -469,10 +469,9 @@ export function Security() {
 			headers: {
 				"content-type": "application/json",
 			},
-			body: JSON.stringify({
-				...(hasCredentialAccount ? { currentPassword } : {}),
-				newPassword,
-			}),
+		body: JSON.stringify(
+			hasCredentialAccount ? { currentPassword, newPassword } : { newPassword },
+		),
 		});
 		const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 		setBusy(false);

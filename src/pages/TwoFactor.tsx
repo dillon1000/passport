@@ -28,11 +28,11 @@ const METHODS: SegmentedOption<VerificationMethod>[] = [
 	{ value: "backup", label: "Backup", icon: KeyRound },
 ];
 
-const HEADLINES: Record<VerificationMethod, string> = {
+const HEADLINES = {
 	totp: "Enter the 6-digit code from your authenticator app.",
 	otp: "We'll email you a one-time code to confirm it's you.",
 	backup: "Enter one of your saved single-use backup codes.",
-};
+} satisfies Record<VerificationMethod, string>;
 
 export function TwoFactor() {
 	const searchParams = new URLSearchParams(window.location.search);

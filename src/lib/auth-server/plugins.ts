@@ -108,11 +108,9 @@ function captchaPlugins(env: AuthEnv) {
 
 	const provider = captchaProvider(env.CAPTCHA_PROVIDER);
 	const siteVerifyURLOverride = optionalEnv(env.CAPTCHA_SITE_VERIFY_URL);
-	const baseOptions = {
-		secretKey,
-		endpoints: [...CAPTCHA_ENDPOINTS],
-		...(siteVerifyURLOverride ? { siteVerifyURLOverride } : {}),
-	};
+	const baseOptions = siteVerifyURLOverride
+		? { secretKey, endpoints: [...CAPTCHA_ENDPOINTS], siteVerifyURLOverride }
+		: { secretKey, endpoints: [...CAPTCHA_ENDPOINTS] };
 	if (provider === "cap") {
 		if (!siteVerifyURLOverride) {
 			throw new TypeError("CAPTCHA_SITE_VERIFY_URL must be set when CAPTCHA_PROVIDER is cap.");
@@ -131,33 +129,25 @@ function captchaPlugins(env: AuthEnv) {
 	if (provider === "google-recaptcha") {
 		const minScore = parseOptionalNumber(env.CAPTCHA_MIN_SCORE, "CAPTCHA_MIN_SCORE");
 		return [
-			captcha({
-				...baseOptions,
-				provider,
-				...(minScore === undefined ? {} : { minScore }),
-			}),
+			captcha(
+				minScore === undefined
+					? { ...baseOptions, provider }
+					: { ...baseOptions, provider, minScore },
+			),
 		];
 	}
 
 	if (provider === "hcaptcha") {
 		const siteKey = optionalEnv(env.CAPTCHA_SITE_KEY);
 		return [
-			captcha({
-				...baseOptions,
-				provider,
-				...(siteKey ? { siteKey } : {}),
-			}),
+			captcha(siteKey ? { ...baseOptions, provider, siteKey } : { ...baseOptions, provider }),
 		];
 	}
 
 	if (provider === "captchafox") {
 		const siteKey = optionalEnv(env.CAPTCHA_SITE_KEY);
 		return [
-			captcha({
-				...baseOptions,
-				provider,
-				...(siteKey ? { siteKey } : {}),
-			}),
+			captcha(siteKey ? { ...baseOptions, provider, siteKey } : { ...baseOptions, provider }),
 		];
 	}
 
@@ -221,12 +211,11 @@ export function buildAuthPlugins(env: AuthEnv, db: AuthDatabase) {
 			productionURL: optionalEnv(env.OAUTH_PROXY_PRODUCTION_URL) ?? env.BETTER_AUTH_URL,
 			secret: optionalEnv(env.OAUTH_PROXY_SECRET),
 		}),
-		admin({
-			defaultRole: "user",
-			...(splitCsv(env.ADMIN_USER_IDS).length
-				? { adminUserIds: splitCsv(env.ADMIN_USER_IDS) }
-				: {}),
-		}),
+		admin(
+			splitCsv(env.ADMIN_USER_IDS).length
+				? { defaultRole: "user", adminUserIds: splitCsv(env.ADMIN_USER_IDS) }
+				: { defaultRole: "user" },
+		),
 		organization({
 			ac: organizationAccessControl,
 			roles: organizationRoles,
