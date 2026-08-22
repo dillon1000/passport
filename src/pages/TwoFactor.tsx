@@ -4,7 +4,7 @@
  * while recoverable errors restore the populated verification screen.
  */
 import { useState, type FormEvent } from "react";
-import { KeyRound, Mail, ShieldCheck } from "@/lib/icons";
+import { KeyRound, Mail, MailCheck, ShieldCheck } from "@/lib/icons";
 
 import { authClient } from "@/auth-client";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -20,6 +20,7 @@ import { resolveAuthCallbackURL } from "@/lib/auth-flow";
 import { normalizeTwoFactorVerificationCode } from "@/lib/two-factor";
 
 type VerificationMethod = "totp" | "otp" | "backup";
+type PendingAction = "send-email" | "verify" | null;
 
 const METHODS: SegmentedOption<VerificationMethod>[] = [
 	{ value: "totp", label: "App", icon: ShieldCheck },
@@ -39,9 +40,10 @@ export function TwoFactor() {
 	const [method, setMethod] = useState<VerificationMethod>("totp");
 	const [code, setCode] = useState("");
 	const [trustDevice, setTrustDevice] = useState(true);
-	const [loading, setLoading] = useState(false);
+	const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 	const [emailSent, setEmailSent] = useState(false);
 	const [status, setStatus] = useState<Status | null>(null);
+	const loading = pendingAction !== null;
 
 	function selectMethod(next: VerificationMethod) {
 		setMethod(next);
@@ -52,7 +54,7 @@ export function TwoFactor() {
 
 	function finish(error: { message?: string } | null | undefined) {
 		if (error) {
-			setLoading(false);
+			setPendingAction(null);
 			setStatus({ tone: "error", message: error.message ?? "Verification failed." });
 			setCode("");
 			return;
@@ -61,7 +63,7 @@ export function TwoFactor() {
 	}
 
 	async function submit(value: string) {
-		setLoading(true);
+		setPendingAction("verify");
 		setStatus(null);
 		const verificationCode = normalizeTwoFactorVerificationCode(method, value);
 		if (method === "totp") {
@@ -81,16 +83,16 @@ export function TwoFactor() {
 	}
 
 	async function sendEmailCode() {
-		setLoading(true);
+		setPendingAction("send-email");
 		setStatus(null);
 		const result = await authClient.twoFactor.sendOtp();
-		setLoading(false);
+		setPendingAction(null);
 		if (result.error) {
 			setStatus({ tone: "error", message: result.error.message ?? "Could not send a code." });
 			return;
 		}
 		setEmailSent(true);
-		setStatus({ tone: "success", message: "Verification code sent to your email." });
+		setCode("");
 	}
 
 	const isOTP = method !== "backup";
@@ -110,66 +112,30 @@ export function TwoFactor() {
 					inert={loading ? true : undefined}
 				>
 					<CardContent className="space-y-5 p-7">
-						<div className="space-y-7">
-							<Wordmark className="h-7" />
-							<div className="space-y-1">
-								<h1 className="text-2xl font-semibold tracking-tight">Verify it's you</h1>
-								<p className="text-sm text-muted-foreground">Complete the second step to finish signing in.</p>
-							</div>
-						</div>
-
-						<Segmented
-						value={method}
-						onChange={selectMethod}
-						options={METHODS}
-						aria-label="Verification method"
-						/>
-						<StatusBanner status={status} />
-						<p className="text-sm text-muted-foreground">{HEADLINES[method]}</p>
-
-						<form className="space-y-5" onSubmit={handleSubmit}>
-							{method === "otp" && !emailSent ? (
-								<Button
-									variant="outline"
-									className="w-full"
-									type="button"
-									onClick={sendEmailCode}
-									disabled={loading}
-								>
-									<Mail className="size-4" />
-									Send code to email
-								</Button>
-							) : null}
-
-							{isOTP ? (
-								(method === "totp" || emailSent) && (
+						{emailSent ? (
+							<>
+								<div className="space-y-7">
+									<Wordmark className="h-7" />
 									<div className="space-y-2">
-										<OTPInput
-											value={code}
-											onChange={setCode}
-											disabled={loading}
-											autoFocus={method === "totp"}
-											aria-label="Verification code"
-											onComplete={(value) => void submit(value)}
-										/>
+										<div className="grid size-12 place-items-center rounded-xl bg-muted text-foreground">
+											<MailCheck aria-hidden="true" className="size-7" />
+										</div>
+										<h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
 									</div>
-								)
-							) : (
-								<Field label="Backup code">
-									<FieldInput
-										autoComplete="one-time-code"
-										placeholder="xxxxxxxx"
-										className="font-mono tracking-wider"
+								</div>
+								<StatusBanner status={status} />
+								<p className="text-sm text-pretty text-muted-foreground">
+									Enter the six-digit verification code sent to the email address on your account.
+								</p>
+								<form className="space-y-5" onSubmit={handleSubmit}>
+									<OTPInput
 										value={code}
-										onChange={(event) => setCode(event.target.value)}
+										onChange={setCode}
+										disabled={loading}
 										autoFocus
-										required
+										aria-label="Email verification code"
+										onComplete={(value) => void submit(value)}
 									/>
-								</Field>
-							)}
-
-							{!isOTP || method === "totp" || emailSent ? (
-								<>
 									<CheckboxField
 										checked={trustDevice}
 										onCheckedChange={setTrustDevice}
@@ -181,21 +147,109 @@ export function TwoFactor() {
 										<ShieldCheck className="size-4" />
 										Verify
 									</Button>
-								</>
-							) : null}
-						</form>
-						<a
-							href="/sign-in"
-							className="mx-auto flex min-h-8 w-fit items-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
-						>
-							Use a different account
-						</a>
+								</form>
+								<Button className="w-full" variant="outline" type="button" onClick={sendEmailCode} disabled={loading}>
+									<Mail className="size-4" />
+									Resend code
+								</Button>
+								<button
+									type="button"
+									className="mx-auto flex min-h-8 items-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+									onClick={() => {
+										setEmailSent(false);
+										setCode("");
+										setStatus(null);
+									}}
+								>
+									Use another verification method
+								</button>
+							</>
+						) : (
+							<>
+								<div className="space-y-7">
+									<Wordmark className="h-7" />
+									<div className="space-y-1">
+										<h1 className="text-2xl font-semibold tracking-tight">Verify it's you</h1>
+										<p className="text-sm text-muted-foreground">Complete the second step to finish signing in.</p>
+									</div>
+								</div>
+
+								<Segmented
+									value={method}
+									onChange={selectMethod}
+									options={METHODS}
+									aria-label="Verification method"
+								/>
+								<StatusBanner status={status} />
+								<p className="text-sm text-muted-foreground">{HEADLINES[method]}</p>
+
+								<form className="space-y-5" onSubmit={handleSubmit}>
+									{method === "otp" ? (
+										<Button
+											variant="outline"
+											className="w-full"
+											type="button"
+											onClick={sendEmailCode}
+											disabled={loading}
+										>
+											<Mail className="size-4" />
+											Send code to email
+										</Button>
+									) : null}
+
+									{method === "totp" ? (
+										<OTPInput
+											value={code}
+											onChange={setCode}
+											disabled={loading}
+											autoFocus
+											aria-label="Verification code"
+											onComplete={(value) => void submit(value)}
+										/>
+									) : method === "backup" ? (
+										<Field label="Backup code">
+											<FieldInput
+												autoComplete="one-time-code"
+												placeholder="xxxxxxxx"
+												className="font-mono tracking-wider"
+												value={code}
+												onChange={(event) => setCode(event.target.value)}
+												autoFocus
+												required
+											/>
+										</Field>
+									) : null}
+
+									{method !== "otp" ? (
+										<>
+											<CheckboxField
+												checked={trustDevice}
+												onCheckedChange={setTrustDevice}
+												label="Trust this device"
+												hint="Skip 2FA prompts here for 30 days."
+												disabled={loading}
+											/>
+											<Button className="w-full" type="submit" disabled={loading || !canSubmit}>
+												<ShieldCheck className="size-4" />
+												Verify
+											</Button>
+										</>
+									) : null}
+								</form>
+								<a
+									href="/sign-in"
+									className="mx-auto flex min-h-8 w-fit items-center text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+								>
+									Use a different account
+								</a>
+							</>
+						)}
 					</CardContent>
 				</div>
 
 				<div
 					aria-hidden={!loading}
-					aria-label="Verifying"
+					aria-label={pendingAction === "send-email" ? "Sending verification code" : "Verifying"}
 					aria-live="polite"
 					className={`absolute inset-0 z-10 grid place-items-center bg-card text-muted-foreground transition-[translate,opacity] duration-150 ease-out ${
 						loading ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0"
