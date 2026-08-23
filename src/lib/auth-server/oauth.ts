@@ -268,9 +268,9 @@ export function oauthProviderPlugin(env: AuthEnv, db: AuthDatabase) {
 				env,
 				user,
 				scopes,
-				// This client metadata flag narrows a non-standard string claim to
-				// relying parties whose parser cannot accept the OIDC boolean.
-				metadata?.email_verified_as_string === true,
+				// This client metadata flag narrows a string-valued custom claim to
+				// relying parties whose parser cannot accept its native boolean.
+				metadata?.platform_admin_as_string === true,
 			),
 		customUserInfoClaims: async ({ user, scopes }) => {
 			const context = needsOAuthClaimContext(scopes)

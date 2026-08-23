@@ -203,21 +203,11 @@ function pictureClaim(env: ClaimEnv, user: OAuthClaimUser, scopes: readonly stri
 	return picture ? { picture } : {};
 }
 
-function emailClaim(
-	user: OAuthClaimUser,
-	scopes: readonly string[],
-	stringifyEmailVerified: boolean,
-) {
+function emailClaim(user: OAuthClaimUser, scopes: readonly string[]) {
 	if (!hasScope(scopes, "email")) return {};
 
 	const email = trimmed(user.email);
-	const emailVerified = user.emailVerified === true;
-	return email
-		? {
-				email,
-				email_verified: stringifyEmailVerified ? String(emailVerified) : emailVerified,
-			}
-		: {};
+	return email ? { email, email_verified: user.emailVerified === true } : {};
 }
 
 function usernameClaim(user: OAuthClaimUser, scopes: readonly string[]) {
@@ -282,11 +272,19 @@ function policyClaims(env: ClaimEnv, scopes: readonly string[], context: OAuthCl
 }
 
 /** Returns platform-administrator status only after the client requests its dedicated scope. */
-function platformAdminClaim(env: ClaimEnv, user: OAuthClaimUser, scopes: readonly string[]) {
+function platformAdminClaim(
+	env: ClaimEnv,
+	user: OAuthClaimUser,
+	scopes: readonly string[],
+	stringifyPlatformAdmin = false,
+) {
 	if (!hasScope(scopes, "platform:admin")) return {};
 
+	const platformAdmin = isAdminOperator(env, user);
 	return {
-		[oauthClaimURL(env, "platform_admin")]: isAdminOperator(env, user),
+		[oauthClaimURL(env, "platform_admin")]: stringifyPlatformAdmin
+			? String(platformAdmin)
+			: platformAdmin,
 	};
 }
 
@@ -361,14 +359,14 @@ export function buildIDTokenScopeClaims(
 	env: ClaimEnv,
 	user: OAuthClaimUser,
 	scopes: readonly string[],
-	stringifyEmailVerified = false,
+	stringifyPlatformAdmin = false,
 ) {
 	const claims: OAuthScopeClaims = buildAuthContextClaims(user);
-	Object.assign(claims, emailClaim(user, scopes, stringifyEmailVerified));
+	Object.assign(claims, emailClaim(user, scopes));
 	Object.assign(claims, pictureClaim(env, user, scopes));
 	Object.assign(claims, usernameClaim(user, scopes));
 	Object.assign(claims, phoneClaim(user, scopes));
-	Object.assign(claims, platformAdminClaim(env, user, scopes));
+	Object.assign(claims, platformAdminClaim(env, user, scopes, stringifyPlatformAdmin));
 	return claims;
 }
 

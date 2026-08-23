@@ -26,6 +26,8 @@ When chatting, planning, or conversing, do not be afraid to suggest seemingly in
 ### Developing
 We should avoid feature creep
 
+When a claim type mismatch could refer to more than one claim, identify the exact claim name before changing serialization.
+
 For copy actions inside selectors and builders, copy the currently selected values unless the User explicitly requests every available value.
 
 When a required artifact fails at scale, do not drop or skip it to keep the pipeline moving. Build a scalable implementation for that artifact, even if it requires a different language or an external sort/on-disk workflow.

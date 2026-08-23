@@ -146,13 +146,6 @@ describe("OAuth scope claims", () => {
 		});
 	});
 
-	it("supports string email verification for incompatible clients", () => {
-		expect(buildIDTokenScopeClaims(env, user, ["openid", "email"], true)).toMatchObject({
-			email: "dillon@example.com",
-			email_verified: "true",
-		});
-	});
-
 	it("adds standard phone and narrow username claims when consented", () => {
 		expect(
 			buildIDTokenScopeClaims(env, user, ["openid", "phone", "profile:username"]),
@@ -228,6 +221,16 @@ describe("OAuth scope claims", () => {
 			[oauthClaimURL(env, "platform_admin")]: false,
 		});
 		expect(buildAccessTokenScopeClaims(adminEnv, user, ["openid"], context)).toEqual({});
+	});
+
+	it("supports string platform administrator status for incompatible clients", () => {
+		const adminEnv = { ...env, ADMIN_USER_IDS: user.id };
+
+		expect(
+			buildIDTokenScopeClaims(adminEnv, user, ["openid", "platform:admin"], true),
+		).toMatchObject({
+			[oauthClaimURL(adminEnv, "platform_admin")]: "true",
+		});
 	});
 
 	it("adds minimal account security claims when consented", () => {
