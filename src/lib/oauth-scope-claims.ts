@@ -28,6 +28,7 @@ type OAuthClaimDatabase = ReturnType<typeof createDb>;
 export type OAuthClaimUser = {
 	id: string;
 	email?: string | null;
+	emailVerified?: boolean | null;
 	role?: string | null;
 	image?: string | null;
 	username?: string | null;
@@ -202,6 +203,13 @@ function pictureClaim(env: ClaimEnv, user: OAuthClaimUser, scopes: readonly stri
 	return picture ? { picture } : {};
 }
 
+function emailClaim(user: OAuthClaimUser, scopes: readonly string[]) {
+	if (!hasScope(scopes, "email")) return {};
+
+	const email = trimmed(user.email);
+	return email ? { email, email_verified: user.emailVerified === true } : {};
+}
+
 function usernameClaim(user: OAuthClaimUser, scopes: readonly string[]) {
 	if (!hasScope(scopes, "profile:username")) return {};
 
@@ -345,6 +353,7 @@ export function buildIDTokenScopeClaims(
 	scopes: readonly string[],
 ) {
 	const claims: OAuthScopeClaims = buildAuthContextClaims(user);
+	Object.assign(claims, emailClaim(user, scopes));
 	Object.assign(claims, pictureClaim(env, user, scopes));
 	Object.assign(claims, usernameClaim(user, scopes));
 	Object.assign(claims, phoneClaim(user, scopes));
