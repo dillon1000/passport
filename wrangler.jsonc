@@ -64,10 +64,12 @@
 		"STRIPE_CHECKOUT_TAX_ID_COLLECTION_ENABLED": "false",
 		"STRIPE_BILLING_PLANS": "[{\"name\":\"pro\",\"label\":\"Pro\",\"description\":\"Production auth and billing features.\",\"priceId\":\"price_replace_monthly\",\"annualDiscountPriceId\":\"price_replace_yearly\",\"limits\":{\"applications\":10,\"organizations\":3},\"entitlements\":[\"oauth\",\"billing\"],\"freeTrialDays\":14},{\"name\":\"team\",\"label\":\"Team\",\"description\":\"Organization billing with seat sync.\",\"priceId\":\"price_replace_team_monthly\",\"annualDiscountPriceId\":\"price_replace_team_yearly\",\"seatPriceId\":\"price_replace_team_seat\",\"limits\":{\"applications\":50,\"organizations\":10,\"members\":100},\"entitlements\":[\"oauth\",\"billing\",\"organizations\",\"seats\"]}]",
 	},
-	"hyperdrive": [
+	"d1_databases": [
 		{
-			"binding": "HYPERDRIVE",
-			"id": "68caa3634bfa4e7fa760bdb20b88da43"
+			"binding": "DB",
+			"database_name": "passport",
+			"database_id": "93f80881-c30d-4359-b352-858157c62d56",
+			"migrations_dir": "drizzle"
 		}
 	],
 	"durable_objects": {

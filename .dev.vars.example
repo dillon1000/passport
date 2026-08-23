@@ -7,12 +7,6 @@ BETTER_AUTH_URL=http://localhost:5173
 # Comma-separated origins allowed to call auth endpoints.
 TRUSTED_ORIGINS=http://localhost:5173,http://localhost:5174
 
-# Local Postgres URL used by drizzle-kit and non-Hyperdrive tooling.
-DATABASE_URL=postgresql://postgres:postgres@localhost:55432/passport
-
-# Production Postgres URL used only by `pnpm db:migrate prod`.
-PROD_DATABASE_URL=
-
 # Sender identity used by the Cloudflare Email binding.
 EMAIL_FROM=Passport <auth@mail.11011.dev>
 

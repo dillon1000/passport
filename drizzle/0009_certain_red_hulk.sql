@@ -1,1 +1,0 @@
-ALTER TABLE "oauth_client" ADD COLUMN "backchannel_logout_uri" text;

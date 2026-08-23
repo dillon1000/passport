@@ -1,1 +1,0 @@
-ALTER TABLE "oauth_client" ADD COLUMN "platform_admin_only" boolean DEFAULT false NOT NULL;

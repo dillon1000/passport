@@ -34,7 +34,7 @@ const oauthClientSeedSchema = z.object({
 
 export type AuthEnv = Env & {
 	ASSETS: Fetcher;
-	HYPERDRIVE: Hyperdrive;
+	DB: D1Database;
 	EMAIL: SendEmail;
 	AUTH_SECONDARY_STORAGE: KVNamespace;
 	PROFILE_IMAGES: R2Bucket;

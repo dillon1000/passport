@@ -2,11 +2,12 @@
  * Actor-aware domain services for Passport's delegated resource API. Inputs
  * always include the OAuth subject and calling client; outputs are safe profile,
  * organization, invitation, member, and team DTOs. Every tenant mutation loads
- * current membership and dynamic-role permissions, while transactions preserve
- * Better Auth's limits, ownership rules, nested-resource boundaries, and stale
- * session cleanup without translating bearer tokens into browser sessions.
+ * current membership and dynamic-role permissions. D1 atomic batches and
+ * database constraints preserve Better Auth's limits, ownership rules,
+ * nested-resource boundaries, and stale session cleanup without translating
+ * bearer tokens into browser sessions.
  */
-import { and, count, eq, inArray, or } from "drizzle-orm";
+import { and, count, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 
 import type { createDb } from "../db/client";
@@ -33,10 +34,9 @@ const TEAM_LIMIT = 25;
 const TEAM_MEMBER_LIMIT = 100;
 
 type DelegatedDatabase = ReturnType<typeof createDb>;
-type DelegatedTransaction = Parameters<
-	Parameters<DelegatedDatabase["transaction"]>[0]
->[0];
-type DelegatedDatabaseExecutor = DelegatedDatabase | DelegatedTransaction;
+type DelegatedDatabaseExecutor = DelegatedDatabase;
+type DelegatedBatchItem = Parameters<DelegatedDatabase["batch"]>[0][number];
+type DelegatedBatch = [DelegatedBatchItem, ...DelegatedBatchItem[]];
 
 export type DelegatedResourceActor = {
 	userID: string;
@@ -97,7 +97,6 @@ const metadataValueSchema: z.ZodType<MetadataValue> = z.lazy(() => z.union([
 	z.string(), z.number(), z.boolean(), z.null(), z.array(metadataValueSchema), z.record(z.string(), metadataValueSchema),
 ]));
 const organizationMetadataSchema = z.record(z.string(), metadataValueSchema);
-const databaseErrorSchema = z.object({ code: z.string() });
 
 function ISODate(value: Date | string | null | undefined) {
 	if (!value) return null;
@@ -137,23 +136,33 @@ function invitationTeamIDs(value: string | null | undefined) {
 		: [];
 }
 
-function databaseErrorCode(...[value]: Parameters<typeof databaseErrorSchema.safeParse>) {
-	const databaseError = databaseErrorSchema.safeParse(value);
-	return databaseError.success ? databaseError.data.code : undefined;
+function isUniqueConstraintError(error: Error) {
+	return error.message.includes("UNIQUE constraint failed");
 }
 
-async function serializableTransaction<T>(
-	db: DelegatedDatabase,
-	callback: (transaction: DelegatedTransaction) => Promise<T>,
-) {
-	for (let attempt = 0; attempt < 3; attempt += 1) {
-		try {
-			return await db.transaction(callback, { isolationLevel: "serializable" });
-		} catch (error) {
-			if (databaseErrorCode(error) !== "40001" || attempt === 2) throw error;
-		}
+const constraintConflicts = {
+	organization_limit_reached: "The organization limit has been reached.",
+	organization_member_limit_reached: "The organization member limit has been reached.",
+	invitation_limit_reached: "The pending invitation limit has been reached.",
+	team_limit_reached: "The team limit has been reached.",
+	team_member_limit_reached: "The team member limit has been reached.",
+	last_owner: "Transfer ownership before removing the last owner.",
+	last_team: "An organization must keep at least one team.",
+} as const;
+
+function mapConstraintConflict(error: Error) {
+	for (const [code, message] of Object.entries(constraintConflicts)) {
+		if (error.message.includes(code)) return delegatedConflict(code, message);
 	}
-	throw new Error("Serializable transaction retry exhausted.");
+	return undefined;
+}
+
+async function runConstraintAware<T>(operation: () => Promise<T>) {
+	try {
+		return await operation();
+	} catch (error) {
+		throw (error instanceof Error ? mapConstraintConflict(error) : undefined) ?? error;
+	}
 }
 
 async function findActorMembership(
@@ -398,7 +407,7 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			return profileDTO(rows[0]);
 		} catch (error) {
 			if (error instanceof DelegatedResourceError) throw error;
-			if (databaseErrorCode(error) === "23505") {
+			if (error instanceof Error && isUniqueConstraintError(error)) {
 				throw delegatedConflict("username_taken", "Username is already in use.");
 			}
 			throw error;
@@ -411,20 +420,28 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			file,
 			ownerID: actor.userID,
 			purpose: "profile",
-			assign: (absoluteURL) =>
-				serializableTransaction(options.db, async (transaction) => {
-					const rows = await transaction
-						.select({ image: schema.user.image })
-						.from(schema.user)
-						.where(eq(schema.user.id, actor.userID))
-						.limit(1);
-					if (!rows[0]) throw delegatedNotFound("user_not_found", "User not found.");
-					await transaction
-						.update(schema.user)
-						.set({ image: absoluteURL, updatedAt: now() })
-						.where(eq(schema.user.id, actor.userID));
-					return rows[0].image;
-				}),
+			assign: async (absoluteURL) => {
+				const rows = await options.db
+					.select({ image: schema.user.image })
+					.from(schema.user)
+					.where(eq(schema.user.id, actor.userID))
+					.limit(1);
+				if (!rows[0]) throw delegatedNotFound("user_not_found", "User not found.");
+				const changed = await options.db
+					.update(schema.user)
+					.set({ image: absoluteURL, updatedAt: now() })
+					.where(
+						and(
+							eq(schema.user.id, actor.userID),
+							rows[0].image === null
+								? isNull(schema.user.image)
+								: eq(schema.user.image, rows[0].image),
+						),
+					)
+					.returning({ id: schema.user.id });
+				if (!changed[0]) throw delegatedConflict("image_changed", "The image changed. Retry the update.");
+				return rows[0].image;
+			},
 		});
 		await recordMutation(actor, {
 			action: "profile.picture.update",
@@ -437,20 +454,28 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 	async function clearProfilePicture(actor: DelegatedResourceActor) {
 		const images = requiredImages(options.images);
 		await images.clearImage({
-			assign: () =>
-				serializableTransaction(options.db, async (transaction) => {
-					const rows = await transaction
-						.select({ image: schema.user.image })
-						.from(schema.user)
-						.where(eq(schema.user.id, actor.userID))
-						.limit(1);
-					if (!rows[0]) throw delegatedNotFound("user_not_found", "User not found.");
-					await transaction
-						.update(schema.user)
-						.set({ image: null, updatedAt: now() })
-						.where(eq(schema.user.id, actor.userID));
-					return rows[0].image;
-				}),
+			assign: async () => {
+				const rows = await options.db
+					.select({ image: schema.user.image })
+					.from(schema.user)
+					.where(eq(schema.user.id, actor.userID))
+					.limit(1);
+				if (!rows[0]) throw delegatedNotFound("user_not_found", "User not found.");
+				const changed = await options.db
+					.update(schema.user)
+					.set({ image: null, updatedAt: now() })
+					.where(
+						and(
+							eq(schema.user.id, actor.userID),
+							rows[0].image === null
+								? isNull(schema.user.image)
+								: eq(schema.user.image, rows[0].image),
+						),
+					)
+					.returning({ id: schema.user.id });
+				if (!changed[0]) throw delegatedConflict("image_changed", "The image changed. Retry the update.");
+				return rows[0].image;
+			},
 		});
 		await recordMutation(actor, {
 			action: "profile.picture.delete",
@@ -529,28 +554,27 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		const createdAt = now();
 
 		try {
-			const organization = await serializableTransaction(
-				options.db,
-				async (transaction) => {
-					const users = await transaction
+			const [users, membershipCounts] = await options.db.batch([
+				options.db
 						.select({ id: schema.user.id })
 						.from(schema.user)
 						.where(eq(schema.user.id, actor.userID))
-						.limit(1);
-					if (!users[0]) throw delegatedNotFound("user_not_found", "User not found.");
-
-					const membershipCounts = await transaction
+						.limit(1),
+				options.db
 						.select({ value: count() })
 						.from(schema.member)
-						.where(eq(schema.member.userId, actor.userID));
-					if ((membershipCounts[0]?.value ?? 0) >= ORGANIZATION_LIMIT) {
-						throw delegatedConflict(
-							"organization_limit_reached",
-							"The organization limit has been reached.",
-						);
-					}
+						.where(eq(schema.member.userId, actor.userID)),
+			]);
+			if (!users[0]) throw delegatedNotFound("user_not_found", "User not found.");
+			if ((membershipCounts[0]?.value ?? 0) >= ORGANIZATION_LIMIT) {
+				throw delegatedConflict(
+					"organization_limit_reached",
+					"The organization limit has been reached.",
+				);
+			}
 
-					const inserted = await transaction
+			const [inserted] = await runConstraintAware(() => options.db.batch([
+				options.db
 						.insert(schema.organization)
 						.values({
 							id: organizationID,
@@ -558,30 +582,29 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 							slug,
 							createdAt,
 						})
-						.returning();
-					await transaction.insert(schema.member).values({
+						.returning(),
+				options.db.insert(schema.member).values({
 						id: memberID,
 						organizationId: organizationID,
 						userId: actor.userID,
 						role: "owner",
 						createdAt,
-					});
-					await transaction.insert(schema.team).values({
+					}),
+				options.db.insert(schema.team).values({
 						id: teamID,
 						name,
 						organizationId: organizationID,
 						createdAt,
 						updatedAt: createdAt,
-					});
-					await transaction.insert(schema.teamMember).values({
+					}),
+				options.db.insert(schema.teamMember).values({
 						id: teamMemberID,
 						teamId: teamID,
 						userId: actor.userID,
 						createdAt,
-					});
-					return inserted[0];
-				},
-			);
+					}),
+			]));
+			const organization = inserted[0];
 			if (!organization) throw new Error("Organization insert returned no row.");
 			await recordMutation(actor, {
 				action: "organization.create",
@@ -593,7 +616,7 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			return organizationDTO({ ...organization, role: "owner" });
 		} catch (error) {
 			if (error instanceof DelegatedResourceError) throw error;
-			if (databaseErrorCode(error) === "23505") {
+			if (error instanceof Error && isUniqueConstraintError(error)) {
 				throw delegatedConflict(
 					"organization_slug_taken",
 					"Organization slug is already in use.",
@@ -641,7 +664,7 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			return organizationDTO(rows[0]);
 		} catch (error) {
 			if (error instanceof DelegatedResourceError) throw error;
-			if (databaseErrorCode(error) === "23505") {
+			if (error instanceof Error && isUniqueConstraintError(error)) {
 				throw delegatedConflict(
 					"organization_slug_taken",
 					"Organization slug is already in use.",
@@ -659,21 +682,23 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			resource: "organization",
 			action: "delete",
 		});
-		const deleted = await serializableTransaction(options.db, async (transaction) => {
-			const organizations = await transaction
+		const [organizations, teams] = await options.db.batch([
+			options.db
 				.select()
 				.from(schema.organization)
 				.where(eq(schema.organization.id, organizationID))
-				.limit(1);
+				.limit(1),
+			options.db
+				.select({ id: schema.team.id })
+				.from(schema.team)
+				.where(eq(schema.team.organizationId, organizationID)),
+		]);
 			if (!organizations[0]) {
 				throw delegatedNotFound("organization_not_found", "Organization not found.");
 			}
-			const teams = await transaction
-				.select({ id: schema.team.id })
-				.from(schema.team)
-				.where(eq(schema.team.organizationId, organizationID));
-			const teamIDs = teams.map((team) => team.id);
-			await transaction
+		const teamIDs = teams.map((team) => team.id);
+		await options.db.batch([
+			options.db
 				.update(schema.session)
 				.set({ activeOrganizationId: null, activeTeamId: null, updatedAt: now() })
 				.where(
@@ -683,12 +708,12 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 								inArray(schema.session.activeTeamId, teamIDs),
 							)
 						: eq(schema.session.activeOrganizationId, organizationID),
-				);
-			await transaction
+				),
+			options.db
 				.delete(schema.organization)
-				.where(eq(schema.organization.id, organizationID));
-			return organizations[0];
-		});
+				.where(eq(schema.organization.id, organizationID)),
+		]);
+		const deleted = organizations[0];
 		await options.images?.deleteOwnedAsset(deleted.logo);
 		await recordMutation(actor, {
 			action: "organization.delete",
@@ -704,18 +729,21 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		organizationID: string,
 	) {
 		await requireVisibleOrganization(options.db, actor, organizationID);
-		const removedMember = await serializableTransaction(
-			options.db,
-			async (transaction) => {
-				const membership = await findActorMembership(transaction, actor, organizationID);
+		const [membership, owners, teams] = await Promise.all([
+			findActorMembership(options.db, actor, organizationID),
+			options.db
+				.select({ role: schema.member.role })
+				.from(schema.member)
+				.where(eq(schema.member.organizationId, organizationID)),
+			options.db
+				.select({ id: schema.team.id })
+				.from(schema.team)
+				.where(eq(schema.team.organizationId, organizationID)),
+		]);
 				if (!membership) {
 					throw delegatedNotFound("organization_not_found", "Organization not found.");
 				}
 				if (hasRole(membership.role, "owner")) {
-					const owners = await transaction
-						.select({ role: schema.member.role })
-						.from(schema.member)
-						.where(eq(schema.member.organizationId, organizationID));
 					if (owners.filter((member) => hasRole(member.role, "owner")).length <= 1) {
 						throw delegatedConflict(
 							"last_owner",
@@ -723,25 +751,12 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						);
 					}
 				}
-				const teams = await transaction
-					.select({ id: schema.team.id })
-					.from(schema.team)
-					.where(eq(schema.team.organizationId, organizationID));
-				const teamIDs = teams.map((team) => team.id);
-				if (teamIDs.length) {
-					await transaction
-						.delete(schema.teamMember)
-						.where(
-							and(
-								eq(schema.teamMember.userId, actor.userID),
-								inArray(schema.teamMember.teamId, teamIDs),
-							),
-						);
-				}
-				await transaction
-					.delete(schema.member)
-					.where(eq(schema.member.id, membership.id));
-				await transaction
+		const teamIDs = teams.map((team) => team.id);
+		const writes: DelegatedBatchItem[] = [
+			options.db
+				.delete(schema.member)
+				.where(eq(schema.member.id, membership.id)),
+			options.db
 					.update(schema.session)
 					.set({ activeOrganizationId: null, activeTeamId: null, updatedAt: now() })
 					.where(
@@ -754,10 +769,23 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 									)
 								: eq(schema.session.activeOrganizationId, organizationID),
 						),
-					);
-				return membership;
-			},
-		);
+					),
+		];
+		if (teamIDs.length) {
+			writes.unshift(
+				options.db
+					.delete(schema.teamMember)
+					.where(
+						and(
+							eq(schema.teamMember.userId, actor.userID),
+							inArray(schema.teamMember.teamId, teamIDs),
+						),
+					),
+			);
+		}
+		// SAFETY: the base delete and session update keep this batch non-empty.
+		await runConstraintAware(() => options.db.batch(writes as DelegatedBatch));
+		const removedMember = membership;
 		await recordMutation(actor, {
 			action: "organization.leave",
 			targetType: "member",
@@ -780,22 +808,30 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			file,
 			ownerID: organizationID,
 			purpose: "organization-logo",
-			assign: (absoluteURL) =>
-				serializableTransaction(options.db, async (transaction) => {
-					const rows = await transaction
-						.select({ logo: schema.organization.logo })
-						.from(schema.organization)
-						.where(eq(schema.organization.id, organizationID))
-						.limit(1);
-					if (!rows[0]) {
-						throw delegatedNotFound("organization_not_found", "Organization not found.");
-					}
-					await transaction
-						.update(schema.organization)
-						.set({ logo: absoluteURL })
-						.where(eq(schema.organization.id, organizationID));
-					return rows[0].logo;
-				}),
+			assign: async (absoluteURL) => {
+				const rows = await options.db
+					.select({ logo: schema.organization.logo })
+					.from(schema.organization)
+					.where(eq(schema.organization.id, organizationID))
+					.limit(1);
+				if (!rows[0]) {
+					throw delegatedNotFound("organization_not_found", "Organization not found.");
+				}
+				const changed = await options.db
+					.update(schema.organization)
+					.set({ logo: absoluteURL })
+					.where(
+						and(
+							eq(schema.organization.id, organizationID),
+							rows[0].logo === null
+								? isNull(schema.organization.logo)
+								: eq(schema.organization.logo, rows[0].logo),
+						),
+					)
+					.returning({ id: schema.organization.id });
+				if (!changed[0]) throw delegatedConflict("image_changed", "The image changed. Retry the update.");
+				return rows[0].logo;
+			},
 		});
 		await recordMutation(actor, {
 			action: "organization.logo.update",
@@ -816,22 +852,30 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		});
 		const images = requiredImages(options.images);
 		await images.clearImage({
-			assign: () =>
-				serializableTransaction(options.db, async (transaction) => {
-					const rows = await transaction
-						.select({ logo: schema.organization.logo })
-						.from(schema.organization)
-						.where(eq(schema.organization.id, organizationID))
-						.limit(1);
-					if (!rows[0]) {
-						throw delegatedNotFound("organization_not_found", "Organization not found.");
-					}
-					await transaction
-						.update(schema.organization)
-						.set({ logo: null })
-						.where(eq(schema.organization.id, organizationID));
-					return rows[0].logo;
-				}),
+			assign: async () => {
+				const rows = await options.db
+					.select({ logo: schema.organization.logo })
+					.from(schema.organization)
+					.where(eq(schema.organization.id, organizationID))
+					.limit(1);
+				if (!rows[0]) {
+					throw delegatedNotFound("organization_not_found", "Organization not found.");
+				}
+				const changed = await options.db
+					.update(schema.organization)
+					.set({ logo: null })
+					.where(
+						and(
+							eq(schema.organization.id, organizationID),
+							rows[0].logo === null
+								? isNull(schema.organization.logo)
+								: eq(schema.organization.logo, rows[0].logo),
+						),
+					)
+					.returning({ id: schema.organization.id });
+				if (!changed[0]) throw delegatedConflict("image_changed", "The image changed. Retry the update.");
+				return rows[0].logo;
+			},
 		});
 		await recordMutation(actor, {
 			action: "organization.logo.delete",
@@ -901,16 +945,13 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		const createdAt = now();
 		const expiresAt = new Date(createdAt.getTime() + INVITATION_LIFETIME_MS);
 
-		const result = await serializableTransaction(options.db, async (transaction) => {
-			const organizations = await transaction
+		const [organizations, existingMembers, pendingCounts] = await options.db.batch([
+			options.db
 				.select({ name: schema.organization.name })
 				.from(schema.organization)
 				.where(eq(schema.organization.id, organizationID))
-				.limit(1);
-			if (!organizations[0]) {
-				throw delegatedNotFound("organization_not_found", "Organization not found.");
-			}
-			const existingMembers = await transaction
+				.limit(1),
+			options.db
 				.select({ id: schema.member.id })
 				.from(schema.member)
 				.innerJoin(schema.user, eq(schema.member.userId, schema.user.id))
@@ -920,25 +961,8 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.user.email, email),
 					),
 				)
-				.limit(1);
-			if (existingMembers[0]) {
-				throw delegatedConflict(
-					"already_a_member",
-					"This user is already an organization member.",
-				);
-			}
-
-			await transaction
-				.update(schema.invitation)
-				.set({ status: "canceled" })
-				.where(
-					and(
-						eq(schema.invitation.organizationId, organizationID),
-						eq(schema.invitation.email, email),
-						eq(schema.invitation.status, "pending"),
-					),
-				);
-			const pendingCounts = await transaction
+				.limit(1),
+			options.db
 				.select({ value: count() })
 				.from(schema.invitation)
 				.where(
@@ -946,7 +970,18 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.invitation.organizationId, organizationID),
 						eq(schema.invitation.status, "pending"),
 					),
+				),
+		]);
+			if (!organizations[0]) {
+				throw delegatedNotFound("organization_not_found", "Organization not found.");
+			}
+			if (existingMembers[0]) {
+				throw delegatedConflict(
+					"already_a_member",
+					"This user is already an organization member.",
 				);
+			}
+
 			if ((pendingCounts[0]?.value ?? 0) >= ORGANIZATION_INVITATION_LIMIT) {
 				throw delegatedConflict(
 					"invitation_limit_reached",
@@ -954,8 +989,9 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 				);
 			}
 
-			if (input.teamID) {
-				const teams = await transaction
+		if (input.teamID) {
+				const [teams, memberCounts] = await options.db.batch([
+					options.db
 					.select({ id: schema.team.id })
 					.from(schema.team)
 					.where(
@@ -964,12 +1000,13 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 							eq(schema.team.organizationId, organizationID),
 						),
 					)
-					.limit(1);
+					.limit(1),
+					options.db
+						.select({ value: count() })
+						.from(schema.teamMember)
+						.where(eq(schema.teamMember.teamId, input.teamID)),
+				]);
 				if (!teams[0]) throw delegatedNotFound("team_not_found", "Team not found.");
-				const memberCounts = await transaction
-					.select({ value: count() })
-					.from(schema.teamMember)
-					.where(eq(schema.teamMember.teamId, input.teamID));
 				if ((memberCounts[0]?.value ?? 0) >= TEAM_MEMBER_LIMIT) {
 					throw delegatedConflict(
 						"team_member_limit_reached",
@@ -978,7 +1015,18 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 				}
 			}
 
-			const rows = await transaction
+		const [, rows] = await runConstraintAware(() => options.db.batch([
+			options.db
+				.update(schema.invitation)
+				.set({ status: "canceled" })
+				.where(
+					and(
+						eq(schema.invitation.organizationId, organizationID),
+						eq(schema.invitation.email, email),
+						eq(schema.invitation.status, "pending"),
+					),
+				),
+			options.db
 				.insert(schema.invitation)
 				.values({
 					id: invitationID,
@@ -991,10 +1039,10 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 					createdAt,
 					inviterId: actor.userID,
 				})
-				.returning();
+				.returning(),
+		]));
 			if (!rows[0]) throw new Error("Invitation insert returned no row.");
-			return { invitation: rows[0], organizationName: organizations[0].name };
-		});
+		const result = { invitation: rows[0], organizationName: organizations[0].name };
 
 		await recordMutation(actor, {
 			action: "organization.invitation.create",
@@ -1072,23 +1120,40 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			);
 		}
 		const createdAt = now();
-		const result = await serializableTransaction(options.db, async (transaction) => {
-			const invitations = await transaction
+		const reservedStatus = `accepting:${actor.userID}`;
+		let [pending] = await options.db
+			.update(schema.invitation)
+			.set({ status: reservedStatus })
+			.where(
+				and(
+					eq(schema.invitation.id, invitationID),
+					eq(schema.invitation.email, profile.email.toLowerCase()),
+					eq(schema.invitation.status, "pending"),
+					gt(schema.invitation.expiresAt, createdAt),
+				),
+			)
+			.returning();
+		if (!pending) {
+			const invitations = await options.db
 				.select()
 				.from(schema.invitation)
 				.where(eq(schema.invitation.id, invitationID))
 				.limit(1);
-			const pending = invitations[0];
-			if (
-				!pending ||
-				pending.email.toLowerCase() !== profile.email.toLowerCase() ||
-				pending.status !== "pending" ||
-				pending.expiresAt <= createdAt
-			) {
+			pending = invitations[0];
+			if (!pending || pending.email.toLowerCase() !== profile.email.toLowerCase()) {
 				throw delegatedNotFound("invitation_not_found", "Invitation not found.");
 			}
+			if (pending.status !== reservedStatus || pending.expiresAt <= createdAt) {
+				throw delegatedConflict(
+					"invitation_already_used",
+					"Invitation has already been used.",
+				);
+			}
+		}
 
-			const existingMembers = await transaction
+		try {
+			const [existingMembers, memberCounts] = await options.db.batch([
+				options.db
 				.select({ id: schema.member.id })
 				.from(schema.member)
 				.where(
@@ -1097,17 +1162,18 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.member.userId, actor.userID),
 					),
 				)
-				.limit(1);
+				.limit(1),
+				options.db
+					.select({ value: count() })
+					.from(schema.member)
+					.where(eq(schema.member.organizationId, pending.organizationId)),
+			]);
 			if (existingMembers[0]) {
 				throw delegatedConflict(
 					"already_a_member",
 					"You are already an organization member.",
 				);
 			}
-			const memberCounts = await transaction
-				.select({ value: count() })
-				.from(schema.member)
-				.where(eq(schema.member.organizationId, pending.organizationId));
 			if ((memberCounts[0]?.value ?? 0) >= ORGANIZATION_MEMBER_LIMIT) {
 				throw delegatedConflict(
 					"organization_member_limit_reached",
@@ -1117,7 +1183,8 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 
 			const teamIDs = invitationTeamIDs(pending.teamId);
 			for (const teamID of teamIDs) {
-				const teams = await transaction
+				const [teams, teamMemberCounts] = await options.db.batch([
+					options.db
 					.select({ id: schema.team.id })
 					.from(schema.team)
 					.where(
@@ -1126,12 +1193,13 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 							eq(schema.team.organizationId, pending.organizationId),
 						),
 					)
-					.limit(1);
+					.limit(1),
+					options.db
+						.select({ value: count() })
+						.from(schema.teamMember)
+						.where(eq(schema.teamMember.teamId, teamID)),
+				]);
 				if (!teams[0]) throw delegatedNotFound("team_not_found", "Team not found.");
-				const teamMemberCounts = await transaction
-					.select({ value: count() })
-					.from(schema.teamMember)
-					.where(eq(schema.teamMember.teamId, teamID));
 				if ((teamMemberCounts[0]?.value ?? 0) >= TEAM_MEMBER_LIMIT) {
 					throw delegatedConflict(
 						"team_member_limit_reached",
@@ -1140,50 +1208,62 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 				}
 			}
 
-			const updated = await transaction
+			const memberID = generateID();
+			const writes: DelegatedBatchItem[] = [
+				options.db
+					.update(schema.invitation)
+					.set({ status: "accepted" })
+					.where(
+						and(
+							eq(schema.invitation.id, invitationID),
+							eq(schema.invitation.status, reservedStatus),
+						),
+					)
+					.returning(),
+				options.db.insert(schema.member).values({
+					id: memberID,
+					organizationId: pending.organizationId,
+					userId: actor.userID,
+					role: pending.role ?? "member",
+					createdAt,
+				}),
+				...teamIDs.map((teamID) =>
+					options.db.insert(schema.teamMember).values({
+						id: generateID(),
+						teamId: teamID,
+						userId: actor.userID,
+						createdAt,
+					}),
+				),
+			];
+			// SAFETY: the invitation update and member insert keep this batch non-empty.
+			await runConstraintAware(() => options.db.batch(writes as DelegatedBatch));
+			const result = {
+				invitation: { ...pending, status: "accepted" },
+				memberID,
+			};
+			await recordMutation(actor, {
+				action: "organization.invitation.accept",
+				targetType: "invitation",
+				targetID: invitationID,
+				organizationID: result.invitation.organizationId,
+			});
+			return {
+				invitation: invitationDTO(result.invitation),
+				memberId: result.memberID,
+			};
+		} catch (error) {
+			await options.db
 				.update(schema.invitation)
-				.set({ status: "accepted" })
+				.set({ status: "pending" })
 				.where(
 					and(
 						eq(schema.invitation.id, invitationID),
-						eq(schema.invitation.status, "pending"),
+						eq(schema.invitation.status, reservedStatus),
 					),
-				)
-				.returning();
-			if (!updated[0]) {
-				throw delegatedConflict(
-					"invitation_already_used",
-					"Invitation has already been used.",
 				);
-			}
-			const memberID = generateID();
-			await transaction.insert(schema.member).values({
-				id: memberID,
-				organizationId: pending.organizationId,
-				userId: actor.userID,
-				role: pending.role ?? "member",
-				createdAt,
-			});
-			for (const teamID of teamIDs) {
-				await transaction.insert(schema.teamMember).values({
-					id: generateID(),
-					teamId: teamID,
-					userId: actor.userID,
-					createdAt,
-				});
-			}
-			return { invitation: updated[0], memberID };
-		});
-		await recordMutation(actor, {
-			action: "organization.invitation.accept",
-			targetType: "invitation",
-			targetID: invitationID,
-			organizationID: result.invitation.organizationId,
-		});
-		return {
-			invitation: invitationDTO(result.invitation),
-			memberId: result.memberID,
-		};
+			throw error;
+		}
 	}
 
 	async function rejectOrganizationInvitation(
@@ -1260,8 +1340,8 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		);
 		const roles = roleList(role);
 		await requireValidRoles(options.db, organizationID, roles);
-		const updated = await serializableTransaction(options.db, async (transaction) => {
-			const targets = await transaction
+		const [targets, ownerRows] = await options.db.batch([
+			options.db
 				.select()
 				.from(schema.member)
 				.where(
@@ -1270,7 +1350,12 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.member.organizationId, organizationID),
 					),
 				)
-				.limit(1);
+				.limit(1),
+			options.db
+				.select({ role: schema.member.role })
+				.from(schema.member)
+				.where(eq(schema.member.organizationId, organizationID)),
+		]);
 			const target = targets[0];
 			if (!target) throw delegatedNotFound("member_not_found", "Member not found.");
 			const actorIsOwner = hasRole(actorMembership.role, "owner");
@@ -1283,10 +1368,6 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 				);
 			}
 			if (targetIsOwner && !settingOwner) {
-				const ownerRows = await transaction
-					.select({ role: schema.member.role })
-					.from(schema.member)
-					.where(eq(schema.member.organizationId, organizationID));
 				if (ownerRows.filter((member) => hasRole(member.role, "owner")).length <= 1) {
 					throw delegatedConflict(
 						"last_owner",
@@ -1294,14 +1375,20 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 					);
 				}
 			}
-			const rows = await transaction
+			const rows = await runConstraintAware(() => options.db
 				.update(schema.member)
 				.set({ role: roles.join(",") })
-				.where(eq(schema.member.id, memberID))
-				.returning();
-			if (!rows[0]) throw delegatedNotFound("member_not_found", "Member not found.");
-			return rows[0];
-		});
+				.where(
+					and(
+						eq(schema.member.id, memberID),
+						eq(schema.member.role, target.role),
+					),
+				)
+				.returning());
+			if (!rows[0]) {
+				throw delegatedConflict("member_changed", "The member changed; retry the update.");
+			}
+		const updated = rows[0];
 		await recordMutation(actor, {
 			action: "organization.member.role.update",
 			targetType: "member",
@@ -1329,8 +1416,8 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			organizationID,
 			{ resource: "member", action: "delete" },
 		);
-		const removed = await serializableTransaction(options.db, async (transaction) => {
-			const targets = await transaction
+		const [targets, ownerRows, teams] = await options.db.batch([
+			options.db
 				.select()
 				.from(schema.member)
 				.where(
@@ -1339,7 +1426,16 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.member.organizationId, organizationID),
 					),
 				)
-				.limit(1);
+				.limit(1),
+			options.db
+				.select({ role: schema.member.role })
+				.from(schema.member)
+				.where(eq(schema.member.organizationId, organizationID)),
+			options.db
+				.select({ id: schema.team.id })
+				.from(schema.team)
+				.where(eq(schema.team.organizationId, organizationID)),
+		]);
 			const target = targets[0];
 			if (!target) throw delegatedNotFound("member_not_found", "Member not found.");
 			if (hasRole(target.role, "owner")) {
@@ -1349,10 +1445,6 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						"Only an organization owner can remove another owner.",
 					);
 				}
-				const ownerRows = await transaction
-					.select({ role: schema.member.role })
-					.from(schema.member)
-					.where(eq(schema.member.organizationId, organizationID));
 				if (ownerRows.filter((member) => hasRole(member.role, "owner")).length <= 1) {
 					throw delegatedConflict(
 						"last_owner",
@@ -1360,23 +1452,17 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 					);
 				}
 			}
-			const teams = await transaction
-				.select({ id: schema.team.id })
-				.from(schema.team)
-				.where(eq(schema.team.organizationId, organizationID));
 			const teamIDs = teams.map((team) => team.id);
-			if (teamIDs.length) {
-				await transaction
-					.delete(schema.teamMember)
-					.where(
-						and(
-							eq(schema.teamMember.userId, target.userId),
-							inArray(schema.teamMember.teamId, teamIDs),
-						),
-					);
-			}
-			await transaction.delete(schema.member).where(eq(schema.member.id, memberID));
-			await transaction
+		const writes: DelegatedBatchItem[] = [
+			options.db
+				.delete(schema.member)
+				.where(
+					and(
+						eq(schema.member.id, memberID),
+						eq(schema.member.role, target.role),
+					),
+				),
+			options.db
 				.update(schema.session)
 				.set({ activeOrganizationId: null, activeTeamId: null, updatedAt: now() })
 				.where(
@@ -1389,9 +1475,23 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 								)
 							: eq(schema.session.activeOrganizationId, organizationID),
 					),
-				);
-			return target;
-		});
+				),
+		];
+		if (teamIDs.length) {
+			writes.unshift(
+				options.db
+					.delete(schema.teamMember)
+					.where(
+						and(
+							eq(schema.teamMember.userId, target.userId),
+							inArray(schema.teamMember.teamId, teamIDs),
+						),
+					),
+			);
+		}
+		// SAFETY: the member delete and session update keep this batch non-empty.
+		await runConstraintAware(() => options.db.batch(writes as DelegatedBatch));
+		const removed = target;
 		await recordMutation(actor, {
 			action: "organization.member.delete",
 			targetType: "member",
@@ -1430,15 +1530,14 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		const name = input.name.trim();
 		if (!name) throw delegatedBadRequest("invalid_team", "Team name is required.");
 		const createdAt = now();
-		const team = await serializableTransaction(options.db, async (transaction) => {
-			const teamCounts = await transaction
+		const teamCounts = await options.db
 				.select({ value: count() })
 				.from(schema.team)
 				.where(eq(schema.team.organizationId, organizationID));
 			if ((teamCounts[0]?.value ?? 0) >= TEAM_LIMIT) {
 				throw delegatedConflict("team_limit_reached", "The team limit has been reached.");
 			}
-			const rows = await transaction
+			const rows = await runConstraintAware(() => options.db
 				.insert(schema.team)
 				.values({
 					id: generateID(),
@@ -1447,10 +1546,9 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 					createdAt,
 					updatedAt: createdAt,
 				})
-				.returning();
+				.returning());
 			if (!rows[0]) throw new Error("Team insert returned no row.");
-			return rows[0];
-		});
+		const team = rows[0];
 		await recordMutation(actor, {
 			action: "organization.team.create",
 			targetType: "team",
@@ -1503,17 +1601,12 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			resource: "team",
 			action: "delete",
 		});
-		const deleted = await serializableTransaction(options.db, async (transaction) => {
-			const teams = await transaction
+		const [teams, pendingInvitations] = await options.db.batch([
+			options.db
 				.select()
 				.from(schema.team)
-				.where(eq(schema.team.organizationId, organizationID));
-			const target = teams.find((team) => team.id === teamID);
-			if (!target) throw delegatedNotFound("team_not_found", "Team not found.");
-			if (teams.length <= 1) {
-				throw delegatedConflict("last_team", "An organization must keep at least one team.");
-			}
-			const pendingInvitations = await transaction
+				.where(eq(schema.team.organizationId, organizationID)),
+			options.db
 				.select({ id: schema.invitation.id, teamID: schema.invitation.teamId })
 				.from(schema.invitation)
 				.where(
@@ -1521,24 +1614,37 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.invitation.organizationId, organizationID),
 						eq(schema.invitation.status, "pending"),
 					),
-				);
+				),
+		]);
+			const target = teams.find((team) => team.id === teamID);
+			if (!target) throw delegatedNotFound("team_not_found", "Team not found.");
+			if (teams.length <= 1) {
+				throw delegatedConflict("last_team", "An organization must keep at least one team.");
+			}
+		const invitationUpdates: DelegatedBatchItem[] = [];
 			for (const invitation of pendingInvitations) {
 				const remainingTeamIDs = invitationTeamIDs(invitation.teamID).filter(
 					(id) => id !== teamID,
 				);
 				if (remainingTeamIDs.length === invitationTeamIDs(invitation.teamID).length) continue;
-				await transaction
+				invitationUpdates.push(
+					options.db
 					.update(schema.invitation)
 					.set({ teamId: remainingTeamIDs.length ? remainingTeamIDs.join(",") : null })
-					.where(eq(schema.invitation.id, invitation.id));
+					.where(eq(schema.invitation.id, invitation.id)),
+				);
 			}
-			await transaction.delete(schema.team).where(eq(schema.team.id, teamID));
-			await transaction
+		const writes: DelegatedBatchItem[] = [
+			...invitationUpdates,
+			options.db.delete(schema.team).where(eq(schema.team.id, teamID)),
+			options.db
 				.update(schema.session)
 				.set({ activeTeamId: null, updatedAt: now() })
-				.where(eq(schema.session.activeTeamId, teamID));
-			return target;
-		});
+				.where(eq(schema.session.activeTeamId, teamID)),
+		];
+		// SAFETY: the team delete and session update keep this batch non-empty.
+		await runConstraintAware(() => options.db.batch(writes as DelegatedBatch));
+		const deleted = target;
 		await options.images?.deleteOwnedAsset(deleted.logo);
 		await recordMutation(actor, {
 			action: "organization.team.delete",
@@ -1565,25 +1671,33 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			file,
 			ownerID: teamID,
 			purpose: "team-logo",
-			assign: (absoluteURL) =>
-				serializableTransaction(options.db, async (transaction) => {
-					const rows = await transaction
-						.select({ logo: schema.team.logo })
-						.from(schema.team)
-						.where(
-							and(
-								eq(schema.team.id, teamID),
-								eq(schema.team.organizationId, organizationID),
-							),
-						)
-						.limit(1);
-					if (!rows[0]) throw delegatedNotFound("team_not_found", "Team not found.");
-					await transaction
-						.update(schema.team)
-						.set({ logo: absoluteURL, updatedAt: now() })
-						.where(eq(schema.team.id, teamID));
-					return rows[0].logo;
-				}),
+			assign: async (absoluteURL) => {
+				const rows = await options.db
+					.select({ logo: schema.team.logo })
+					.from(schema.team)
+					.where(
+						and(
+							eq(schema.team.id, teamID),
+							eq(schema.team.organizationId, organizationID),
+						),
+					)
+					.limit(1);
+				if (!rows[0]) throw delegatedNotFound("team_not_found", "Team not found.");
+				const changed = await options.db
+					.update(schema.team)
+					.set({ logo: absoluteURL, updatedAt: now() })
+					.where(
+						and(
+							eq(schema.team.id, teamID),
+							rows[0].logo === null
+								? isNull(schema.team.logo)
+								: eq(schema.team.logo, rows[0].logo),
+						),
+					)
+					.returning({ id: schema.team.id });
+				if (!changed[0]) throw delegatedConflict("image_changed", "The image changed. Retry the update.");
+				return rows[0].logo;
+			},
 		});
 		await recordMutation(actor, {
 			action: "organization.team.logo.update",
@@ -1606,25 +1720,33 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 		await requireVisibleTeam(options.db, actor, organizationID, teamID);
 		const images = requiredImages(options.images);
 		await images.clearImage({
-			assign: () =>
-				serializableTransaction(options.db, async (transaction) => {
-					const rows = await transaction
-						.select({ logo: schema.team.logo })
-						.from(schema.team)
-						.where(
-							and(
-								eq(schema.team.id, teamID),
-								eq(schema.team.organizationId, organizationID),
-							),
-						)
-						.limit(1);
-					if (!rows[0]) throw delegatedNotFound("team_not_found", "Team not found.");
-					await transaction
-						.update(schema.team)
-						.set({ logo: null, updatedAt: now() })
-						.where(eq(schema.team.id, teamID));
-					return rows[0].logo;
-				}),
+			assign: async () => {
+				const rows = await options.db
+					.select({ logo: schema.team.logo })
+					.from(schema.team)
+					.where(
+						and(
+							eq(schema.team.id, teamID),
+							eq(schema.team.organizationId, organizationID),
+						),
+					)
+					.limit(1);
+				if (!rows[0]) throw delegatedNotFound("team_not_found", "Team not found.");
+				const changed = await options.db
+					.update(schema.team)
+					.set({ logo: null, updatedAt: now() })
+					.where(
+						and(
+							eq(schema.team.id, teamID),
+							rows[0].logo === null
+								? isNull(schema.team.logo)
+								: eq(schema.team.logo, rows[0].logo),
+						),
+					)
+					.returning({ id: schema.team.id });
+				if (!changed[0]) throw delegatedConflict("image_changed", "The image changed. Retry the update.");
+				return rows[0].logo;
+			},
 		});
 		await recordMutation(actor, {
 			action: "organization.team.logo.delete",
@@ -1671,8 +1793,8 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			action: "update",
 		});
 		await requireVisibleTeam(options.db, actor, organizationID, teamID);
-		const added = await serializableTransaction(options.db, async (transaction) => {
-			const memberships = await transaction
+		const [memberships, existing, memberCounts] = await options.db.batch([
+			options.db
 				.select({ id: schema.member.id })
 				.from(schema.member)
 				.where(
@@ -1681,11 +1803,8 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.member.userId, userID),
 					),
 				)
-				.limit(1);
-			if (!memberships[0]) {
-				throw delegatedNotFound("member_not_found", "Organization member not found.");
-			}
-			const existing = await transaction
+				.limit(1),
+			options.db
 				.select()
 				.from(schema.teamMember)
 				.where(
@@ -1694,39 +1813,45 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 						eq(schema.teamMember.userId, userID),
 					),
 				)
-				.limit(1);
-			if (existing[0]) return { row: existing[0], created: false };
-			const memberCounts = await transaction
+				.limit(1),
+			options.db
 				.select({ value: count() })
 				.from(schema.teamMember)
-				.where(eq(schema.teamMember.teamId, teamID));
+				.where(eq(schema.teamMember.teamId, teamID)),
+		]);
+			if (!memberships[0]) {
+				throw delegatedNotFound("member_not_found", "Organization member not found.");
+			}
+		if (existing[0]) return {
+			id: existing[0].id,
+			teamId: existing[0].teamId,
+			userId: existing[0].userId,
+			createdAt: ISODate(existing[0].createdAt),
+		};
 			if ((memberCounts[0]?.value ?? 0) >= TEAM_MEMBER_LIMIT) {
 				throw delegatedConflict(
 					"team_member_limit_reached",
 					"The team member limit has been reached.",
 				);
 			}
-			const rows = await transaction
+			const rows = await runConstraintAware(() => options.db
 				.insert(schema.teamMember)
 				.values({ id: generateID(), teamId: teamID, userId: userID, createdAt: now() })
-				.returning();
+				.returning());
 			if (!rows[0]) throw new Error("Team member insert returned no row.");
-			return { row: rows[0], created: true };
-		});
-		if (added.created) {
-			await recordMutation(actor, {
+		const added = rows[0];
+		await recordMutation(actor, {
 				action: "organization.team.member.add",
 				targetType: "member",
-				targetID: added.row.id,
+				targetID: added.id,
 				organizationID,
 				metadata: { teamID, userID },
-			});
-		}
+		});
 		return {
-			id: added.row.id,
-			teamId: added.row.teamId,
-			userId: added.row.userId,
-			createdAt: ISODate(added.row.createdAt),
+			id: added.id,
+			teamId: added.teamId,
+			userId: added.userId,
+			createdAt: ISODate(added.createdAt),
 		};
 	}
 
@@ -1741,24 +1866,26 @@ export function createDelegatedResourceService(options: ResourceServiceOptions) 
 			action: "update",
 		});
 		await requireVisibleTeam(options.db, actor, organizationID, teamID);
-		const rows = await options.db
-			.delete(schema.teamMember)
-			.where(
-				and(
-					eq(schema.teamMember.teamId, teamID),
-					eq(schema.teamMember.userId, userID),
+		const [rows] = await options.db.batch([
+			options.db
+				.delete(schema.teamMember)
+				.where(
+					and(
+						eq(schema.teamMember.teamId, teamID),
+						eq(schema.teamMember.userId, userID),
+					),
+				)
+				.returning(),
+			options.db
+				.update(schema.session)
+				.set({ activeTeamId: null, updatedAt: now() })
+				.where(
+					and(eq(schema.session.userId, userID), eq(schema.session.activeTeamId, teamID)),
 				),
-			)
-			.returning();
+		]);
 		if (!rows[0]) {
 			throw delegatedNotFound("team_member_not_found", "Team member not found.");
 		}
-		await options.db
-			.update(schema.session)
-			.set({ activeTeamId: null, updatedAt: now() })
-			.where(
-				and(eq(schema.session.userId, userID), eq(schema.session.activeTeamId, teamID)),
-			);
 		await recordMutation(actor, {
 			action: "organization.team.member.delete",
 			targetType: "member",

@@ -23,7 +23,7 @@ describe("auth API error and cookie options", () => {
 		expect(AUTH_SESSION_COOKIE_NAME).not.toBe("better-auth.session_token");
 	});
 
-	it("keeps session rows in Postgres when secondary storage is enabled", () => {
+	it("keeps session rows in D1 when secondary storage is enabled", () => {
 		expect(AUTH_SESSION_OPTIONS.storeSessionInDatabase).toBe(true);
 	});
 });

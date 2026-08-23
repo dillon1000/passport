@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { getTableConfig } from "drizzle-orm/pg-core";
+import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 
 import { account, oauthAccessToken, oauthConsent, oauthRefreshToken } from "./schema";
@@ -20,17 +20,13 @@ describe("Better Auth account identity schema", () => {
 		]);
 	});
 
-	it("backfills populated account rows before enforcing the required column", () => {
-		const migration = readFileSync("drizzle/0020_conscious_anthem.sql", "utf8");
-		const addColumn = migration.indexOf('ADD COLUMN "issuer" text;');
-		const backfill = migration.indexOf('UPDATE "account"');
-		const requireIssuer = migration.indexOf('ALTER COLUMN "issuer" SET NOT NULL');
-		const createIdentityIndex = migration.indexOf('CREATE UNIQUE INDEX "account_issuer_accountId_uidx"');
+	it("creates the required issuer and scoped identity index in D1", () => {
+		const migration = readFileSync("drizzle/0000_marvelous_runaways.sql", "utf8");
 
-		expect(addColumn).toBeGreaterThanOrEqual(0);
-		expect(backfill).toBeGreaterThan(addColumn);
-		expect(requireIssuer).toBeGreaterThan(backfill);
-		expect(createIdentityIndex).toBeGreaterThan(requireIssuer);
+		expect(migration).toContain("`issuer` text NOT NULL");
+		expect(migration).toContain(
+			"CREATE UNIQUE INDEX `account_issuer_accountId_uidx` ON `account` (`issuer`,`account_id`)",
+		);
 	});
 });
 
@@ -47,13 +43,16 @@ describe("Better Auth OAuth authorization metadata schema", () => {
 		);
 	});
 
-	it("migrates authorization metadata before the upgraded runtime uses it", () => {
-		const migration = readFileSync("drizzle/0021_kind_firelord.sql", "utf8");
+	it("creates authorization metadata before the runtime uses it", () => {
+		const migration = readFileSync("drizzle/0000_marvelous_runaways.sql", "utf8");
 
 		for (const table of ["oauth_consent", "oauth_access_token", "oauth_refresh_token"]) {
-			expect(migration).toContain(
-				`ALTER TABLE "${table}" ADD COLUMN "requested_user_info_claims" text[];`,
-			);
+			const createTable = migration.indexOf(`CREATE TABLE \`${table}\``);
+			const nextStatement = migration.indexOf("--> statement-breakpoint", createTable);
+			const tableDefinition = migration.slice(createTable, nextStatement);
+			expect(createTable).toBeGreaterThanOrEqual(0);
+			expect(tableDefinition).toContain("`requested_user_info_claims` text");
+			expect(tableDefinition).toContain("`resources` text");
 		}
 	});
 });

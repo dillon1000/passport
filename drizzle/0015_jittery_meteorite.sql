@@ -1,1 +1,0 @@
-ALTER TABLE "billing_plan" ADD COLUMN "hidden" boolean DEFAULT false NOT NULL;
