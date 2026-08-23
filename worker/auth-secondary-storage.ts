@@ -94,12 +94,12 @@ export class AuthSecondaryStorage extends DurableObject<Env> {
 				 VALUES (?, '1', ?)
 				 ON CONFLICT (key) DO UPDATE SET
 				 value = CASE
-				 	WHEN auth_values.expires_at IS NOT NULL AND auth_values.expires_at <= ? THEN '1'
-				 	ELSE CAST(CAST(auth_values.value AS INTEGER) + 1 AS TEXT)
+					WHEN auth_values.expires_at IS NOT NULL AND auth_values.expires_at <= ? THEN '1'
+					ELSE CAST(CAST(auth_values.value AS INTEGER) + 1 AS TEXT)
 				 END,
 				 expires_at = CASE
-				 	WHEN auth_values.expires_at IS NOT NULL AND auth_values.expires_at <= ? THEN excluded.expires_at
-				 	ELSE auth_values.expires_at
+					WHEN auth_values.expires_at IS NOT NULL AND auth_values.expires_at <= ? THEN excluded.expires_at
+					ELSE auth_values.expires_at
 				 END
 				 RETURNING CAST(value AS INTEGER) AS value`,
 				key,
