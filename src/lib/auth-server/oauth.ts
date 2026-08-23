@@ -263,7 +263,15 @@ export function oauthProviderPlugin(env: AuthEnv, db: AuthDatabase) {
 			scopes_supported: [...SUPPORTED_OAUTH_SCOPES],
 			claims_supported: oauthClaimsSupported(env),
 		},
-		customIdTokenClaims: ({ user, scopes }) => buildIDTokenScopeClaims(env, user, scopes),
+		customIdTokenClaims: ({ user, scopes, metadata }) =>
+			buildIDTokenScopeClaims(
+				env,
+				user,
+				scopes,
+				// This client metadata flag narrows a non-standard string claim to
+				// relying parties whose parser cannot accept the OIDC boolean.
+				metadata?.email_verified_as_string === true,
+			),
 		customUserInfoClaims: async ({ user, scopes }) => {
 			const context = needsOAuthClaimContext(scopes)
 				? await loadOAuthClaimContext(env, db, user.id)

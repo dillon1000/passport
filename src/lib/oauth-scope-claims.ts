@@ -203,11 +203,21 @@ function pictureClaim(env: ClaimEnv, user: OAuthClaimUser, scopes: readonly stri
 	return picture ? { picture } : {};
 }
 
-function emailClaim(user: OAuthClaimUser, scopes: readonly string[]) {
+function emailClaim(
+	user: OAuthClaimUser,
+	scopes: readonly string[],
+	stringifyEmailVerified: boolean,
+) {
 	if (!hasScope(scopes, "email")) return {};
 
 	const email = trimmed(user.email);
-	return email ? { email, email_verified: user.emailVerified === true } : {};
+	const emailVerified = user.emailVerified === true;
+	return email
+		? {
+				email,
+				email_verified: stringifyEmailVerified ? String(emailVerified) : emailVerified,
+			}
+		: {};
 }
 
 function usernameClaim(user: OAuthClaimUser, scopes: readonly string[]) {
@@ -351,9 +361,10 @@ export function buildIDTokenScopeClaims(
 	env: ClaimEnv,
 	user: OAuthClaimUser,
 	scopes: readonly string[],
+	stringifyEmailVerified = false,
 ) {
 	const claims: OAuthScopeClaims = buildAuthContextClaims(user);
-	Object.assign(claims, emailClaim(user, scopes));
+	Object.assign(claims, emailClaim(user, scopes, stringifyEmailVerified));
 	Object.assign(claims, pictureClaim(env, user, scopes));
 	Object.assign(claims, usernameClaim(user, scopes));
 	Object.assign(claims, phoneClaim(user, scopes));

@@ -146,6 +146,13 @@ describe("OAuth scope claims", () => {
 		});
 	});
 
+	it("supports string email verification for incompatible clients", () => {
+		expect(buildIDTokenScopeClaims(env, user, ["openid", "email"], true)).toMatchObject({
+			email: "dillon@example.com",
+			email_verified: "true",
+		});
+	});
+
 	it("adds standard phone and narrow username claims when consented", () => {
 		expect(
 			buildIDTokenScopeClaims(env, user, ["openid", "phone", "profile:username"]),
