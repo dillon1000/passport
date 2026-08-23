@@ -22,6 +22,7 @@ const env = {
 const user = {
 	id: "user_123",
 	email: "dillon@example.com",
+	emailVerified: true,
 	role: "user",
 	image: "/api/profile-images/profile-images/user_123/avatar.png",
 	username: "dillon",
@@ -133,6 +134,15 @@ describe("OAuth scope claims", () => {
 			acr: ACR_MFA,
 			amr: ["mfa", "otp"],
 			picture: "https://passport.test/api/profile-images/profile-images/user_123/avatar.png",
+		});
+	});
+
+	it("adds email claims to ID tokens when consented", () => {
+		expect(buildIDTokenScopeClaims(env, user, ["openid", "email"])).toEqual({
+			acr: ACR_MFA,
+			amr: ["mfa", "otp"],
+			email: "dillon@example.com",
+			email_verified: true,
 		});
 	});
 
