@@ -148,6 +148,13 @@
       "when": 1787435437254,
       "tag": "0020_conscious_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787463506916,
+      "tag": "0021_kind_firelord",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { account } from "./schema";
+import { account, oauthAccessToken, oauthConsent, oauthRefreshToken } from "./schema";
 
 describe("Better Auth account identity schema", () => {
 	it("requires an issuer and uniquely scopes provider account IDs by issuer", () => {
@@ -31,5 +31,29 @@ describe("Better Auth account identity schema", () => {
 		expect(backfill).toBeGreaterThan(addColumn);
 		expect(requireIssuer).toBeGreaterThan(backfill);
 		expect(createIdentityIndex).toBeGreaterThan(requireIssuer);
+	});
+});
+
+describe("Better Auth OAuth authorization metadata schema", () => {
+	it.each([
+		["oauthConsent", oauthConsent],
+		["oauthAccessToken", oauthAccessToken],
+		["oauthRefreshToken", oauthRefreshToken],
+	])("stores requested UserInfo claims and resources on %s", (_name, table) => {
+		const columnNames = getTableConfig(table).columns.map((column) => column.name);
+
+		expect(columnNames).toEqual(
+			expect.arrayContaining(["requested_user_info_claims", "resources"]),
+		);
+	});
+
+	it("migrates authorization metadata before the upgraded runtime uses it", () => {
+		const migration = readFileSync("drizzle/0021_kind_firelord.sql", "utf8");
+
+		for (const table of ["oauth_consent", "oauth_access_token", "oauth_refresh_token"]) {
+			expect(migration).toContain(
+				`ALTER TABLE "${table}" ADD COLUMN "requested_user_info_claims" text[];`,
+			);
+		}
 	});
 });
