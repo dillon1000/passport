@@ -1,6 +1,6 @@
 # Passport
 
-Passport is a standalone identity provider on Cloudflare Workers. It uses Hono, Better Auth, the `@better-auth/oauth-provider` OAuth 2.1/OIDC plugin, RS256 JWT/JWKS, Drizzle ORM, PostgreSQL through Hyperdrive, and a Vite React UI served as Workers static assets.
+Passport is a standalone identity provider on Cloudflare Workers. It uses Hono, Better Auth, the `@better-auth/oauth-provider` OAuth 2.1/OIDC plugin, RS256 JWT/JWKS, Drizzle ORM, Cloudflare D1, and a Vite React UI served as Workers static assets.
 
 ## Features
 
@@ -23,7 +23,6 @@ Passport is a standalone identity provider on Cloudflare Workers. It uses Hono, 
 
 - Node.js 22 or newer
 - pnpm
-- PostgreSQL for local development and production
 - Cloudflare Wrangler for local Worker development and deploys
 
 ## Local Setup
@@ -40,22 +39,14 @@ pnpm install
 cp .dev.vars.example .dev.vars
 ```
 
-3. Create a local PostgreSQL database and export `DATABASE_URL`.
+3. Generate and apply the D1 schema to Wrangler's local database.
 
 ```bash
-pnpm db:start
-export DATABASE_URL=postgresql://postgres:postgres@localhost:55432/passport
-```
-
-4. Generate and apply database migrations.
-
-```bash
-pnpm dlx @better-auth/cli@latest generate --output ./src/db/schema.ts
 pnpm db:generate
 pnpm db:migrate
 ```
 
-5. Start the auth server.
+4. Start the auth server.
 
 ```bash
 pnpm dev
@@ -79,7 +70,7 @@ Stripe billing is optional and enabled when `STRIPE_SECRET_KEY` and `STRIPE_WEBH
 
 Attack protection is enabled by default. Better Auth rate limits use `AUTH_SECONDARY_STORAGE` through `AUTH_RATE_LIMIT_*` and `AUTH_SENSITIVE_RATE_LIMIT_*`; repeated failed credential sign-ins are locked by identifier with `ACCOUNT_LOCKOUT_*`. KV is the shared throttling store, not a strict atomic counter. CAPTCHA remains optional and complementary. Breached-password checks are not wired because they require an external service. Risk-based step-up is deferred to a separate sign-in-flow plan; caller-requested re-auth still uses the existing OIDC `prompt` / `max_age` support.
 
-Do not commit `.dev.vars`, `.env`, production secrets, OAuth client secrets, database URLs, or private signing keys. Use `.dev.vars.example` as the shareable template for required configuration.
+Do not commit `.dev.vars`, `.env`, production secrets, OAuth client secrets, or private signing keys. Use `.dev.vars.example` as the shareable template for required configuration.
 
 ## Scripts
 
@@ -88,11 +79,11 @@ pnpm dev          # Start the local Worker and Vite app
 pnpm build        # Type-check and build production assets
 pnpm lint         # Run ESLint
 pnpm test         # Run Vitest
-pnpm db:start     # Start the local PostgreSQL helper
-pnpm db:generate  # Generate Drizzle migrations
-pnpm db:migrate   # Apply Drizzle migrations using DATABASE_URL or .dev.vars
-pnpm db:migrate prod # Apply Drizzle migrations using PROD_DATABASE_URL or .dev.vars
-pnpm admin:promote <email> # Promote an existing user to admin
+pnpm db:generate       # Generate D1 migrations from the Drizzle schema
+pnpm db:migrate        # Apply migrations to Wrangler's local D1 database
+pnpm db:migrate:remote # Apply migrations to the bound production D1 database
+pnpm admin:promote <email>        # Promote a user in local D1
+pnpm admin:promote remote <email> # Promote a user in production D1
 pnpm deploy       # Build and deploy with Wrangler
 ```
 
@@ -287,10 +278,10 @@ wrangler secret put AZURE_COMMUNICATION_CONNECTION_STRING
 wrangler secret put AZURE_COMMUNICATION_SMS_FROM
 ```
 
-Create a Cloudflare Hyperdrive configuration for your PostgreSQL database, update `wrangler.jsonc` with its `id`, update `BETTER_AUTH_URL` and `TRUSTED_ORIGINS`, set `PROD_DATABASE_URL` in `.dev.vars`, run production migrations, then deploy:
+Create or select a Cloudflare D1 database, set its `database_id` in `wrangler.jsonc`, update `BETTER_AUTH_URL` and `TRUSTED_ORIGINS`, apply the D1 migrations, then deploy:
 
 ```bash
-pnpm db:migrate prod
+pnpm db:migrate:remote
 pnpm run deploy
 ```
 

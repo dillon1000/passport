@@ -1,5 +1,5 @@
 /**
- * Postgres-backed billing plan source. Inputs are the runtime env and auth
+ * D1-backed billing plan source. Inputs are the runtime env and auth
  * database; outputs are BillingPlanDefinition rows for the Stripe plugin, the
  * public plan catalog, and OAuth billing claims. When the `billing_plan` table
  * is empty the source falls back to `STRIPE_BILLING_PLANS`, so env-only

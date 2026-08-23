@@ -3,57 +3,54 @@
  * agent tables. Field names mirror Better Auth adapter expectations; optional
  * columns are safe extension points for UI metadata such as logos and policies.
  */
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
-  pgTable,
+  sqliteTable,
   text,
-  timestamp,
-  boolean,
   integer,
-  jsonb,
   index,
   uniqueIndex,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 
 import type { RequestLocation } from "../lib/request-location";
 import type { BillingLimits, BillingPlanLineItem } from "../lib/billing";
 
-export const user = pgTable("user", {
+export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").default(false).notNull(),
+  emailVerified: integer("email_verified", { mode: "boolean" }).default(false).notNull(),
   image: text("image"),
   lastLoginMethod: text("last_login_method"),
   role: text("role"),
-  banned: boolean("banned").default(false),
+  banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("ban_reason"),
-  banExpires: timestamp("ban_expires"),
-  twoFactorEnabled: boolean("two_factor_enabled").default(false),
+  banExpires: integer("ban_expires", { mode: "timestamp" }),
+  twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" }).default(false),
   username: text("username").unique(),
   displayUsername: text("display_username"),
   phoneNumber: text("phone_number").unique(),
-  phoneNumberVerified: boolean("phone_number_verified"),
+  phoneNumberVerified: integer("phone_number_verified", { mode: "boolean" }),
   stripeCustomerId: text("stripe_customer_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .default(sql`(unixepoch())`)
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 });
 
-export const session = pgTable(
+export const session = sqliteTable(
   "session",
   {
     id: text("id").primaryKey(),
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
     token: text("token").notNull().unique(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     ipAddress: text("ip_address"),
-    location: jsonb("location").$type<RequestLocation | null>(),
+    location: text("location", { mode: "json" }).$type<RequestLocation | null>(),
     userAgent: text("user_agent"),
     userId: text("user_id")
       .notNull()
@@ -65,7 +62,7 @@ export const session = pgTable(
   (table) => [index("session_userId_idx").on(table.userId)],
 );
 
-export const account = pgTable(
+export const account = sqliteTable(
   "account",
   {
     id: text("id").primaryKey(),
@@ -81,12 +78,12 @@ export const account = pgTable(
     accessToken: text("access_token"),
     refreshToken: text("refresh_token"),
     idToken: text("id_token"),
-    accessTokenExpiresAt: timestamp("access_token_expires_at"),
-    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    accessTokenExpiresAt: integer("access_token_expires_at", { mode: "timestamp" }),
+    refreshTokenExpiresAt: integer("refresh_token_expires_at", { mode: "timestamp" }),
     scope: text("scope"),
     password: text("password"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
@@ -96,23 +93,23 @@ export const account = pgTable(
   ],
 );
 
-export const verification = pgTable(
+export const verification = sqliteTable(
   "verification",
   {
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
-export const organization = pgTable(
+export const organization = sqliteTable(
   "organization",
   {
     id: text("id").primaryKey(),
@@ -120,13 +117,13 @@ export const organization = pgTable(
     slug: text("slug").notNull().unique(),
     logo: text("logo"),
     stripeCustomerId: text("stripe_customer_id"),
-    createdAt: timestamp("created_at").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     metadata: text("metadata"),
   },
   (table) => [index("organization_slug_idx").on(table.slug)],
 );
 
-export const organizationRole = pgTable(
+export const organizationRole = sqliteTable(
   "organization_role",
   {
     id: text("id").primaryKey(),
@@ -135,8 +132,8 @@ export const organizationRole = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
     permission: text("permission").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").$onUpdate(
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).$onUpdate(
       () => /* @__PURE__ */ new Date(),
     ),
   },
@@ -146,7 +143,7 @@ export const organizationRole = pgTable(
   ],
 );
 
-export const team = pgTable(
+export const team = sqliteTable(
   "team",
   {
     id: text("id").primaryKey(),
@@ -155,15 +152,15 @@ export const team = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").$onUpdate(
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).$onUpdate(
       () => /* @__PURE__ */ new Date(),
     ),
   },
   (table) => [index("team_organizationId_idx").on(table.organizationId)],
 );
 
-export const teamMember = pgTable(
+export const teamMember = sqliteTable(
   "team_member",
   {
     id: text("id").primaryKey(),
@@ -173,15 +170,16 @@ export const teamMember = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at"),
+    createdAt: integer("created_at", { mode: "timestamp" }),
   },
   (table) => [
     index("teamMember_teamId_idx").on(table.teamId),
     index("teamMember_userId_idx").on(table.userId),
+    uniqueIndex("teamMember_teamId_userId_uidx").on(table.teamId, table.userId),
   ],
 );
 
-export const member = pgTable(
+export const member = sqliteTable(
   "member",
   {
     id: text("id").primaryKey(),
@@ -192,15 +190,19 @@ export const member = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     role: text("role").default("member").notNull(),
-    createdAt: timestamp("created_at").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     index("member_organizationId_idx").on(table.organizationId),
     index("member_userId_idx").on(table.userId),
+    uniqueIndex("member_organizationId_userId_uidx").on(
+      table.organizationId,
+      table.userId,
+    ),
   ],
 );
 
-export const invitation = pgTable(
+export const invitation = sqliteTable(
   "invitation",
   {
     id: text("id").primaryKey(),
@@ -211,8 +213,8 @@ export const invitation = pgTable(
     role: text("role"),
     teamId: text("team_id"),
     status: text("status").default("pending").notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
     inviterId: text("inviter_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -220,10 +222,13 @@ export const invitation = pgTable(
   (table) => [
     index("invitation_organizationId_idx").on(table.organizationId),
     index("invitation_email_idx").on(table.email),
+    uniqueIndex("invitation_pending_organizationId_email_uidx")
+      .on(table.organizationId, table.email)
+      .where(sql`${table.status} = 'pending'`),
   ],
 );
 
-export const twoFactor = pgTable(
+export const twoFactor = sqliteTable(
   "two_factor",
   {
     id: text("id").primaryKey(),
@@ -232,7 +237,7 @@ export const twoFactor = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    verified: boolean("verified").default(true),
+    verified: integer("verified", { mode: "boolean" }).default(true),
   },
   (table) => [
     index("twoFactor_secret_idx").on(table.secret),
@@ -244,7 +249,7 @@ export const twoFactor = pgTable(
 // polymorphic: for personal billing it is the user id, and for organization
 // billing it is the organization id. Do not add a uniqueness constraint;
 // Stripe/Better Auth allow resubscription after cancellation history.
-export const subscription = pgTable(
+export const subscription = sqliteTable(
   "subscription",
   {
     id: text("id").primaryKey(),
@@ -253,20 +258,20 @@ export const subscription = pgTable(
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),
     status: text("status").default("incomplete").notNull(),
-    periodStart: timestamp("period_start"),
-    periodEnd: timestamp("period_end"),
-    trialStart: timestamp("trial_start"),
-    trialEnd: timestamp("trial_end"),
-    cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
-    cancelAt: timestamp("cancel_at"),
-    canceledAt: timestamp("canceled_at"),
-    endedAt: timestamp("ended_at"),
+    periodStart: integer("period_start", { mode: "timestamp" }),
+    periodEnd: integer("period_end", { mode: "timestamp" }),
+    trialStart: integer("trial_start", { mode: "timestamp" }),
+    trialEnd: integer("trial_end", { mode: "timestamp" }),
+    cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" }).default(false),
+    cancelAt: integer("cancel_at", { mode: "timestamp" }),
+    canceledAt: integer("canceled_at", { mode: "timestamp" }),
+    endedAt: integer("ended_at", { mode: "timestamp" }),
     seats: integer("seats"),
     billingInterval: text("billing_interval"),
     stripeScheduleId: text("stripe_schedule_id"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
@@ -281,7 +286,7 @@ export const subscription = pgTable(
 // Checkout flow. Unlike `subscription` these never recur; a completed row grants
 // the plan's entitlements and limits permanently. `referenceId` is the user or
 // organization id (mirrors `subscription`); customer type is derived from it.
-export const oneTimePurchase = pgTable(
+export const oneTimePurchase = sqliteTable(
   "one_time_purchase",
   {
     id: text("id").primaryKey(),
@@ -296,10 +301,10 @@ export const oneTimePurchase = pgTable(
     quantity: integer("quantity").default(1).notNull(),
     amountTotal: integer("amount_total"),
     currency: text("currency"),
-    purchasedAt: timestamp("purchased_at"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    purchasedAt: integer("purchased_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
@@ -313,7 +318,7 @@ export const oneTimePurchase = pgTable(
 // Stripe URL directly. The client/idempotency key pair makes creation replayable,
 // while requestHash detects a key reused with different inputs. Stripe work only
 // begins after the same user confirms this row from Passport's session UI.
-export const billingActionIntent = pgTable(
+export const billingActionIntent = sqliteTable(
   "billing_action_intent",
   {
     id: text("id").primaryKey(),
@@ -326,23 +331,23 @@ export const billingActionIntent = pgTable(
     referenceId: text("reference_id").notNull(),
     productId: text("product_id"),
     subscriptionId: text("subscription_id"),
-    annual: boolean("annual"),
+    annual: integer("annual", { mode: "boolean" }),
     seats: integer("seats"),
     successUrl: text("success_url"),
     cancelUrl: text("cancel_url"),
     returnUrl: text("return_url"),
-    registeredReturnUrls: jsonb("registered_return_urls").$type<string[]>().notNull(),
+    registeredReturnUrls: text("registered_return_urls", { mode: "json" }).$type<string[]>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     requestHash: text("request_hash").notNull(),
     status: text("status").default("pending").notNull(),
     resultUrl: text("result_url"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
-    completedAt: timestamp("completed_at"),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
   },
   (table) => [
     uniqueIndex("billingActionIntent_clientId_idempotencyKey_idx").on(
@@ -354,7 +359,7 @@ export const billingActionIntent = pgTable(
   ],
 );
 
-export const agentHost = pgTable(
+export const agentHost = sqliteTable(
   "agent_host",
   {
     id: text("id").primaryKey(),
@@ -365,13 +370,13 @@ export const agentHost = pgTable(
     kid: text("kid"),
     jwksUrl: text("jwks_url"),
     enrollmentTokenHash: text("enrollment_token_hash"),
-    enrollmentTokenExpiresAt: timestamp("enrollment_token_expires_at"),
+    enrollmentTokenExpiresAt: integer("enrollment_token_expires_at", { mode: "timestamp" }),
     status: text("status").default("active").notNull(),
-    activatedAt: timestamp("activated_at"),
-    expiresAt: timestamp("expires_at"),
-    lastUsedAt: timestamp("last_used_at"),
-    createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").notNull(),
+    activatedAt: integer("activated_at", { mode: "timestamp" }),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     index("agentHost_userId_idx").on(table.userId),
@@ -381,7 +386,7 @@ export const agentHost = pgTable(
   ],
 );
 
-export const agent = pgTable(
+export const agent = sqliteTable(
   "agent",
   {
     id: text("id").primaryKey(),
@@ -395,12 +400,12 @@ export const agent = pgTable(
     publicKey: text("public_key").notNull(),
     kid: text("kid"),
     jwksUrl: text("jwks_url"),
-    lastUsedAt: timestamp("last_used_at"),
-    activatedAt: timestamp("activated_at"),
-    expiresAt: timestamp("expires_at"),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+    activatedAt: integer("activated_at", { mode: "timestamp" }),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
     metadata: text("metadata"),
-    createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     index("agent_userId_idx").on(table.userId),
@@ -410,7 +415,7 @@ export const agent = pgTable(
   ],
 );
 
-export const agentCapabilityGrant = pgTable(
+export const agentCapabilityGrant = sqliteTable(
   "agent_capability_grant",
   {
     id: text("id").primaryKey(),
@@ -424,9 +429,9 @@ export const agentCapabilityGrant = pgTable(
     grantedBy: text("granted_by").references(() => user.id, {
       onDelete: "cascade",
     }),
-    expiresAt: timestamp("expires_at"),
-    createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
     status: text("status").default("active").notNull(),
     reason: text("reason"),
     constraints: text("constraints"),
@@ -439,7 +444,7 @@ export const agentCapabilityGrant = pgTable(
   ],
 );
 
-export const approvalRequest = pgTable(
+export const approvalRequest = sqliteTable(
   "approval_request",
   {
     id: text("id").primaryKey(),
@@ -460,10 +465,10 @@ export const approvalRequest = pgTable(
     clientNotificationEndpoint: text("client_notification_endpoint"),
     deliveryMode: text("delivery_mode"),
     interval: integer("interval").notNull(),
-    lastPolledAt: timestamp("last_polled_at"),
-    expiresAt: timestamp("expires_at").notNull(),
-    createdAt: timestamp("created_at").notNull(),
-    updatedAt: timestamp("updated_at").notNull(),
+    lastPolledAt: integer("last_polled_at", { mode: "timestamp" }),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     index("approvalRequest_agentId_idx").on(table.agentId),
@@ -473,15 +478,15 @@ export const approvalRequest = pgTable(
   ],
 );
 
-export const jwks = pgTable("jwks", {
+export const jwks = sqliteTable("jwks", {
   id: text("id").primaryKey(),
   publicKey: text("public_key").notNull(),
   privateKey: text("private_key").notNull(),
-  createdAt: timestamp("created_at").notNull(),
-  expiresAt: timestamp("expires_at"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
 });
 
-export const passkey = pgTable(
+export const passkey = sqliteTable(
   "passkey",
   {
     id: text("id").primaryKey(),
@@ -493,9 +498,9 @@ export const passkey = pgTable(
     credentialID: text("credential_id").notNull(),
     counter: integer("counter").notNull(),
     deviceType: text("device_type").notNull(),
-    backedUp: boolean("backed_up").notNull(),
+    backedUp: integer("backed_up", { mode: "boolean" }).notNull(),
     transports: text("transports"),
-    createdAt: timestamp("created_at"),
+    createdAt: integer("created_at", { mode: "timestamp" }),
     aaguid: text("aaguid"),
   },
   (table) => [
@@ -504,49 +509,49 @@ export const passkey = pgTable(
   ],
 );
 
-export const oauthClient = pgTable(
+export const oauthClient = sqliteTable(
   "oauth_client",
   {
     id: text("id").primaryKey(),
     clientId: text("client_id").notNull().unique(),
     clientSecret: text("client_secret"),
-    disabled: boolean("disabled").default(false),
+    disabled: integer("disabled", { mode: "boolean" }).default(false),
     // When enabled, the authorization flow issues codes only to Passport
     // platform administrators. This is a Passport-owned access policy, not
     // OAuth client metadata consumed by Better Auth.
-    platformAdminOnly: boolean("platform_admin_only").default(false).notNull(),
+    platformAdminOnly: integer("platform_admin_only", { mode: "boolean" }).default(false).notNull(),
     // Verified clients may show their uploaded brand on consent screens. New
     // registrations stay unpublished until an administrator reviews them.
-    verified: boolean("verified").default(false).notNull(),
-    skipConsent: boolean("skip_consent"),
-    enableEndSession: boolean("enable_end_session"),
+    verified: integer("verified", { mode: "boolean" }).default(false).notNull(),
+    skipConsent: integer("skip_consent", { mode: "boolean" }),
+    enableEndSession: integer("enable_end_session", { mode: "boolean" }),
     subjectType: text("subject_type"),
-    scopes: text("scopes").array(),
+    scopes: text("scopes", { mode: "json" }).$type<string[]>(),
     // Only these requested scopes may be removed by a user during consent.
     // All other client scopes remain required by default.
-    optionalScopes: text("optional_scopes").array(),
+    optionalScopes: text("optional_scopes", { mode: "json" }).$type<string[]>(),
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at"),
-    updatedAt: timestamp("updated_at"),
+    createdAt: integer("created_at", { mode: "timestamp" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }),
     name: text("name"),
     uri: text("uri"),
     icon: text("icon"),
-    contacts: text("contacts").array(),
+    contacts: text("contacts", { mode: "json" }).$type<string[]>(),
     tos: text("tos"),
     policy: text("policy"),
     softwareId: text("software_id"),
     softwareVersion: text("software_version"),
     softwareStatement: text("software_statement"),
-    redirectUris: text("redirect_uris").array().notNull(),
-    postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
+    redirectUris: text("redirect_uris", { mode: "json" }).$type<string[]>().notNull(),
+    postLogoutRedirectUris: text("post_logout_redirect_uris", { mode: "json" }).$type<string[]>(),
     tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
-    grantTypes: text("grant_types").array(),
-    responseTypes: text("response_types").array(),
-    public: boolean("public"),
+    grantTypes: text("grant_types", { mode: "json" }).$type<string[]>(),
+    responseTypes: text("response_types", { mode: "json" }).$type<string[]>(),
+    public: integer("public", { mode: "boolean" }),
     type: text("type"),
-    requirePKCE: boolean("require_pkce"),
+    requirePKCE: integer("require_pkce", { mode: "boolean" }),
     referenceId: text("reference_id"),
-    metadata: jsonb("metadata"),
+    metadata: text("metadata", { mode: "json" }),
     // OIDC Back-Channel Logout endpoint for this client. When set, Passport
     // POSTs a signed logout_token here when a user's sessions are force-ended
     // (e.g. an admin ban). Passport-owned column: Better Auth's client APIs do
@@ -556,7 +561,7 @@ export const oauthClient = pgTable(
   (table) => [index("oauthClient_userId_idx").on(table.userId)],
 );
 
-export const oauthRefreshToken = pgTable(
+export const oauthRefreshToken = sqliteTable(
   "oauth_refresh_token",
   {
     id: text("id").primaryKey(),
@@ -572,17 +577,17 @@ export const oauthRefreshToken = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     authorizationCodeId: text("authorization_code_id"),
-    resources: text("resources").array(),
-    requestedUserInfoClaims: text("requested_user_info_claims").array(),
-    expiresAt: timestamp("expires_at"),
-    createdAt: timestamp("created_at"),
-    revoked: timestamp("revoked"),
-    rotatedAt: timestamp("rotated_at"),
+    resources: text("resources", { mode: "json" }).$type<string[]>(),
+    requestedUserInfoClaims: text("requested_user_info_claims", { mode: "json" }).$type<string[]>(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }),
+    revoked: integer("revoked", { mode: "timestamp" }),
+    rotatedAt: integer("rotated_at", { mode: "timestamp" }),
     rotationReplayResponse: text("rotation_replay_response"),
-    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at"),
-    authTime: timestamp("auth_time"),
-    confirmation: jsonb("confirmation"),
-    scopes: text("scopes").array().notNull(),
+    rotationReplayExpiresAt: integer("rotation_replay_expires_at", { mode: "timestamp" }),
+    authTime: integer("auth_time", { mode: "timestamp" }),
+    confirmation: text("confirmation", { mode: "json" }),
+    scopes: text("scopes", { mode: "json" }).$type<string[]>().notNull(),
   },
   (table) => [
     index("oauthRefreshToken_clientId_idx").on(table.clientId),
@@ -594,7 +599,7 @@ export const oauthRefreshToken = pgTable(
   ],
 );
 
-export const oauthAccessToken = pgTable(
+export const oauthAccessToken = sqliteTable(
   "oauth_access_token",
   {
     id: text("id").primaryKey(),
@@ -608,16 +613,16 @@ export const oauthAccessToken = pgTable(
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     authorizationCodeId: text("authorization_code_id"),
-    resources: text("resources").array(),
-    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    resources: text("resources", { mode: "json" }).$type<string[]>(),
+    requestedUserInfoClaims: text("requested_user_info_claims", { mode: "json" }).$type<string[]>(),
     refreshId: text("refresh_id").references(() => oauthRefreshToken.id, {
       onDelete: "cascade",
     }),
-    expiresAt: timestamp("expires_at"),
-    createdAt: timestamp("created_at"),
-    revoked: timestamp("revoked"),
-    confirmation: jsonb("confirmation"),
-    scopes: text("scopes").array().notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" }),
+    revoked: integer("revoked", { mode: "timestamp" }),
+    confirmation: text("confirmation", { mode: "json" }),
+    scopes: text("scopes", { mode: "json" }).$type<string[]>().notNull(),
   },
   (table) => [
     index("oauthAccessToken_clientId_idx").on(table.clientId),
@@ -630,7 +635,7 @@ export const oauthAccessToken = pgTable(
   ],
 );
 
-export const oauthConsent = pgTable(
+export const oauthConsent = sqliteTable(
   "oauth_consent",
   {
     id: text("id").primaryKey(),
@@ -639,11 +644,11 @@ export const oauthConsent = pgTable(
       .references(() => oauthClient.clientId, { onDelete: "cascade" }),
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
-    resources: text("resources").array(),
-    requestedUserInfoClaims: text("requested_user_info_claims").array(),
-    scopes: text("scopes").array().notNull(),
-    createdAt: timestamp("created_at"),
-    updatedAt: timestamp("updated_at"),
+    resources: text("resources", { mode: "json" }).$type<string[]>(),
+    requestedUserInfoClaims: text("requested_user_info_claims", { mode: "json" }).$type<string[]>(),
+    scopes: text("scopes", { mode: "json" }).$type<string[]>().notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" }),
   },
   (table) => [
     index("oauthConsent_clientId_idx").on(table.clientId),
@@ -651,11 +656,11 @@ export const oauthConsent = pgTable(
   ],
 );
 
-export const adminAuditEvent = pgTable(
+export const adminAuditEvent = sqliteTable(
   "admin_audit_event",
   {
     id: text("id").primaryKey(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
     actorUserId: text("actor_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
@@ -669,7 +674,7 @@ export const adminAuditEvent = pgTable(
       onDelete: "set null",
     }),
     ipAddress: text("ip_address"),
-    location: jsonb("location").$type<RequestLocation | null>(),
+    location: text("location", { mode: "json" }).$type<RequestLocation | null>(),
     userAgent: text("user_agent"),
     metadata: text("metadata"),
   },
@@ -685,17 +690,17 @@ export const adminAuditEvent = pgTable(
 // authenticated user can review on their Security page. Recorded by the auth
 // after-hook independently of email-alert preferences. Distinct from
 // admin_audit_event, which records operator (cross-user) mutations.
-export const accountActivityEvent = pgTable(
+export const accountActivityEvent = sqliteTable(
   "account_activity_event",
   {
     id: text("id").primaryKey(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
     ipAddress: text("ip_address"),
-    location: jsonb("location").$type<RequestLocation | null>(),
+    location: text("location", { mode: "json" }).$type<RequestLocation | null>(),
     userAgent: text("user_agent"),
     metadata: text("metadata"),
   },
@@ -710,13 +715,13 @@ export const accountActivityEvent = pgTable(
 // be stored retrievably; it is redacted from list responses and shown to the
 // operator only on create/rotate. `events` is the set of subscribed event-type
 // slugs (see lib/webhooks.ts).
-export const webhookEndpoint = pgTable(
+export const webhookEndpoint = sqliteTable(
   "webhook_endpoint",
   {
     id: text("id").primaryKey(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     createdByUserId: text("created_by_user_id").references(() => user.id, {
@@ -727,22 +732,22 @@ export const webhookEndpoint = pgTable(
     }),
     url: text("url").notNull(),
     secret: text("secret").notNull(),
-    events: jsonb("events").$type<string[]>().notNull(),
+    events: text("events", { mode: "json" }).$type<string[]>().notNull(),
     description: text("description"),
-    disabled: boolean("disabled").default(false).notNull(),
+    disabled: integer("disabled", { mode: "boolean" }).default(false).notNull(),
   },
   (table) => [index("webhookEndpoint_organizationId_idx").on(table.organizationId)],
 );
 
 // Append-only delivery log. One row per (event, endpoint) attempt set. The
 // delivery Workflow updates status/attempts/responseStatus as it retries.
-export const webhookDelivery = pgTable(
+export const webhookDelivery = sqliteTable(
   "webhook_delivery",
   {
     id: text("id").primaryKey(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
     endpointId: text("endpoint_id")
@@ -755,7 +760,7 @@ export const webhookDelivery = pgTable(
     attempts: integer("attempts").default(0).notNull(),
     responseStatus: integer("response_status"),
     error: text("error"),
-    deliveredAt: timestamp("delivered_at"),
+    deliveredAt: integer("delivered_at", { mode: "timestamp" }),
   },
   (table) => [
     index("webhookDelivery_endpointId_createdAt_idx").on(
@@ -766,19 +771,19 @@ export const webhookDelivery = pgTable(
   ],
 );
 
-export const emailNotificationPreference = pgTable("email_notification_preference", {
+export const emailNotificationPreference = sqliteTable("email_notification_preference", {
   userId: text("user_id")
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
-  securityAlerts: boolean("security_alerts").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
+  securityAlerts: integer("security_alerts", { mode: "boolean" }).default(true).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .default(sql`(unixepoch())`)
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 });
 
-export const dataExportRequest = pgTable(
+export const dataExportRequest = sqliteTable(
   "data_export_request",
   {
     id: text("id").primaryKey(),
@@ -791,15 +796,15 @@ export const dataExportRequest = pgTable(
     zipFilename: text("zip_filename"),
     cancelTokenHash: text("cancel_token_hash"),
     downloadTokenHash: text("download_token_hash").unique(),
-    requestedAt: timestamp("requested_at").defaultNow().notNull(),
-    cancelableUntil: timestamp("cancelable_until").notNull(),
-    canceledAt: timestamp("canceled_at"),
-    completedAt: timestamp("completed_at"),
-    expiresAt: timestamp("expires_at"),
-    downloadedAt: timestamp("downloaded_at"),
+    requestedAt: integer("requested_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    cancelableUntil: integer("cancelable_until", { mode: "timestamp" }).notNull(),
+    canceledAt: integer("canceled_at", { mode: "timestamp" }),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+    expiresAt: integer("expires_at", { mode: "timestamp" }),
+    downloadedAt: integer("downloaded_at", { mode: "timestamp" }),
     errorMessage: text("error_message"),
     requestIpAddress: text("request_ip_address"),
-    requestLocation: jsonb("request_location").$type<RequestLocation | null>(),
+    requestLocation: text("request_location", { mode: "json" }).$type<RequestLocation | null>(),
     requestUserAgent: text("request_user_agent"),
     requestBrowser: text("request_browser"),
     requestOperatingSystem: text("request_operating_system"),
@@ -814,7 +819,7 @@ export const dataExportRequest = pgTable(
 // Billing plan catalog. Mirrors BillingPlanDefinition (src/lib/billing.ts).
 // When this table is empty, the plan source falls back to STRIPE_BILLING_PLANS,
 // so existing env-only deployments keep working and the env var can seed.
-export const billingPlan = pgTable(
+export const billingPlan = sqliteTable(
   "billing_plan",
   {
     id: text("id").primaryKey(),
@@ -833,17 +838,17 @@ export const billingPlan = pgTable(
     type: text("type").default("subscription").notNull(),
     // When true the plan is purchasable only by personal accounts; organization
     // customers are blocked at checkout.
-    personalOnly: boolean("personal_only").default(false).notNull(),
+    personalOnly: integer("personal_only", { mode: "boolean" }).default(false).notNull(),
     // When true the plan is hidden from the public catalog. It stays purchasable
     // by anyone who has the direct /billing/product/:id deeplink.
-    hidden: boolean("hidden").default(false).notNull(),
+    hidden: integer("hidden", { mode: "boolean" }).default(false).notNull(),
     displayOrder: integer("display_order").default(0).notNull(),
-    limits: jsonb("limits").$type<BillingLimits>(),
-    entitlements: jsonb("entitlements").$type<string[]>(),
-    lineItems: jsonb("line_items").$type<BillingPlanLineItem[]>(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at")
-      .defaultNow()
+    limits: text("limits", { mode: "json" }).$type<BillingLimits>(),
+    entitlements: text("entitlements", { mode: "json" }).$type<string[]>(),
+    lineItems: text("line_items", { mode: "json" }).$type<BillingPlanLineItem[]>(),
+    createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .default(sql`(unixepoch())`)
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
@@ -855,28 +860,28 @@ export const billingPlan = pgTable(
 
 // Reusable entitlement registry. Plans reference entries by `key`; `name` is the
 // friendly label shown in pricing tables and the public catalog.
-export const billingEntitlement = pgTable("billing_entitlement", {
+export const billingEntitlement = sqliteTable("billing_entitlement", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .default(sql`(unixepoch())`)
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 });
 
 // Reusable limit registry. Plans reference entries by `key` and assign a value;
 // `name`/`unit` describe the limit in pricing tables and the public catalog.
-export const billingLimit = pgTable("billing_limit", {
+export const billingLimit = sqliteTable("billing_limit", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   unit: text("unit"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .default(sql`(unixepoch())`)
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 });

@@ -123,7 +123,7 @@ export function createAuthOptions(env: AuthEnv, db: AuthDatabase) {
 		),
 		rateLimit: buildAuthRateLimitOptions(env),
 		database: drizzleAdapter(db, {
-			provider: "pg",
+			provider: "sqlite",
 			schema,
 		}),
 		trustedOrigins: splitCsv(env.TRUSTED_ORIGINS),

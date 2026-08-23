@@ -1,1 +1,0 @@
-ALTER TABLE "oauth_client" ADD COLUMN "verified" boolean DEFAULT false NOT NULL;

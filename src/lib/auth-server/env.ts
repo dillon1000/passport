@@ -57,9 +57,8 @@ export function createCliAuthEnv(processEnv: ProcessEnvSource = processEnvFromGl
 		ASSETS: {
 			fetch: () => new Response(null, { status: 404 }),
 		},
-		HYPERDRIVE: {
-			connectionString: processEnv.DATABASE_URL ?? "",
-		},
+		// SAFETY: the CLI inspects auth options but never executes database queries.
+		DB: Object.create(null) as D1Database,
 		EMAIL: {
 			send: async () => {},
 		},

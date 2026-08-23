@@ -1,13 +1,8 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import { drizzle } from "drizzle-orm/d1";
 
 import * as schema from "./schema";
 import type { AuthEnv } from "../env";
 
 export function createDb(env: AuthEnv) {
-	const client = postgres(env.HYPERDRIVE.connectionString, {
-		prepare: false,
-	});
-
-	return drizzle(client, { schema });
+	return drizzle(env.DB, { schema });
 }
