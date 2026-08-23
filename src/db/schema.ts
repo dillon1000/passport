@@ -571,16 +571,26 @@ export const oauthRefreshToken = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at"),
     revoked: timestamp("revoked"),
+    rotatedAt: timestamp("rotated_at"),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: timestamp("rotation_replay_expires_at"),
     authTime: timestamp("auth_time"),
+    confirmation: jsonb("confirmation"),
     scopes: text("scopes").array().notNull(),
   },
   (table) => [
     index("oauthRefreshToken_clientId_idx").on(table.clientId),
     index("oauthRefreshToken_sessionId_idx").on(table.sessionId),
     index("oauthRefreshToken_userId_idx").on(table.userId),
+    index("oauthRefreshToken_authorizationCodeId_idx").on(
+      table.authorizationCodeId,
+    ),
   ],
 );
 
@@ -597,17 +607,25 @@ export const oauthAccessToken = pgTable(
     }),
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
     refreshId: text("refresh_id").references(() => oauthRefreshToken.id, {
       onDelete: "cascade",
     }),
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at"),
+    revoked: timestamp("revoked"),
+    confirmation: jsonb("confirmation"),
     scopes: text("scopes").array().notNull(),
   },
   (table) => [
     index("oauthAccessToken_clientId_idx").on(table.clientId),
     index("oauthAccessToken_sessionId_idx").on(table.sessionId),
     index("oauthAccessToken_userId_idx").on(table.userId),
+    index("oauthAccessToken_authorizationCodeId_idx").on(
+      table.authorizationCodeId,
+    ),
     index("oauthAccessToken_refreshId_idx").on(table.refreshId),
   ],
 );
@@ -621,6 +639,8 @@ export const oauthConsent = pgTable(
       .references(() => oauthClient.clientId, { onDelete: "cascade" }),
     userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
     scopes: text("scopes").array().notNull(),
     createdAt: timestamp("created_at"),
     updatedAt: timestamp("updated_at"),
